@@ -1,0 +1,42 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "desafio-app-b8665",
+          "appId": "1:770550529401:android:a1ca5cd1556827bf0503a8",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "desafio-app-b8665",
+          "configurations": {
+            "android": "1:770550529401:android:a1ca5cd1556827bf0503a8",
+            "ios": "1:770550529401:ios:f2c001c68bad6c500503a8",
+            "macos": "1:770550529401:ios:f2c001c68bad6c500503a8",
+            "web": "1:770550529401:web:92b0537803ecc4850503a8",
+            "windows": "1:770550529401:web:cac0ca6d474910430503a8"
+          }
+        }
+      }
+    }
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "disallowLegacyRuntimeConfig": true,
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ],
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" run lint"
+      ]
+    }
+  ]
+}
