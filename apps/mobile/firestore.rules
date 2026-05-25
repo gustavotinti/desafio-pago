@@ -1,0 +1,145 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function uid() { return request.auth.uid; }
+    function isAdmin() {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/admins/$(uid()));
+    }
+    function changed() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    // ── USERS ────────────────────────────────────────────────────────────────
+    match /users/{userId} {
+      allow read: if signedIn();
+
+      // Owner: update profile fields only
+      allow update: if signedIn() && uid() == userId
+          && changed().hasOnly(['name', 'bio', 'photoUrl', 'pixKey'])
+
+        // Owner: decrease own balance only (withdrawal deduction)
+        || (signedIn() && uid() == userId
+            && changed().hasOnly(['balance'])
+            && request.resource.data.balance < resource.data.balance)
+
+        // Owner: update own followingCount (follow/unfollow)
+        || (signedIn() && uid() == userId
+            && changed().hasOnly(['followingCount']))
+
+        // Any user: update target's followersCount (follow/unfollow transaction)
+        || (signedIn() && changed().hasOnly(['followersCount']))
+
+        // Admin: unrestricted
+        || isAdmin();
+    }
+
+    // ── CHALLENGES ───────────────────────────────────────────────────────────
+    match /challenges/{challengeId} {
+      allow read: if signedIn();
+
+      allow create: if signedIn()
+        && request.resource.data.createdBy == uid()
+        && request.resource.data.amount > 0
+        && request.resource.data.status == 'active'
+        && request.resource.data.keys()
+             .hasAll(['title', 'description', 'createdBy', 'amount',
+                      'status', 'expiresAt', 'voteCount', 'entryCount']);
+
+      // Aporte: any user may increase amount
+      allow update: if signedIn()
+          && changed().hasOnly(['amount'])
+          && request.resource.data.amount > resource.data.amount
+
+        // Vote transaction: voteCount +1 only
+        || (signedIn()
+            && changed().hasOnly(['voteCount'])
+            && request.resource.data.voteCount == resource.data.voteCount + 1)
+
+        // Entry submission: entryCount +1 only
+        || (signedIn()
+            && changed().hasOnly(['entryCount'])
+            && request.resource.data.entryCount == resource.data.entryCount + 1)
+
+        // Admin / Cloud Functions: unrestricted (status, winnerIds, finishedAt)
+        || isAdmin();
+    }
+
+    // ── ENTRIES ──────────────────────────────────────────────────────────────
+    match /entries/{entryId} {
+      allow read: if signedIn();
+
+      allow create: if signedIn()
+        && request.resource.data.userId == uid()
+        && request.resource.data.voteCount == 0
+        && request.resource.data.isActive == true
+        && request.resource.data.keys()
+             .hasAll(['challengeId', 'userId', 'contentType',
+                      'voteCount', 'isActive', 'createdAt']);
+
+      // Vote transaction: voteCount +1 only
+      allow update: if signedIn()
+          && changed().hasOnly(['voteCount'])
+          && request.resource.data.voteCount == resource.data.voteCount + 1
+
+        // Moderation: admin may deactivate
+        || (isAdmin() && changed().hasOnly(['isActive']));
+    }
+
+    // ── VOTES ─────────────────────────────────────────────────────────────────
+    match /votes/{voteId} {
+      allow read: if signedIn() && resource.data.userId == uid();
+
+      // Doc ID must be userId_challengeId (enforces 1 vote per user per challenge)
+      allow create: if signedIn()
+        && request.resource.data.userId == uid()
+        && voteId == uid() + '_' + request.resource.data.challengeId;
+
+      // Votes are immutable — no update or delete allowed
+    }
+
+    // ── WITHDRAWALS ──────────────────────────────────────────────────────────
+    match /withdrawals/{withdrawalId} {
+      allow read: if signedIn()
+        && (resource.data.userId == uid() || isAdmin());
+
+      allow create: if signedIn()
+        && request.resource.data.userId == uid()
+        && request.resource.data.status == 'pending'
+        && request.resource.data.amount >= 100;
+
+      // Only admin may approve or reject
+      allow update: if isAdmin()
+        && changed().hasOnly(['status', 'approvedAt', 'approvedBy']);
+    }
+
+    // ── TRANSACTIONS ─────────────────────────────────────────────────────────
+    match /transactions/{txId} {
+      allow read: if signedIn() && resource.data.userId == uid();
+
+      // Client writes withdrawal transactions; rewards written by Cloud Functions
+      allow create: if signedIn() && request.resource.data.userId == uid();
+
+      // Transactions are immutable — no update or delete
+    }
+
+    // ── FOLLOWS ──────────────────────────────────────────────────────────────
+    match /follows/{followId} {
+      allow read: if signedIn();
+
+      allow create: if signedIn()
+        && request.resource.data.followerId == uid()
+        && followId == uid() + '_' + request.resource.data.followedId;
+
+      allow delete: if signedIn() && resource.data.followerId == uid();
+    }
+
+    // ── ADMINS ───────────────────────────────────────────────────────────────
+    match /admins/{userId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+  }
+}
