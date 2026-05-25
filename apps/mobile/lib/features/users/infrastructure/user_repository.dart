@@ -14,6 +14,10 @@ class UserRepository {
       'createdAt': DateTime.now().toIso8601String(),
       'balance': 0,
       'totalEarned': 0,
+      'totalVotesReceived': 0,
+      'followersCount': 0,
+      'followingCount': 0,
+      'bio': '',
       'pixKey': '',
     }, SetOptions(merge: true));
   }

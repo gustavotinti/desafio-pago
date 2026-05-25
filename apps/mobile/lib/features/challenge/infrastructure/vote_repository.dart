@@ -29,9 +29,13 @@ class VoteRepository {
 
     if (existing.exists) throw Exception('Você já votou neste desafio');
 
+    final entryDoc = await _firestore.collection('entries').doc(entryId).get();
+    if (!entryDoc.exists) throw Exception('Participação não encontrada');
+    final entryOwnerId = entryDoc.data()?['userId'] as String? ?? '';
+
     final entryRef = _firestore.collection('entries').doc(entryId);
-    final challengeRef =
-        _firestore.collection('challenges').doc(challengeId);
+    final challengeRef = _firestore.collection('challenges').doc(challengeId);
+    final entryOwnerRef = _firestore.collection('users').doc(entryOwnerId);
 
     await _firestore.runTransaction((tx) async {
       tx.set(voteRef, {
@@ -42,6 +46,7 @@ class VoteRepository {
       });
       tx.update(entryRef, {'voteCount': FieldValue.increment(1)});
       tx.update(challengeRef, {'voteCount': FieldValue.increment(1)});
+      tx.update(entryOwnerRef, {'totalVotesReceived': FieldValue.increment(1)});
     });
   }
 

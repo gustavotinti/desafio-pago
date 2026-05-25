@@ -5,6 +5,7 @@ import '../../challenge/infrastructure/get_challenges.dart';
 import '../../challenge/presentation/create_challenge_page.dart';
 import '../../entry/presentation/challenge_entries_page.dart';
 import '../../entry/presentation/submit_entry_page.dart';
+import '../../users/presentation/rankings_page.dart';
 import '../presentation/profile_page.dart';
 import '../../admin/presentation/admin_withdrawals_page.dart';
 
@@ -36,17 +37,19 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
         title: const Text("Desafios"),
         actions: [
-          // 👤 PERFIL
+          IconButton(
+            icon: const Icon(Icons.leaderboard),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const RankingsPage()),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.person),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const ProfilePage(),
-                ),
-              );
-            },
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ProfilePage()),
+            ),
           ),
 
           // 🔥 ADMIN (SÓ VOCÊ)

@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../withdrawals/infrastructure/withdraw_repository.dart';
 import '../../finance/infrastructure/get_transactions.dart';
+import '../../users/presentation/edit_profile_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -13,185 +14,257 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  final pixController = TextEditingController();
-  final amountController = TextEditingController();
+  final _pixController = TextEditingController();
+  final _amountController = TextEditingController();
 
-  double balance = 0;
-  List transactions = [];
+  Map<String, dynamic> _userData = {};
+  List _transactions = [];
 
   @override
   void initState() {
     super.initState();
-    loadUser();
+    _load();
   }
 
-  Future<void> loadUser() async {
-    final user = FirebaseAuth.instance.currentUser;
+  @override
+  void dispose() {
+    _pixController.dispose();
+    _amountController.dispose();
+    super.dispose();
+  }
 
-    if (user == null) return;
+  Future<void> _load() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
 
     final doc = await FirebaseFirestore.instance
         .collection('users')
-        .doc(user.uid)
+        .doc(uid)
         .get();
 
-    final data = doc.data();
+    final data = doc.data() ?? {};
+    _pixController.text = data['pixKey'] ?? '';
+    _transactions = await GetTransactions()(uid);
 
-    if (data != null) {
-      balance = (data['balance'] ?? 0).toDouble();
-      pixController.text = data['pixKey'] ?? '';
-    }
-
-    transactions = await GetTransactions()(user.uid);
-
-    setState(() {});
+    setState(() => _userData = data);
   }
 
-  Future<void> savePix() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+  Future<void> _savePix() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
 
     await FirebaseFirestore.instance
         .collection('users')
-        .doc(user.uid)
-        .update({
-      'pixKey': pixController.text,
-    });
+        .doc(uid)
+        .update({'pixKey': _pixController.text.trim()});
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Pix salvo")),
-    );
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Pix salvo')));
   }
 
-  Future<void> requestWithdraw() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+  Future<void> _requestWithdraw() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
 
-    final amount = double.tryParse(amountController.text) ?? 0;
-
+    final amount = double.tryParse(_amountController.text.trim()) ?? 0;
     if (amount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Valor inválido")),
+        const SnackBar(content: Text('Valor inválido')),
       );
       return;
     }
 
     try {
-      await WithdrawRepository().requestWithdraw(
-        user.uid,
-        amount,
-      );
-
+      await WithdrawRepository().requestWithdraw(uid, amount);
       final fee = amount * 0.10;
       final net = amount - fee;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Saque solicitado — você receberá R\$${net.toStringAsFixed(2)} (taxa: R\$${fee.toStringAsFixed(2)})',
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Saque solicitado — você receberá R\$${net.toStringAsFixed(2)} (taxa: R\$${fee.toStringAsFixed(2)})',
+            ),
           ),
-        ),
-      );
-
-      loadUser(); // 🔥 atualiza tela
+        );
+        _amountController.clear();
+        _load();
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
+      }
     }
   }
 
-  Color getColor(String type) {
+  Color _txColor(String type) {
     if (type == 'withdraw') return Colors.red;
     if (type == 'reward') return Colors.green;
-    return Colors.black;
+    return Colors.black87;
   }
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
+    final authUser = FirebaseAuth.instance.currentUser;
+    final balance = (_userData['balance'] ?? 0 as num).toDouble();
+    final totalEarned = (_userData['totalEarned'] ?? 0 as num).toDouble();
+    final followersCount = _userData['followersCount'] ?? 0;
+    final followingCount = _userData['followingCount'] ?? 0;
+    final totalVotes = _userData['totalVotesReceived'] ?? 0;
+    final bio = _userData['bio'] as String? ?? '';
+    final photoUrl = _userData['photoUrl'] as String? ??
+        authUser?.photoURL ??
+        '';
+    final name = _userData['name'] as String? ??
+        authUser?.displayName ??
+        '';
 
     return Scaffold(
-      appBar: AppBar(title: const Text("Perfil")),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text("Nome: ${user?.displayName ?? ''}"),
-            const SizedBox(height: 10),
-
-            Text(
-              "Saldo: R\$ $balance",
-              style: const TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-
-            const SizedBox(height: 20),
-
-            TextField(
-              controller: pixController,
-              decoration: const InputDecoration(
-                labelText: "Chave Pix",
-                border: OutlineInputBorder(),
-              ),
-            ),
-
-            const SizedBox(height: 10),
-
-            ElevatedButton(
-              onPressed: savePix,
-              child: const Text("Salvar Pix"),
-            ),
-
-            const SizedBox(height: 20),
-
-            TextField(
-              controller: amountController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: "Valor para saque",
-                border: OutlineInputBorder(),
-              ),
-            ),
-
-            const SizedBox(height: 10),
-
-            ElevatedButton(
-              onPressed: requestWithdraw,
-              child: const Text("Solicitar saque"),
-            ),
-
-            const SizedBox(height: 20),
-
-            const Text(
-              "Histórico",
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-
-            const SizedBox(height: 10),
-
-            Expanded(
-              child: ListView.builder(
-                itemCount: transactions.length,
-                itemBuilder: (context, index) {
-                  final t = transactions[index];
-
-                  return ListTile(
-                    title: Text(t['description'] ?? ''),
-                    subtitle: Text(t['type'] ?? ''),
-                    trailing: Text(
-                      "R\$ ${t['amount']}",
-                      style: TextStyle(color: getColor(t['type'])),
-                    ),
-                  );
-                },
-              ),
-            )
-          ],
-        ),
+      appBar: AppBar(
+        title: const Text('Perfil'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.edit),
+            onPressed: () async {
+              final updated = await Navigator.push<bool>(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => EditProfilePage(
+                    currentName: name,
+                    currentBio: bio,
+                    currentPhotoUrl: photoUrl,
+                  ),
+                ),
+              );
+              if (updated == true) _load();
+            },
+          ),
+        ],
       ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          // — Header —
+          Center(
+            child: Column(
+              children: [
+                CircleAvatar(
+                  radius: 40,
+                  backgroundImage: photoUrl.isNotEmpty
+                      ? NetworkImage(photoUrl)
+                      : null,
+                  child: photoUrl.isEmpty
+                      ? const Icon(Icons.person, size: 40)
+                      : null,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  name,
+                  style: const TextStyle(
+                      fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                if (bio.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(bio,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.black54)),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // — Stats row —
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _Stat(label: 'Seguidores', value: '$followersCount'),
+              _Stat(label: 'Seguindo', value: '$followingCount'),
+              _Stat(label: 'Votos', value: '$totalVotes'),
+              _Stat(
+                  label: 'Ganhos',
+                  value: 'R\$${totalEarned.toStringAsFixed(0)}'),
+            ],
+          ),
+          const Divider(height: 32),
+
+          // — Saldo —
+          Text(
+            'Créditos: R\$ ${balance.toStringAsFixed(2)}',
+            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 16),
+
+          // — Pix —
+          TextField(
+            controller: _pixController,
+            decoration: const InputDecoration(
+              labelText: 'Chave Pix',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 8),
+          ElevatedButton(onPressed: _savePix, child: const Text('Salvar Pix')),
+          const SizedBox(height: 16),
+
+          // — Saque —
+          TextField(
+            controller: _amountController,
+            keyboardType:
+                const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(
+              labelText: 'Valor para saque (mín. R\$100)',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 8),
+          ElevatedButton(
+            onPressed: _requestWithdraw,
+            child: const Text('Solicitar saque'),
+          ),
+          const Divider(height: 32),
+
+          // — Histórico —
+          const Text(
+            'Histórico',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          if (_transactions.isEmpty)
+            const Text('Nenhuma transação ainda')
+          else
+            ...(_transactions.map((t) => ListTile(
+                  dense: true,
+                  title: Text(t['description'] ?? ''),
+                  subtitle: Text(t['type'] ?? ''),
+                  trailing: Text(
+                    'R\$ ${(t['amount'] as num).toStringAsFixed(2)}',
+                    style: TextStyle(color: _txColor(t['type'] ?? '')),
+                  ),
+                ))),
+        ],
+      ),
+    );
+  }
+}
+
+class _Stat extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _Stat({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(value,
+            style: const TextStyle(
+                fontSize: 18, fontWeight: FontWeight.bold)),
+        Text(label,
+            style:
+                const TextStyle(fontSize: 12, color: Colors.black54)),
+      ],
     );
   }
 }
