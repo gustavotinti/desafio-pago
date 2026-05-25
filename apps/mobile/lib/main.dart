@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'firebase_options.dart';
 import 'core/theme/app_theme.dart';
+import 'features/auth/presentation/banned_page.dart';
 import 'features/auth/presentation/login_page.dart';
 import 'features/auth/presentation/main_shell.dart';
 import 'features/auth/presentation/terms_page.dart';
@@ -83,6 +84,30 @@ class _TermsGateState extends State<_TermsGate> {
             onAccepted: () =>
                 setState(() => _termsFuture = Future.value(true)),
           );
+        }
+        return _BanGate(userId: widget.userId);
+      },
+    );
+  }
+}
+
+class _BanGate extends StatelessWidget {
+  final String userId;
+
+  const _BanGate({required this.userId});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const _LoadingScreen();
+        final data = snapshot.data?.data() as Map<String, dynamic>?;
+        if (data?['isBanned'] == true) {
+          return BannedPage(reason: data?['banReason'] as String?);
         }
         return const MainShell();
       },

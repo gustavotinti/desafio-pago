@@ -11,6 +11,30 @@ function mpPaymentClient() {
   return new Payment(new MercadoPagoConfig({accessToken: token}));
 }
 
+async function _assertNotBanned(db, userId) {
+  const doc = await db.collection("users").doc(userId).get();
+  if (doc.data()?.isBanned === true) {
+    throw new functions.https.HttpsError("permission-denied", "Sua conta está suspensa");
+  }
+}
+
+async function _maybeScheduleInstagramPost(db, challengeId, oldAmount, newAmount) {
+  const cfg = functions.config().instagram || {};
+  const threshold = Number(cfg.threshold || 100);
+  if (oldAmount < threshold && newAmount >= threshold) {
+    const postRef = db.collection("instagram_posts").doc(challengeId);
+    const existing = await postRef.get();
+    if (!existing.exists) {
+      await postRef.set({
+        challengeId,
+        status: "pending",
+        retryCount: 0,
+        createdAt: new Date().toISOString(),
+      });
+    }
+  }
+}
+
 // ─── CREATE CHALLENGE ────────────────────────────────────────────────────────
 
 exports.createChallenge = functions.https.onCall(async (data, context) => {
@@ -84,6 +108,11 @@ exports.createChallenge = functions.https.onCall(async (data, context) => {
   }
 
   await batch.commit();
+
+  if (!isAdmin) {
+    await _maybeScheduleInstagramPost(db, challengeRef.id, 0, amount);
+  }
+
   return {challengeId: challengeRef.id};
 });
 
@@ -145,6 +174,7 @@ exports.addAmount = functions.https.onCall(async (data, context) => {
   });
 
   await batch.commit();
+  await _maybeScheduleInstagramPost(db, challengeId, challenge.amount, challenge.amount + value);
   return {success: true};
 });
 
@@ -213,6 +243,9 @@ exports.submitEntry = functions.https.onCall(async (data, context) => {
   }
 
   const userId = context.auth.uid;
+  const db = admin.firestore();
+  await _assertNotBanned(db, userId);
+
   const {challengeId, contentType, contentText, contentUrl} = data;
 
   if (!challengeId || !contentType) {
@@ -286,6 +319,7 @@ exports.vote = functions.https.onCall(async (data, context) => {
   }
 
   const db = admin.firestore();
+  await _assertNotBanned(db, userId);
   const challengeDoc = await db.collection("challenges").doc(challengeId).get();
 
   if (!challengeDoc.exists) {
@@ -581,4 +615,221 @@ exports.checkPaymentStatus = functions.https.onCall(async (data, context) => {
   }
 
   return {status: doc.data().status};
+});
+
+// ─── FASE 16: INSTAGRAM AUTOMATION ──────────────────────────────────────────
+// Deploy config:
+//   firebase functions:config:set instagram.access_token="EAA..."
+//   firebase functions:config:set instagram.page_id="123456"
+//   firebase functions:config:set instagram.threshold="100"
+
+exports.processInstagramPosts = functions.pubsub
+    .schedule("every 10 minutes")
+    .onRun(async () => {
+      const db = admin.firestore();
+      const cfg = functions.config().instagram || {};
+      const accessToken = cfg.access_token;
+      const pageId = cfg.page_id;
+
+      if (!accessToken || !pageId) {
+        console.log("Instagram não configurado — pulando");
+        return null;
+      }
+
+      const snapshot = await db.collection("instagram_posts")
+          .where("status", "in", ["pending", "failed"])
+          .get();
+
+      if (snapshot.empty) return null;
+
+      const eligible = snapshot.docs.filter((d) => (d.data().retryCount || 0) < 3);
+      await Promise.all(eligible.map((d) => _postToInstagram(db, d, pageId, accessToken)));
+      return null;
+    });
+
+async function _postToInstagram(db, postDoc, pageId, accessToken) {
+  const postData = postDoc.data();
+  const challengeDoc = await db.collection("challenges").doc(postData.challengeId).get();
+
+  if (!challengeDoc.exists) {
+    await postDoc.ref.update({status: "failed", error: "desafio não encontrado"});
+    return;
+  }
+
+  const challenge = challengeDoc.data();
+  const message =
+    `🏆 ${challenge.title}\n` +
+    `💰 Prêmio: R$ ${challenge.amount.toFixed(2)}\n` +
+    `Participe agora no Desafio Pago!`;
+
+  try {
+    const response = await fetch(
+        `https://graph.facebook.com/v18.0/${pageId}/feed`,
+        {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({message, access_token: accessToken}),
+        },
+    );
+    const result = await response.json();
+
+    if (result.id) {
+      await postDoc.ref.update({
+        status: "posted",
+        postId: result.id,
+        postedAt: new Date().toISOString(),
+      });
+    } else {
+      throw new Error(result.error?.message || "Erro desconhecido");
+    }
+  } catch (err) {
+    const retryCount = (postData.retryCount || 0) + 1;
+    await postDoc.ref.update({
+      status: retryCount >= 3 ? "failed" : "pending",
+      retryCount,
+      error: err.message,
+      lastAttemptAt: new Date().toISOString(),
+    });
+  }
+}
+
+// ─── FASE 17: MODERAÇÃO COM IA ───────────────────────────────────────────────
+// Deploy config:
+//   firebase functions:config:set openai.api_key="sk-..."
+
+exports.moderateEntry = functions.firestore
+    .document("entries/{entryId}")
+    .onCreate(async (snap, context) => {
+      const entry = snap.data();
+      if (!entry.contentText) return null;
+
+      const apiKey = (functions.config().openai || {}).api_key;
+      if (!apiKey) return null;
+
+      try {
+        const response = await fetch("https://api.openai.com/v1/moderations", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({input: entry.contentText}),
+        });
+
+        const result = await response.json();
+        const flagged = result.results?.[0]?.flagged === true;
+
+        if (flagged) {
+          const cats = result.results[0].categories || {};
+          const flaggedCats = Object.keys(cats).filter((k) => cats[k]).join(", ");
+
+          const db = admin.firestore();
+          await snap.ref.update({isActive: false});
+          await db.collection("audit_logs").add({
+            type: "auto_moderation",
+            entryId: context.params.entryId,
+            userId: entry.userId,
+            challengeId: entry.challengeId,
+            reason: `IA sinalizou: ${flaggedCats}`,
+            createdAt: new Date().toISOString(),
+          });
+        }
+      } catch (err) {
+        console.error("Erro na moderação:", err);
+      }
+
+      return null;
+    });
+
+exports.reportContent = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Usuário não logado");
+  }
+
+  const {entryId, reason} = data;
+  if (!entryId || !reason) {
+    throw new functions.https.HttpsError("invalid-argument", "entryId e reason são obrigatórios");
+  }
+
+  const db = admin.firestore();
+  const entryDoc = await db.collection("entries").doc(entryId).get();
+  if (!entryDoc.exists) {
+    throw new functions.https.HttpsError("not-found", "Entrada não encontrada");
+  }
+
+  const alreadyReported = await db.collection("reports")
+      .where("entryId", "==", entryId)
+      .where("reporterId", "==", context.auth.uid)
+      .limit(1)
+      .get();
+
+  if (!alreadyReported.empty) {
+    throw new functions.https.HttpsError("already-exists", "Você já denunciou esta entrada");
+  }
+
+  const entry = entryDoc.data();
+  await db.collection("reports").add({
+    entryId,
+    challengeId: entry.challengeId,
+    reportedUserId: entry.userId,
+    reporterId: context.auth.uid,
+    reason,
+    status: "pending",
+    createdAt: new Date().toISOString(),
+  });
+
+  // Auto-ocultar após 5 denúncias pendentes
+  const reportCount = await db.collection("reports")
+      .where("entryId", "==", entryId)
+      .where("status", "==", "pending")
+      .get();
+
+  if (reportCount.size >= 5) {
+    await db.collection("entries").doc(entryId).update({isActive: false});
+    await db.collection("audit_logs").add({
+      type: "auto_hidden",
+      entryId,
+      userId: entry.userId,
+      reason: `${reportCount.size} denúncias recebidas`,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  return {success: true};
+});
+
+exports.adminBanUser = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Usuário não logado");
+  }
+
+  const db = admin.firestore();
+  const adminDoc = await db.collection("admins").doc(context.auth.uid).get();
+  if (!adminDoc.exists) {
+    throw new functions.https.HttpsError("permission-denied", "Acesso negado");
+  }
+
+  const {userId, reason, unban} = data;
+  if (!userId) {
+    throw new functions.https.HttpsError("invalid-argument", "userId obrigatório");
+  }
+
+  const update = unban
+    ? {isBanned: false, banReason: null, bannedAt: null}
+    : {
+        isBanned: true,
+        banReason: reason || "Violação dos termos de uso",
+        bannedAt: new Date().toISOString(),
+      };
+
+  await db.collection("users").doc(userId).update(update);
+  await db.collection("audit_logs").add({
+    type: unban ? "user_unbanned" : "user_banned",
+    targetUserId: userId,
+    adminId: context.auth.uid,
+    reason: reason || null,
+    createdAt: new Date().toISOString(),
+  });
+
+  return {success: true};
 });

@@ -96,5 +96,26 @@ service cloud.firestore {
       allow read: if signedIn();
       allow write: if isAdmin();
     }
+
+    // ── INSTAGRAM POSTS ──────────────────────────────────────────────────────
+    match /instagram_posts/{postId} {
+      // Read-only for admins; all writes via Cloud Functions (Admin SDK)
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // ── REPORTS ──────────────────────────────────────────────────────────────
+    match /reports/{reportId} {
+      // Admin can read/update; users create via reportContent Cloud Function
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // ── AUDIT LOGS ───────────────────────────────────────────────────────────
+    match /audit_logs/{logId} {
+      // Read-only for admins; all writes via Cloud Functions (Admin SDK)
+      allow read: if isAdmin();
+      allow write: if false;
+    }
   }
 }

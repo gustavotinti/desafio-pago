@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../../challenge/domain/entities/challenge.dart';
 import '../../challenge/domain/entities/challenge_status.dart';
 import '../../challenge/infrastructure/vote_repository.dart';
+import '../../moderation/infrastructure/report_repository.dart';
 import '../domain/entities/content_type.dart';
 import '../domain/entities/entry.dart';
 import '../infrastructure/get_entries.dart';
@@ -22,6 +23,7 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
   late Future<bool> _hasVotedFuture;
 
   final _voteRepo = VoteRepository();
+  final _reportRepo = ReportRepository();
 
   @override
   void initState() {
@@ -49,6 +51,46 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
       );
       _reload();
     } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
+    }
+  }
+
+  Future<void> _showReportDialog(String entryId) async {
+    const reasons = [
+      'Conteúdo ofensivo ou inadequado',
+      'Spam ou propaganda',
+      'Violência ou automutilação',
+      'Assédio ou bullying',
+      'Outro',
+    ];
+
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Motivo da denúncia'),
+        children: reasons
+            .map(
+              (r) => SimpleDialogOption(
+                onPressed: () => Navigator.pop(ctx, r),
+                child: Text(r),
+              ),
+            )
+            .toList(),
+      ),
+    );
+
+    if (selected == null) return;
+
+    try {
+      await _reportRepo.reportEntry(entryId, selected);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Denúncia enviada. Obrigado!')),
+      );
+    } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.toString())),
       );
@@ -100,11 +142,14 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
                     final entry = entries[index];
                     final isWinner = isFinished &&
                         widget.challenge.winnerIds.contains(entry.userId);
+                    final uid = FirebaseAuth.instance.currentUser?.uid;
                     return _EntryCard(
                       entry: entry,
                       canVote: canVote,
                       isWinner: isWinner,
                       onVote: () => _vote(entry.id),
+                      canReport: uid != null && uid != entry.userId,
+                      onReport: () => _showReportDialog(entry.id),
                     );
                   },
                 );
@@ -149,13 +194,17 @@ class _EntryCard extends StatelessWidget {
   final Entry entry;
   final bool canVote;
   final bool isWinner;
+  final bool canReport;
   final VoidCallback onVote;
+  final VoidCallback onReport;
 
   const _EntryCard({
     required this.entry,
     required this.canVote,
     required this.isWinner,
     required this.onVote,
+    required this.canReport,
+    required this.onReport,
   });
 
   @override
@@ -173,23 +222,31 @@ class _EntryCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (isWinner)
-              const Padding(
-                padding: EdgeInsets.only(bottom: 8),
-                child: Row(
-                  children: [
-                    Icon(Icons.emoji_events, color: Colors.amber, size: 18),
-                    SizedBox(width: 4),
-                    Text(
-                      'Vencedor',
-                      style: TextStyle(
-                        color: Colors.amber,
-                        fontWeight: FontWeight.bold,
-                      ),
+            Row(
+              children: [
+                if (isWinner) ...[
+                  const Icon(Icons.emoji_events, color: Colors.amber, size: 18),
+                  const SizedBox(width: 4),
+                  const Text(
+                    'Vencedor',
+                    style: TextStyle(
+                      color: Colors.amber,
+                      fontWeight: FontWeight.bold,
                     ),
-                  ],
-                ),
-              ),
+                  ),
+                  const Spacer(),
+                ] else
+                  const Spacer(),
+                if (canReport)
+                  IconButton(
+                    icon: const Icon(Icons.flag_outlined, size: 18),
+                    tooltip: 'Denunciar',
+                    visualDensity: VisualDensity.compact,
+                    color: Colors.grey,
+                    onPressed: onReport,
+                  ),
+              ],
+            ),
             _buildContent(),
             const SizedBox(height: 8),
             Row(
