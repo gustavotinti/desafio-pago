@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../../challenge/infrastructure/get_challenges.dart';
 import '../../challenge/infrastructure/vote_repository.dart';
 import '../../challenge/presentation/create_challenge_page.dart';
+import '../../entry/presentation/submit_entry_page.dart';
 import '../presentation/profile_page.dart';
 import '../../admin/presentation/admin_withdrawals_page.dart';
 
@@ -91,35 +92,73 @@ class _HomePageState extends State<HomePage> {
 
               return Card(
                 margin: const EdgeInsets.all(10),
-                child: ListTile(
-                  title: Text(challenge.title),
-                  subtitle: Column(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      Text(
+                        challenge.title,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
                       Text(challenge.description),
-                      const SizedBox(height: 5),
-                      Text("Votos: ${challenge.voteCount}"),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Text('R\$ ${challenge.amount.toStringAsFixed(2)}'),
+                          const SizedBox(width: 12),
+                          Text('${challenge.entryCount} participações'),
+                          const SizedBox(width: 12),
+                          Text('${challenge.voteCount} votos'),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          ElevatedButton(
+                            onPressed: () async {
+                              await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => SubmitEntryPage(
+                                    challengeId: challenge.id,
+                                    challengeTitle: challenge.title,
+                                  ),
+                                ),
+                              );
+                              setState(() {
+                                challengesFuture = GetChallenges()();
+                              });
+                            },
+                            child: const Text('Participar'),
+                          ),
+                          const SizedBox(width: 8),
+                          OutlinedButton(
+                            onPressed: () async {
+                              try {
+                                await VoteRepository().vote(challenge.id);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                      content: Text('Voto registrado')),
+                                );
+                                setState(() {
+                                  challengesFuture = GetChallenges()();
+                                });
+                              } catch (e) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text(e.toString())),
+                                );
+                              }
+                            },
+                            child: const Text('Votar'),
+                          ),
+                        ],
+                      ),
                     ],
-                  ),
-                  trailing: ElevatedButton(
-                    onPressed: () async {
-                      try {
-                        await VoteRepository().vote(challenge.id);
-
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text("Voto registrado")),
-                        );
-
-                        setState(() {
-                          challengesFuture = GetChallenges()();
-                        });
-                      } catch (e) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(e.toString())),
-                        );
-                      }
-                    },
-                    child: const Text("Votar"),
                   ),
                 ),
               );

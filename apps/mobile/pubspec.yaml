@@ -22,6 +22,12 @@ dependencies:
   # 🔥 LOGIN GOOGLE
   google_sign_in: ^7.2.0
 
+  # 🔥 STORAGE (UPLOAD DE IMAGEM/VÍDEO)
+  firebase_storage: ^12.3.0
+
+  # 🔥 IMAGE PICKER
+  image_picker: ^1.1.2
+
   # 🔥 UUID (IMPORTANTE PRO DESAFIO)
   uuid: ^4.4.0
 
