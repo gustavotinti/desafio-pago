@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'firebase_options.dart';
+import 'core/config/emulator.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/presentation/banned_page.dart';
 import 'features/auth/presentation/login_page.dart';
@@ -13,6 +14,7 @@ import 'features/auth/presentation/terms_page.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await connectToEmulators();
   runApp(const MyApp());
 }
 
