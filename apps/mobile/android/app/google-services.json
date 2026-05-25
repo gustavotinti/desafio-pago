@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "770550529401",
+    "project_id": "desafio-app-b8665",
+    "storage_bucket": "desafio-app-b8665.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:770550529401:android:a1ca5cd1556827bf0503a8",
+        "android_client_info": {
+          "package_name": "com.example.mobile"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "770550529401-8sj9bk45s7a590g1pjbu776gjmv7o21r.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBcHNkIkuyMZSR9oUmbvBYNvR20rNi1Y_E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "770550529401-8sj9bk45s7a590g1pjbu776gjmv7o21r.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
