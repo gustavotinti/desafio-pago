@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../challenge/infrastructure/get_challenges.dart';
-import '../../challenge/infrastructure/vote_repository.dart';
 import '../../challenge/presentation/create_challenge_page.dart';
+import '../../entry/presentation/challenge_entries_page.dart';
 import '../../entry/presentation/submit_entry_page.dart';
 import '../presentation/profile_page.dart';
 import '../../admin/presentation/admin_withdrawals_page.dart';
@@ -139,22 +139,19 @@ class _HomePageState extends State<HomePage> {
                           const SizedBox(width: 8),
                           OutlinedButton(
                             onPressed: () async {
-                              try {
-                                await VoteRepository().vote(challenge.id);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                      content: Text('Voto registrado')),
-                                );
-                                setState(() {
-                                  challengesFuture = GetChallenges()();
-                                });
-                              } catch (e) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text(e.toString())),
-                                );
-                              }
+                              await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => ChallengeEntriesPage(
+                                    challenge: challenge,
+                                  ),
+                                ),
+                              );
+                              setState(() {
+                                challengesFuture = GetChallenges()();
+                              });
                             },
-                            child: const Text('Votar'),
+                            child: const Text('Ver participações'),
                           ),
                         ],
                       ),
