@@ -4,27 +4,26 @@ class AddAmountRepository {
   final _firestore = FirebaseFirestore.instance;
 
   Future<void> addAmount(String challengeId, double value) async {
-    final challengeRef =
-        _firestore.collection('challenges').doc(challengeId);
-
+    final challengeRef = _firestore.collection('challenges').doc(challengeId);
     final snapshot = await challengeRef.get();
 
     if (!snapshot.exists) {
-      throw Exception("Desafio não encontrado");
+      throw Exception('Desafio não encontrado');
     }
 
     final data = snapshot.data()!;
+    final status = data['status'] as String? ?? '';
+
+    if (status == 'finished') {
+      throw Exception('Desafio já encerrado');
+    }
 
     final expiresAt = DateTime.parse(data['expiresAt']);
+    final timeLeft = expiresAt.difference(DateTime.now());
 
-    final now = DateTime.now();
-
-    final difference = expiresAt.difference(now);
-
-    // 🔥 REGRA DAS 3 HORAS
-    if (difference.inHours < 3) {
+    if (timeLeft.inHours < 3) {
       throw Exception(
-        "Não é possível aumentar o valor com menos de 3 horas para o fim do desafio",
+        'Não é possível aumentar o valor com menos de 3 horas para o fim do desafio',
       );
     }
 

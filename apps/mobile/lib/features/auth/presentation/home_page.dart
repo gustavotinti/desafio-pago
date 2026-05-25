@@ -98,7 +98,7 @@ class _HomePageState extends State<HomePage> {
                     children: [
                       Text(challenge.description),
                       const SizedBox(height: 5),
-                      Text("Votos: ${challenge.voteCount ?? 0}"),
+                      Text("Votos: ${challenge.voteCount}"),
                     ],
                   ),
                   trailing: ElevatedButton(

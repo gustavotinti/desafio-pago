@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../domain/entities/challenge.dart';
+import '../domain/entities/challenge_status.dart';
 
 class GetChallenges {
   final _firestore = FirebaseFirestore.instance;
@@ -13,17 +14,19 @@ class GetChallenges {
 
     return snapshot.docs.map((doc) {
       final data = doc.data();
-
       return Challenge(
         id: doc.id,
-        title: data['title'],
-        description: data['description'],
-        createdBy: data['createdBy'],
+        title: data['title'] ?? '',
+        description: data['description'] ?? '',
+        createdBy: data['createdBy'] ?? '',
         amount: (data['amount'] as num).toDouble(),
-
-        // 🔥 AQUI ESTAVA FALTANDO
+        status: ChallengeStatus.values.firstWhere(
+          (s) => s.name == (data['status'] ?? ''),
+          orElse: () => ChallengeStatus.active,
+        ),
         voteCount: data['voteCount'] ?? 0,
-
+        entryCount: data['entryCount'] ?? 0,
+        winnerId: data['winnerId'] as String?,
         createdAt: DateTime.parse(data['createdAt']),
         expiresAt: DateTime.parse(data['expiresAt']),
       );
