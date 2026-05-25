@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "desafio-pago-web",
+      "runtimeExecutable": "C:\\flutter\\bin\\flutter.bat",
+      "runtimeArgs": ["run", "-d", "web-server", "--web-port", "8080", "--web-hostname", "localhost"],
+      "port": 8080,
+      "cwd": "C:\\Users\\Jessica\\desafio_project\\apps\\mobile"
+    }
+  ]
+}

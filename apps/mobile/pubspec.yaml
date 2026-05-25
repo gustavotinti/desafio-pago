@@ -23,10 +23,10 @@ dependencies:
   google_sign_in: ^7.2.0
 
   # 🔥 CLOUD FUNCTIONS
-  cloud_functions: ^5.4.0
+  cloud_functions: ^6.3.1
 
   # 🔥 STORAGE (UPLOAD DE IMAGEM/VÍDEO)
-  firebase_storage: ^12.3.0
+  firebase_storage: ^13.4.1
 
   # 🔥 IMAGE PICKER
   image_picker: ^1.1.2
