@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 import '../../withdrawals/infrastructure/withdraw_repository.dart';
 import '../../finance/infrastructure/get_transactions.dart';
@@ -95,6 +96,45 @@ class _ProfilePageState extends State<ProfilePage> {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text(e.toString())));
       }
+    }
+  }
+
+  Future<void> _deleteAccount() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Excluir conta'),
+        content: const Text(
+          'Esta ação é permanente e não pode ser desfeita.\n\n'
+          'Seus dados pessoais serão removidos. '
+          'Suas participações em desafios serão anonimizadas.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Excluir permanentemente'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await FirebaseFunctions.instance
+          .httpsCallable('deleteAccount')
+          .call();
+      await FirebaseAuth.instance.signOut();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
     }
   }
 
@@ -284,6 +324,17 @@ class _ProfilePageState extends State<ProfilePage> {
                     style: TextStyle(color: _txColor(t['type'] ?? '')),
                   ),
                 ))),
+
+          const Divider(height: 40),
+          TextButton.icon(
+            onPressed: _deleteAccount,
+            icon: const Icon(Icons.delete_forever, color: Colors.red),
+            label: const Text(
+              'Excluir minha conta',
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+          const SizedBox(height: 16),
         ],
       ),
     );

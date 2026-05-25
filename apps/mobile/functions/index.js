@@ -832,3 +832,49 @@ exports.adminBanUser = functions.https.onCall(async (data, context) => {
 
   return {success: true};
 });
+
+// ─── DELETE ACCOUNT ──────────────────────────────────────────────────────────
+
+exports.deleteAccount = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Usuário não logado");
+  }
+
+  const userId = context.auth.uid;
+  const db = admin.firestore();
+  const userDoc = await db.collection("users").doc(userId).get();
+  const userData = userDoc.data() || {};
+
+  if ((userData.pendingBalance || 0) > 0) {
+    throw new functions.https.HttpsError(
+        "failed-precondition",
+        "Você tem créditos em desafios ativos. Aguarde o encerramento antes de excluir a conta.",
+    );
+  }
+  if ((userData.lockedBalance || 0) > 0) {
+    throw new functions.https.HttpsError(
+        "failed-precondition",
+        "Você tem um saque pendente. Aguarde a conclusão antes de excluir a conta.",
+    );
+  }
+
+  // Anonymiza entries para preservar integridade dos desafios
+  const entries = await db.collection("entries").where("userId", "==", userId).get();
+  const batch = db.batch();
+  entries.docs.forEach((d) => batch.update(d.ref, {userId: "deleted", contentText: "[removido]"}));
+
+  // Remove follows
+  const following = await db.collection("follows").where("followerId", "==", userId).get();
+  const followers = await db.collection("follows").where("followedId", "==", userId).get();
+  following.docs.forEach((d) => batch.delete(d.ref));
+  followers.docs.forEach((d) => batch.delete(d.ref));
+
+  // Deleta documento do usuário
+  batch.delete(db.collection("users").doc(userId));
+  await batch.commit();
+
+  // Deleta conta no Firebase Auth
+  await admin.auth().deleteUser(userId);
+
+  return {success: true};
+});

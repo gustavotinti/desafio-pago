@@ -3,10 +3,9 @@
   "configurations": [
     {
       "name": "desafio-pago-web",
-      "runtimeExecutable": "C:\\flutter\\bin\\flutter.bat",
-      "runtimeArgs": ["run", "-d", "web-server", "--web-port", "8080", "--web-hostname", "localhost"],
-      "port": 8080,
-      "cwd": "C:\\Users\\Jessica\\desafio_project\\apps\\mobile"
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "-s", "apps/mobile/build/web", "-l", "8080", "--no-clipboard"],
+      "port": 8080
     }
   ]
 }
