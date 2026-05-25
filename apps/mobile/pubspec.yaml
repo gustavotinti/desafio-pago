@@ -31,6 +31,9 @@ dependencies:
   # 🔥 PUSH NOTIFICATIONS
   firebase_messaging: ^16.2.2
 
+  # 🔒 SCREEN PROTECTION
+  screen_protector: ^1.5.1
+
   # 🔥 IMAGE PICKER
   image_picker: ^1.1.2
 
