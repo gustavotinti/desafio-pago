@@ -97,12 +97,31 @@ class _HomePageState extends State<HomePage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        challenge.title,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              challenge.title,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          if (challenge.status.name == 'finished')
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade300,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Text(
+                                'Encerrado',
+                                style: TextStyle(fontSize: 11),
+                              ),
+                            ),
+                        ],
                       ),
                       const SizedBox(height: 4),
                       Text(challenge.description),
@@ -116,6 +135,19 @@ class _HomePageState extends State<HomePage> {
                           Text('${challenge.voteCount} votos'),
                         ],
                       ),
+                      if (challenge.status.name == 'finished' &&
+                          challenge.winnerIds.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          challenge.winnerIds.length == 1
+                              ? 'Vencedor definido'
+                              : '${challenge.winnerIds.length} vencedores (empate)',
+                          style: const TextStyle(
+                            color: Colors.green,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 8),
                       Row(
                         children: [

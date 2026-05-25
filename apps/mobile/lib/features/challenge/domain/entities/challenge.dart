@@ -9,7 +9,7 @@ class Challenge {
   final ChallengeStatus status;
   final int voteCount;
   final int entryCount;
-  final String? winnerId;
+  final List<String> winnerIds;
   final DateTime createdAt;
   final DateTime expiresAt;
 
@@ -24,6 +24,6 @@ class Challenge {
     required this.entryCount,
     required this.createdAt,
     required this.expiresAt,
-    this.winnerId,
+    this.winnerIds = const [],
   });
 }

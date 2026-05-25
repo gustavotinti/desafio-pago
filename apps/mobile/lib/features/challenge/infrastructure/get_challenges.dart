@@ -26,7 +26,7 @@ class GetChallenges {
         ),
         voteCount: data['voteCount'] ?? 0,
         entryCount: data['entryCount'] ?? 0,
-        winnerId: data['winnerId'] as String?,
+        winnerIds: List<String>.from(data['winnerIds'] ?? []),
         createdAt: DateTime.parse(data['createdAt']),
         expiresAt: DateTime.parse(data['expiresAt']),
       );

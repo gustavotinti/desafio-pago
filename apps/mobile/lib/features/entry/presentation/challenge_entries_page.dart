@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../challenge/domain/entities/challenge.dart';
+import '../../challenge/domain/entities/challenge_status.dart';
 import '../../challenge/infrastructure/vote_repository.dart';
 import '../domain/entities/content_type.dart';
 import '../domain/entities/entry.dart';
@@ -56,6 +57,8 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
 
   @override
   Widget build(BuildContext context) {
+    final isFinished = widget.challenge.status == ChallengeStatus.finished;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.challenge.title),
@@ -71,34 +74,72 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
           ),
         ),
       ),
-      body: FutureBuilder<List<dynamic>>(
-        future: Future.wait([_entriesFuture, _hasVotedFuture]),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
+      body: Column(
+        children: [
+          if (isFinished) _FinishedBanner(challenge: widget.challenge),
+          Expanded(
+            child: FutureBuilder<List<dynamic>>(
+              future: Future.wait([_entriesFuture, _hasVotedFuture]),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
 
-          final entries = snapshot.data![0] as List<Entry>;
-          final hasVoted = snapshot.data![1] as bool;
-          final canVote = !hasVoted && !_isCreator;
+                final entries = snapshot.data![0] as List<Entry>;
+                final hasVoted = snapshot.data![1] as bool;
+                final canVote = !hasVoted && !_isCreator && !isFinished;
 
-          if (entries.isEmpty) {
-            return const Center(child: Text('Nenhuma participação ainda'));
-          }
+                if (entries.isEmpty) {
+                  return const Center(child: Text('Nenhuma participação ainda'));
+                }
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(12),
-            itemCount: entries.length,
-            itemBuilder: (context, index) {
-              final entry = entries[index];
-              return _EntryCard(
-                entry: entry,
-                canVote: canVote,
-                onVote: () => _vote(entry.id),
-              );
-            },
-          );
-        },
+                return ListView.builder(
+                  padding: const EdgeInsets.all(12),
+                  itemCount: entries.length,
+                  itemBuilder: (context, index) {
+                    final entry = entries[index];
+                    final isWinner = isFinished &&
+                        widget.challenge.winnerIds.contains(entry.userId);
+                    return _EntryCard(
+                      entry: entry,
+                      canVote: canVote,
+                      isWinner: isWinner,
+                      onVote: () => _vote(entry.id),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FinishedBanner extends StatelessWidget {
+  final Challenge challenge;
+
+  const _FinishedBanner({required this.challenge});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasWinners = challenge.winnerIds.isNotEmpty;
+    return Container(
+      width: double.infinity,
+      color: hasWinners ? Colors.green.shade50 : Colors.grey.shade100,
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+      child: Text(
+        hasWinners
+            ? (challenge.winnerIds.length == 1
+                ? 'Desafio encerrado — vencedor definido!'
+                : 'Desafio encerrado — empate entre ${challenge.winnerIds.length} participantes!')
+            : 'Desafio encerrado — sem vencedor',
+        style: TextStyle(
+          color: hasWinners ? Colors.green.shade800 : Colors.grey.shade700,
+          fontWeight: FontWeight.w600,
+        ),
+        textAlign: TextAlign.center,
       ),
     );
   }
@@ -107,11 +148,13 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
 class _EntryCard extends StatelessWidget {
   final Entry entry;
   final bool canVote;
+  final bool isWinner;
   final VoidCallback onVote;
 
   const _EntryCard({
     required this.entry,
     required this.canVote,
+    required this.isWinner,
     required this.onVote,
   });
 
@@ -119,11 +162,34 @@ class _EntryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
+      shape: isWinner
+          ? RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: const BorderSide(color: Colors.amber, width: 2),
+            )
+          : null,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (isWinner)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    Icon(Icons.emoji_events, color: Colors.amber, size: 18),
+                    SizedBox(width: 4),
+                    Text(
+                      'Vencedor',
+                      style: TextStyle(
+                        color: Colors.amber,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             _buildContent(),
             const SizedBox(height: 8),
             Row(

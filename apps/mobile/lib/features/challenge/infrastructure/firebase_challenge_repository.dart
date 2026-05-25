@@ -18,7 +18,7 @@ class FirebaseChallengeRepository {
       'status': challenge.status.name,
       'voteCount': 0,
       'entryCount': 0,
-      'winnerId': null,
+      'winnerIds': [],
       'createdAt': challenge.createdAt.toIso8601String(),
       'expiresAt': challenge.expiresAt.toIso8601String(),
     });
