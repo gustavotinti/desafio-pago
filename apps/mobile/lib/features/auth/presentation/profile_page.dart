@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../withdrawals/infrastructure/withdraw_repository.dart';
 import '../../finance/infrastructure/get_transactions.dart';
 import '../../users/presentation/edit_profile_page.dart';
+import '../../payments/presentation/topup_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -192,6 +193,21 @@ class _ProfilePageState extends State<ProfilePage> {
           Text(
             'Créditos: R\$ ${balance.toStringAsFixed(2)}',
             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const TopUpPage()),
+                );
+                _load();
+              },
+              icon: const Icon(Icons.add),
+              label: const Text('Adicionar créditos'),
+            ),
           ),
           const SizedBox(height: 16),
 

@@ -136,6 +136,13 @@ service cloud.firestore {
       allow delete: if signedIn() && resource.data.followerId == uid();
     }
 
+    // ── PAYMENTS ─────────────────────────────────────────────────────────────
+    match /payments/{paymentId} {
+      // Owner may read their own payment; Cloud Functions write via Admin SDK (bypasses rules)
+      allow read: if signedIn() && resource.data.userId == uid();
+      allow write: if false;
+    }
+
     // ── ADMINS ───────────────────────────────────────────────────────────────
     match /admins/{userId} {
       allow read: if signedIn();
