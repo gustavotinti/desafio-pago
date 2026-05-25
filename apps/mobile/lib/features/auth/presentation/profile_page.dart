@@ -16,7 +16,6 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  final _pixController = TextEditingController();
   final _amountController = TextEditingController();
 
   Map<String, dynamic> _userData = {};
@@ -30,7 +29,6 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   void dispose() {
-    _pixController.dispose();
     _amountController.dispose();
     super.dispose();
   }
@@ -45,23 +43,9 @@ class _ProfilePageState extends State<ProfilePage> {
         .get();
 
     final data = doc.data() ?? {};
-    _pixController.text = data['pixKey'] ?? '';
     _transactions = await GetTransactions()(uid);
 
     setState(() => _userData = data);
-  }
-
-  Future<void> _savePix() async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
-
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(uid)
-        .update({'pixKey': _pixController.text.trim()});
-
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('Pix salvo')));
   }
 
   Future<void> _requestWithdraw() async {
@@ -159,6 +143,7 @@ class _ProfilePageState extends State<ProfilePage> {
     final followingCount = _userData['followingCount'] ?? 0;
     final totalVotes = _userData['totalVotesReceived'] ?? 0;
     final bio = _userData['bio'] as String? ?? '';
+    final pixKey = _userData['pixKey'] as String? ?? '';
     final photoUrl = _userData['photoUrl'] as String? ??
         authUser?.photoURL ??
         '';
@@ -180,7 +165,9 @@ class _ProfilePageState extends State<ProfilePage> {
                   builder: (_) => EditProfilePage(
                     currentName: name,
                     currentBio: bio,
+                    currentPixKey: pixKey,
                     currentPhotoUrl: photoUrl,
+                    pixLocked: lockedBalance > 0,
                   ),
                 ),
               );
@@ -275,18 +262,6 @@ class _ProfilePageState extends State<ProfilePage> {
               label: const Text('Adicionar créditos'),
             ),
           ),
-          const SizedBox(height: 16),
-
-          // — Pix —
-          TextField(
-            controller: _pixController,
-            decoration: const InputDecoration(
-              labelText: 'Chave Pix',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 8),
-          ElevatedButton(onPressed: _savePix, child: const Text('Salvar Pix')),
           const SizedBox(height: 16),
 
           // — Saque —
