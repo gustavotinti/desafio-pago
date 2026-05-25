@@ -1,61 +1,28 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class VoteRepository {
+  final _functions =
+      FirebaseFunctions.instanceFor(region: 'us-central1');
   final _firestore = FirebaseFirestore.instance;
 
   Future<void> vote(String challengeId, String entryId) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) throw Exception('Usuário não logado');
-
-    final challengeDoc =
-        await _firestore.collection('challenges').doc(challengeId).get();
-    if (!challengeDoc.exists) throw Exception('Desafio não encontrado');
-
-    final challengeData = challengeDoc.data()!;
-
-    if ((challengeData['createdBy'] as String? ?? '') == user.uid) {
-      throw Exception('Você não pode votar no próprio desafio');
+    try {
+      await _functions
+          .httpsCallable('vote')
+          .call({'challengeId': challengeId, 'entryId': entryId});
+    } on FirebaseFunctionsException catch (e) {
+      throw Exception(e.message ?? 'Erro ao votar');
     }
-
-    if ((challengeData['status'] as String? ?? '') != 'active') {
-      throw Exception('Desafio não está ativo');
-    }
-
-    // Deterministic ID prevents duplicate votes via race condition
-    final voteId = '${user.uid}_$challengeId';
-    final voteRef = _firestore.collection('votes').doc(voteId);
-    final existing = await voteRef.get();
-
-    if (existing.exists) throw Exception('Você já votou neste desafio');
-
-    final entryDoc = await _firestore.collection('entries').doc(entryId).get();
-    if (!entryDoc.exists) throw Exception('Participação não encontrada');
-    final entryOwnerId = entryDoc.data()?['userId'] as String? ?? '';
-
-    final entryRef = _firestore.collection('entries').doc(entryId);
-    final challengeRef = _firestore.collection('challenges').doc(challengeId);
-    final entryOwnerRef = _firestore.collection('users').doc(entryOwnerId);
-
-    await _firestore.runTransaction((tx) async {
-      tx.set(voteRef, {
-        'userId': user.uid,
-        'challengeId': challengeId,
-        'entryId': entryId,
-        'createdAt': DateTime.now().toIso8601String(),
-      });
-      tx.update(entryRef, {'voteCount': FieldValue.increment(1)});
-      tx.update(challengeRef, {'voteCount': FieldValue.increment(1)});
-      tx.update(entryOwnerRef, {'totalVotesReceived': FieldValue.increment(1)});
-    });
   }
 
   Future<bool> hasVoted(String challengeId) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return false;
-
     final voteId = '${user.uid}_$challengeId';
-    final doc = await _firestore.collection('votes').doc(voteId).get();
+    final doc =
+        await _firestore.collection('votes').doc(voteId).get();
     return doc.exists;
   }
 }

@@ -49,19 +49,10 @@ service cloud.firestore {
                       'status', 'expiresAt', 'voteCount', 'entryCount']);
 
       // Aporte: any user may increase amount
+      // voteCount and entryCount are now updated exclusively by Cloud Functions (Admin SDK)
       allow update: if signedIn()
           && changed().hasOnly(['amount'])
           && request.resource.data.amount > resource.data.amount
-
-        // Vote transaction: voteCount +1 only
-        || (signedIn()
-            && changed().hasOnly(['voteCount'])
-            && request.resource.data.voteCount == resource.data.voteCount + 1)
-
-        // Entry submission: entryCount +1 only
-        || (signedIn()
-            && changed().hasOnly(['entryCount'])
-            && request.resource.data.entryCount == resource.data.entryCount + 1)
 
         // Admin / Cloud Functions: unrestricted (status, winnerIds, finishedAt)
         || isAdmin();
@@ -71,33 +62,15 @@ service cloud.firestore {
     match /entries/{entryId} {
       allow read: if signedIn();
 
-      allow create: if signedIn()
-        && request.resource.data.userId == uid()
-        && request.resource.data.voteCount == 0
-        && request.resource.data.isActive == true
-        && request.resource.data.keys()
-             .hasAll(['challengeId', 'userId', 'contentType',
-                      'voteCount', 'isActive', 'createdAt']);
-
-      // Vote transaction: voteCount +1 only
-      allow update: if signedIn()
-          && changed().hasOnly(['voteCount'])
-          && request.resource.data.voteCount == resource.data.voteCount + 1
-
-        // Moderation: admin may deactivate
-        || (isAdmin() && changed().hasOnly(['isActive']));
+      // create and voteCount updates are handled exclusively by Cloud Functions (Admin SDK)
+      allow update: if isAdmin() && changed().hasOnly(['isActive']);
     }
 
     // ── VOTES ─────────────────────────────────────────────────────────────────
     match /votes/{voteId} {
       allow read: if signedIn() && resource.data.userId == uid();
 
-      // Doc ID must be userId_challengeId (enforces 1 vote per user per challenge)
-      allow create: if signedIn()
-        && request.resource.data.userId == uid()
-        && voteId == uid() + '_' + request.resource.data.challengeId;
-
-      // Votes are immutable — no update or delete allowed
+      // Writes handled exclusively by Cloud Functions (Admin SDK)
     }
 
     // ── WITHDRAWALS ──────────────────────────────────────────────────────────

@@ -11,6 +11,70 @@ function mpPaymentClient() {
   return new Payment(new MercadoPagoConfig({accessToken: token}));
 }
 
+// ─── SUBMIT ENTRY ────────────────────────────────────────────────────────────
+
+exports.submitEntry = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Usuário não logado");
+  }
+
+  const userId = context.auth.uid;
+  const {challengeId, contentType, contentText, contentUrl} = data;
+
+  if (!challengeId || !contentType) {
+    throw new functions.https.HttpsError(
+        "invalid-argument", "challengeId e contentType são obrigatórios",
+    );
+  }
+
+  const db = admin.firestore();
+  const challengeDoc = await db.collection("challenges").doc(challengeId).get();
+
+  if (!challengeDoc.exists) {
+    throw new functions.https.HttpsError("not-found", "Desafio não encontrado");
+  }
+
+  const challenge = challengeDoc.data();
+
+  if (challenge.createdBy === userId) {
+    throw new functions.https.HttpsError(
+        "permission-denied", "Você não pode participar do próprio desafio",
+    );
+  }
+
+  if (challenge.status !== "active") {
+    throw new functions.https.HttpsError("failed-precondition", "Desafio não está ativo");
+  }
+
+  const existing = await db.collection("entries")
+      .where("challengeId", "==", challengeId)
+      .where("userId", "==", userId)
+      .get();
+
+  if (!existing.empty) {
+    throw new functions.https.HttpsError("already-exists", "Você já participou deste desafio");
+  }
+
+  const entryRef = db.collection("entries").doc();
+  const challengeRef = db.collection("challenges").doc(challengeId);
+
+  await db.runTransaction(async (tx) => {
+    tx.set(entryRef, {
+      challengeId,
+      userId,
+      contentType,
+      contentText: contentText || null,
+      contentUrl: contentUrl || null,
+      voteCount: 0,
+      isActive: true,
+      createdAt: new Date().toISOString(),
+    });
+    tx.update(challengeRef, {entryCount: admin.firestore.FieldValue.increment(1)});
+  });
+
+  return {entryId: entryRef.id};
+});
+
 // ─── VOTE (updated: entry-level) ─────────────────────────────────────────────
 
 exports.vote = functions.https.onCall(async (data, context) => {
