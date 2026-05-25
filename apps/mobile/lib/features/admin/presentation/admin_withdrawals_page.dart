@@ -16,50 +16,32 @@ class AdminWithdrawalsPage extends StatelessWidget {
     return doc.data();
   }
 
-  // 🚀 NOVA FUNÇÃO COMPLETA (COM SALDO AUTOMÁTICO)
-  Future<void> approve(String id, Map<String, dynamic> data) async {
-    final firestore = FirebaseFirestore.instance;
-
-    final userId = data['userId'];
-    final amount = data['amount'];
-
-    final userRef = firestore.collection('users').doc(userId);
-    final withdrawalRef = firestore.collection('withdrawals').doc(id);
-
-    await firestore.runTransaction((transaction) async {
-      final userSnapshot = await transaction.get(userRef);
-
-      if (!userSnapshot.exists) {
-        throw Exception("Usuário não encontrado");
-      }
-
-      final userData = userSnapshot.data() as Map<String, dynamic>;
-      final currentBalance = userData['balance'] ?? 0;
-
-      if (currentBalance < amount) {
-        throw Exception("Saldo insuficiente");
-      }
-
-      // 💰 desconta saldo
-      transaction.update(userRef, {
-        'balance': currentBalance - amount,
-      });
-
-      // ✅ aprova saque
-      transaction.update(withdrawalRef, {
-        'status': 'approved',
-        'approvedAt': FieldValue.serverTimestamp(),
-        'approvedBy': FirebaseAuth.instance.currentUser?.uid,
-      });
-    });
-  }
-
-  Future<void> reject(String id) async {
+  Future<void> approve(String id) async {
     await FirebaseFirestore.instance
         .collection('withdrawals')
         .doc(id)
         .update({
-      'status': 'rejected',
+      'status': 'approved',
+      'approvedAt': FieldValue.serverTimestamp(),
+      'approvedBy': FirebaseAuth.instance.currentUser?.uid,
+    });
+  }
+
+  Future<void> reject(String id, Map<String, dynamic> data) async {
+    final firestore = FirebaseFirestore.instance;
+    final userId = data['userId'] as String;
+    final amount = (data['amount'] ?? 0).toDouble();
+
+    final userRef = firestore.collection('users').doc(userId);
+    final withdrawalRef = firestore.collection('withdrawals').doc(id);
+
+    await firestore.runTransaction((tx) async {
+      final userSnapshot = await tx.get(userRef);
+      final currentBalance =
+          ((userSnapshot.data() ?? {})['balance'] ?? 0).toDouble();
+
+      tx.update(userRef, {'balance': currentBalance + amount});
+      tx.update(withdrawalRef, {'status': 'rejected'});
     });
   }
 
@@ -90,6 +72,8 @@ class AdminWithdrawalsPage extends StatelessWidget {
               final data = doc.data() as Map<String, dynamic>;
 
               final amount = data['amount'] ?? 0;
+              final fee = data['fee'] ?? 0;
+              final netAmount = data['netAmount'] ?? amount;
               final pixKey = data['pixKey'] ?? '';
               final status = data['status'] ?? '';
               final userId = data['userId'] ?? '';
@@ -114,13 +98,14 @@ class AdminWithdrawalsPage extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            "R\$ $amount",
+                            "A pagar: R\$ $netAmount",
                             style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
                           const SizedBox(height: 5),
+                          Text("Bruto: R\$ $amount  |  Taxa: R\$ $fee"),
                           Text("Nome: $name"),
                           Text("Email: $email"),
                           Text("Pix: $pixKey"),
@@ -135,7 +120,7 @@ class AdminWithdrawalsPage extends StatelessWidget {
                                     backgroundColor: Colors.green,
                                   ),
                                   onPressed: () async {
-                                    await approve(doc.id, data);
+                                    await approve(doc.id);
 
                                     ScaffoldMessenger.of(context)
                                         .showSnackBar(
@@ -152,7 +137,7 @@ class AdminWithdrawalsPage extends StatelessWidget {
                                     backgroundColor: Colors.red,
                                   ),
                                   onPressed: () async {
-                                    await reject(doc.id);
+                                    await reject(doc.id, data);
 
                                     ScaffoldMessenger.of(context)
                                         .showSnackBar(

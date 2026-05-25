@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-import '../../withdraw/infrastructure/withdraw_repository.dart';
+import '../../withdrawals/infrastructure/withdraw_repository.dart';
 import '../../finance/infrastructure/get_transactions.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -82,8 +82,14 @@ class _ProfilePageState extends State<ProfilePage> {
         amount,
       );
 
+      final fee = amount * 0.10;
+      final net = amount - fee;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Saque solicitado")),
+        SnackBar(
+          content: Text(
+            'Saque solicitado — você receberá R\$${net.toStringAsFixed(2)} (taxa: R\$${fee.toStringAsFixed(2)})',
+          ),
+        ),
       );
 
       loadUser(); // 🔥 atualiza tela
