@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 
 import '../application/create_challenge.dart';
 import '../domain/entities/challenge.dart';
+import '../domain/entities/challenge_status.dart';
 import '../infrastructure/firebase_challenge_repository.dart';
 
 class CreateChallengePage extends StatefulWidget {
@@ -58,13 +59,11 @@ class _CreateChallengePageState extends State<CreateChallengePage> {
                     description: descriptionController.text,
                     createdBy: user.uid,
                     amount: double.parse(amountController.text),
-
-                    // 🔥 O QUE FALTAVA
+                    status: ChallengeStatus.pending,
                     voteCount: 0,
-
+                    entryCount: 0,
                     createdAt: DateTime.now(),
-                    expiresAt:
-                        DateTime.now().add(const Duration(days: 7)),
+                    expiresAt: DateTime.now().add(const Duration(days: 7)),
                   );
 
                   final usecase = CreateChallenge(
