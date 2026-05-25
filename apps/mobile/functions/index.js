@@ -18,6 +18,23 @@ async function _assertNotBanned(db, userId) {
   }
 }
 
+async function _sendNotification(db, userId, title, body, data = {}) {
+  try {
+    const userDoc = await db.collection("users").doc(userId).get();
+    const token = userDoc.data()?.fcmToken;
+    if (!token) return;
+    await admin.messaging().send({
+      token,
+      notification: {title, body},
+      data: Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])),
+      android: {priority: "high"},
+      apns: {payload: {aps: {sound: "default"}}},
+    });
+  } catch (err) {
+    console.error("Erro ao enviar notificação:", err.message);
+  }
+}
+
 async function _maybeScheduleInstagramPost(db, challengeId, oldAmount, newAmount) {
   const threshold = Number(process.env.INSTAGRAM_THRESHOLD || 100);
   if (oldAmount < threshold && newAmount >= threshold) {
@@ -358,6 +375,16 @@ exports.vote = functions.https.onCall(async (data, context) => {
     tx.update(entryOwnerRef, {totalVotesReceived: admin.firestore.FieldValue.increment(1)});
   });
 
+  const entryOwnerId = entryDoc.data().userId;
+  if (entryOwnerId !== userId) {
+    await _sendNotification(
+        db, entryOwnerId,
+        "🗳️ Novo voto!",
+        `Alguém votou na sua entrada em "${challenge.title}"`,
+        {type: "vote", challengeId, entryId},
+    );
+  }
+
   return {success: true};
 });
 
@@ -411,7 +438,8 @@ async function finalizeChallenge(db, challengeDoc) {
 
   if (entriesSnapshot.empty) {
     markFinished();
-    return batch.commit();
+    await batch.commit();
+    return;
   }
 
   const entries = entriesSnapshot.docs.map((d) => ({id: d.id, ...d.data()}));
@@ -419,7 +447,8 @@ async function finalizeChallenge(db, challengeDoc) {
 
   if (maxVotes === 0) {
     markFinished();
-    return batch.commit();
+    await batch.commit();
+    return;
   }
 
   const winners = entries.filter((e) => e.voteCount === maxVotes);
@@ -446,7 +475,14 @@ async function finalizeChallenge(db, challengeDoc) {
     });
   }
 
-  return batch.commit();
+  await batch.commit();
+
+  await Promise.all(winners.map((w) => _sendNotification(
+      db, w.userId,
+      "🏆 Você ganhou!",
+      `Você venceu "${challenge.title}" e recebeu R$${prizePerWinner.toFixed(2)}!`,
+      {type: "win", challengeId},
+  )));
 }
 
 // ─── CREATE PIX PAYMENT ──────────────────────────────────────────────────────
@@ -561,6 +597,14 @@ exports.mercadoPagoWebhook = functions.https.onRequest(async (req, res) => {
   });
 
   await batch.commit();
+
+  await _sendNotification(
+      db, paymentData.userId,
+      "💰 Recarga confirmada!",
+      `R$${paymentData.amount.toFixed(2)} adicionados aos seus créditos.`,
+      {type: "deposit"},
+  );
+
   res.sendStatus(200);
 });
 

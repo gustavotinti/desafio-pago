@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'firebase_options.dart';
 import 'core/config/emulator.dart';
+import 'core/services/notification_service.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/presentation/banned_page.dart';
 import 'features/auth/presentation/login_page.dart';
@@ -15,6 +16,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await connectToEmulators();
+  await NotificationService.init();
   runApp(const MyApp());
 }
 
@@ -93,17 +95,28 @@ class _TermsGateState extends State<_TermsGate> {
   }
 }
 
-class _BanGate extends StatelessWidget {
+class _BanGate extends StatefulWidget {
   final String userId;
 
   const _BanGate({required this.userId});
+
+  @override
+  State<_BanGate> createState() => _BanGateState();
+}
+
+class _BanGateState extends State<_BanGate> {
+  @override
+  void initState() {
+    super.initState();
+    NotificationService.requestAndSaveToken(widget.userId);
+  }
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance
           .collection('users')
-          .doc(userId)
+          .doc(widget.userId)
           .snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const _LoadingScreen();

@@ -28,6 +28,9 @@ dependencies:
   # 🔥 STORAGE (UPLOAD DE IMAGEM/VÍDEO)
   firebase_storage: ^13.4.1
 
+  # 🔥 PUSH NOTIFICATIONS
+  firebase_messaging: ^16.2.2
+
   # 🔥 IMAGE PICKER
   image_picker: ^1.1.2
 
