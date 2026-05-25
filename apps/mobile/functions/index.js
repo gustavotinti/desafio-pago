@@ -266,6 +266,36 @@ exports.mercadoPagoWebhook = functions.https.onRequest(async (req, res) => {
   res.sendStatus(200);
 });
 
+// ─── ADMIN: FORCE FINISH CHALLENGE ──────────────────────────────────────────
+
+exports.adminFinishChallenge = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Usuário não logado");
+  }
+
+  const db = admin.firestore();
+  const adminDoc = await db.collection("admins").doc(context.auth.uid).get();
+  if (!adminDoc.exists) {
+    throw new functions.https.HttpsError("permission-denied", "Acesso negado");
+  }
+
+  const {challengeId} = data;
+  if (!challengeId) {
+    throw new functions.https.HttpsError("invalid-argument", "challengeId obrigatório");
+  }
+
+  const challengeDoc = await db.collection("challenges").doc(challengeId).get();
+  if (!challengeDoc.exists) {
+    throw new functions.https.HttpsError("not-found", "Desafio não encontrado");
+  }
+  if (challengeDoc.data().status === "finished") {
+    throw new functions.https.HttpsError("failed-precondition", "Desafio já encerrado");
+  }
+
+  await finalizeChallenge(db, challengeDoc);
+  return {success: true};
+});
+
 // ─── CHECK PAYMENT STATUS ────────────────────────────────────────────────────
 
 exports.checkPaymentStatus = functions.https.onCall(async (data, context) => {

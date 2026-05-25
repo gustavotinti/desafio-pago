@@ -9,7 +9,7 @@ import '../../entry/presentation/challenge_entries_page.dart';
 import '../../entry/presentation/submit_entry_page.dart';
 import '../../users/presentation/rankings_page.dart';
 import '../presentation/profile_page.dart';
-import '../../admin/presentation/admin_withdrawals_page.dart';
+import '../../admin/presentation/admin_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -107,9 +107,7 @@ class _HomePageState extends State<HomePage>
               tooltip: 'Admin',
               onPressed: () => Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => const AdminWithdrawalsPage(),
-                ),
+                MaterialPageRoute(builder: (_) => const AdminPage()),
               ),
             ),
           IconButton(
