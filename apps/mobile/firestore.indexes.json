@@ -66,13 +66,6 @@
       ]
     },
     {
-      "collectionGroup": "withdrawals",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "createdAt", "order": "DESCENDING" }
-      ]
-    },
-    {
       "collectionGroup": "instagram_posts",
       "queryScope": "COLLECTION",
       "fields": [

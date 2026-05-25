@@ -7,7 +7,7 @@ admin.initializeApp();
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 function mpPaymentClient() {
-  const token = functions.config().mercadopago.access_token;
+  const token = process.env.MERCADOPAGO_ACCESS_TOKEN;
   return new Payment(new MercadoPagoConfig({accessToken: token}));
 }
 
@@ -19,8 +19,7 @@ async function _assertNotBanned(db, userId) {
 }
 
 async function _maybeScheduleInstagramPost(db, challengeId, oldAmount, newAmount) {
-  const cfg = functions.config().instagram || {};
-  const threshold = Number(cfg.threshold || 100);
+  const threshold = Number(process.env.INSTAGRAM_THRESHOLD || 100);
   if (oldAmount < threshold && newAmount >= threshold) {
     const postRef = db.collection("instagram_posts").doc(challengeId);
     const existing = await postRef.get();
@@ -626,9 +625,8 @@ exports.processInstagramPosts = functions.pubsub
     .schedule("every 10 minutes")
     .onRun(async () => {
       const db = admin.firestore();
-      const cfg = functions.config().instagram || {};
-      const accessToken = cfg.access_token;
-      const pageId = cfg.page_id;
+      const accessToken = process.env.INSTAGRAM_ACCESS_TOKEN;
+      const pageId = process.env.INSTAGRAM_PAGE_ID;
 
       if (!accessToken || !pageId) {
         console.log("Instagram não configurado — pulando");
@@ -702,7 +700,7 @@ exports.moderateEntry = functions.firestore
       const entry = snap.data();
       if (!entry.contentText) return null;
 
-      const apiKey = (functions.config().openai || {}).api_key;
+      const apiKey = process.env.OPENAI_API_KEY;
       if (!apiKey) return null;
 
       try {
