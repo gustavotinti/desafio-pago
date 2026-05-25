@@ -7,8 +7,6 @@ import '../../challenge/infrastructure/get_challenges.dart';
 import '../../challenge/presentation/create_challenge_page.dart';
 import '../../entry/presentation/challenge_entries_page.dart';
 import '../../entry/presentation/submit_entry_page.dart';
-import '../../users/presentation/rankings_page.dart';
-import '../presentation/profile_page.dart';
 import '../../admin/presentation/admin_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -82,25 +80,6 @@ class _HomePageState extends State<HomePage>
           ],
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.leaderboard),
-            tooltip: 'Rankings',
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const RankingsPage()),
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.person),
-            tooltip: 'Perfil',
-            onPressed: () async {
-              await Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ProfilePage()),
-              );
-              _reload();
-            },
-          ),
           if (_isAdmin)
             IconButton(
               icon: const Icon(Icons.admin_panel_settings),
@@ -110,11 +89,6 @@ class _HomePageState extends State<HomePage>
                 MaterialPageRoute(builder: (_) => const AdminPage()),
               ),
             ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'Sair',
-            onPressed: () => FirebaseAuth.instance.signOut(),
-          ),
         ],
       ),
       body: TabBarView(

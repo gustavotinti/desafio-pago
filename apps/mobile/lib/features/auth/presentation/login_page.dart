@@ -4,56 +4,124 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../../auth/infrastructure/firebase_auth_repository.dart';
 import '../../users/infrastructure/user_repository.dart';
 
-class LoginPage extends StatelessWidget {
+class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
   @override
+  State<LoginPage> createState() => _LoginPageState();
+}
+
+class _LoginPageState extends State<LoginPage> {
+  bool _loading = false;
+
+  Future<void> _signIn() async {
+    setState(() => _loading = true);
+    try {
+      final authRepo =
+          FirebaseAuthRepository(FirebaseAuth.instance);
+      final authUser = await authRepo.signInWithGoogle();
+
+      if (authUser == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Login cancelado')),
+          );
+        }
+        return;
+      }
+
+      await UserRepository().saveUser(authUser);
+      // AuthGate handles navigation automatically
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final authRepo = FirebaseAuthRepository(FirebaseAuth.instance);
-    final userRepo = UserRepository();
+    final primary = Theme.of(context).colorScheme.primary;
 
     return Scaffold(
-      body: Center(
-        child: ElevatedButton(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.white,
-            foregroundColor: Colors.black,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: const BorderSide(color: Colors.grey),
-            ),
-          ),
-          onPressed: () async {
-            try {
-              final authUser = await authRepo.signInWithGoogle();
-
-              if (authUser == null) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Login cancelado")),
-                );
-                return;
-              }
-
-              await userRepo.saveUser(authUser);
-
-              // 🚫 NÃO TEM MAIS Navigator aqui
-              // O AuthGate cuida da navegação automaticamente
-            } catch (e) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text("Erro: $e")),
-              );
-            }
-          },
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
             children: [
-              Image.asset(
-                'assets/images/google.png',
-                height: 20,
+              const Spacer(flex: 2),
+
+              // — Logo / nome —
+              Icon(Icons.emoji_events_rounded,
+                  size: 80, color: primary),
+              const SizedBox(height: 16),
+              Text(
+                'Desafio Pago',
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: primary,
+                  letterSpacing: 0.5,
+                ),
               ),
-              const SizedBox(width: 10),
-              const Text("Entrar com Google"),
+              const SizedBox(height: 8),
+              const Text(
+                'Crie desafios. Ganhe prêmios.',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.black54,
+                ),
+              ),
+
+              const Spacer(flex: 3),
+
+              // — Botão Google —
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Colors.black87,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    side: const BorderSide(color: Colors.black26),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onPressed: _loading ? null : _signIn,
+                  child: _loading
+                      ? const SizedBox(
+                          height: 22,
+                          width: 22,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Image.asset('assets/images/google.png',
+                                height: 22),
+                            const SizedBox(width: 12),
+                            const Text(
+                              'Entrar com Google',
+                              style: TextStyle(fontSize: 15),
+                            ),
+                          ],
+                        ),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+              const Text(
+                'Apenas para usuários no Brasil · +18 anos',
+                style: TextStyle(fontSize: 11, color: Colors.black38),
+                textAlign: TextAlign.center,
+              ),
+
+              const Spacer(flex: 1),
             ],
           ),
         ),

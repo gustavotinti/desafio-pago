@@ -131,7 +131,8 @@ class _ProfilePageState extends State<ProfilePage> {
         title: const Text('Perfil'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.edit),
+            icon: const Icon(Icons.edit_outlined),
+            tooltip: 'Editar perfil',
             onPressed: () async {
               final updated = await Navigator.push<bool>(
                 context,
@@ -145,6 +146,11 @@ class _ProfilePageState extends State<ProfilePage> {
               );
               if (updated == true) _load();
             },
+          ),
+          IconButton(
+            icon: const Icon(Icons.logout),
+            tooltip: 'Sair',
+            onPressed: () => FirebaseAuth.instance.signOut(),
           ),
         ],
       ),
