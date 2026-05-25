@@ -11,6 +11,200 @@ function mpPaymentClient() {
   return new Payment(new MercadoPagoConfig({accessToken: token}));
 }
 
+// ─── CREATE CHALLENGE ────────────────────────────────────────────────────────
+
+exports.createChallenge = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Usuário não logado");
+  }
+
+  const userId = context.auth.uid;
+  const {title, description, amount, durationDays} = data;
+
+  if (!title || !description || !amount || amount <= 0 ||
+      !durationDays || durationDays < 1 || durationDays > 30) {
+    throw new functions.https.HttpsError("invalid-argument", "Dados inválidos");
+  }
+
+  const db = admin.firestore();
+  const adminDoc = await db.collection("admins").doc(userId).get();
+  const isAdmin = adminDoc.exists;
+
+  // Daily limit
+  const now = new Date();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+  const existing = await db.collection("challenges")
+      .where("createdBy", "==", userId)
+      .where("createdAt", ">=", startOfDay)
+      .get();
+  if (existing.size >= 20) {
+    throw new functions.https.HttpsError("resource-exhausted", "Limite de 20 desafios por dia atingido");
+  }
+
+  if (!isAdmin) {
+    const userDoc = await db.collection("users").doc(userId).get();
+    const balance = userDoc.data()?.balance || 0;
+    if (balance < amount) {
+      throw new functions.https.HttpsError("failed-precondition", "Saldo insuficiente para criar o desafio");
+    }
+  }
+
+  const expiresAt = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+  const challengeRef = db.collection("challenges").doc();
+  const batch = db.batch();
+
+  batch.set(challengeRef, {
+    title,
+    description,
+    createdBy: userId,
+    amount,
+    creatorContribution: isAdmin ? 0 : amount,
+    status: "active",
+    voteCount: 0,
+    entryCount: 0,
+    winnerIds: [],
+    createdAt: now.toISOString(),
+    expiresAt,
+  });
+
+  if (!isAdmin) {
+    const userRef = db.collection("users").doc(userId);
+    batch.update(userRef, {
+      balance: admin.firestore.FieldValue.increment(-amount),
+      pendingBalance: admin.firestore.FieldValue.increment(amount),
+    });
+    batch.set(db.collection("transactions").doc(), {
+      userId,
+      amount,
+      type: "challenge_created",
+      description: `Desafio criado: ${title}`,
+      challengeId: challengeRef.id,
+      createdAt: now.toISOString(),
+    });
+  }
+
+  await batch.commit();
+  return {challengeId: challengeRef.id};
+});
+
+// ─── ADD AMOUNT (APORTE) ─────────────────────────────────────────────────────
+
+exports.addAmount = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Usuário não logado");
+  }
+
+  const userId = context.auth.uid;
+  const {challengeId, value} = data;
+
+  if (!challengeId || !value || value <= 0) {
+    throw new functions.https.HttpsError("invalid-argument", "Dados inválidos");
+  }
+
+  const db = admin.firestore();
+  const challengeDoc = await db.collection("challenges").doc(challengeId).get();
+
+  if (!challengeDoc.exists) {
+    throw new functions.https.HttpsError("not-found", "Desafio não encontrado");
+  }
+
+  const challenge = challengeDoc.data();
+
+  if (challenge.status === "finished") {
+    throw new functions.https.HttpsError("failed-precondition", "Desafio já encerrado");
+  }
+
+  const hoursLeft = (new Date(challenge.expiresAt) - new Date()) / (1000 * 60 * 60);
+  if (hoursLeft < 3) {
+    throw new functions.https.HttpsError(
+        "failed-precondition",
+        "Não é possível aumentar o valor com menos de 3 horas para o fim do desafio",
+    );
+  }
+
+  const userDoc = await db.collection("users").doc(userId).get();
+  const balance = userDoc.data()?.balance || 0;
+  if (balance < value) {
+    throw new functions.https.HttpsError("failed-precondition", "Saldo insuficiente");
+  }
+
+  const batch = db.batch();
+  batch.update(db.collection("challenges").doc(challengeId), {
+    amount: admin.firestore.FieldValue.increment(value),
+  });
+  batch.update(db.collection("users").doc(userId), {
+    balance: admin.firestore.FieldValue.increment(-value),
+  });
+  batch.set(db.collection("transactions").doc(), {
+    userId,
+    amount: value,
+    type: "aporte",
+    description: `Aporte: ${challenge.title}`,
+    challengeId,
+    createdAt: new Date().toISOString(),
+  });
+
+  await batch.commit();
+  return {success: true};
+});
+
+// ─── REQUEST WITHDRAW ────────────────────────────────────────────────────────
+
+exports.requestWithdraw = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Usuário não logado");
+  }
+
+  const userId = context.auth.uid;
+  const {amount} = data;
+
+  if (!amount || amount < 100) {
+    throw new functions.https.HttpsError("invalid-argument", "Valor mínimo para saque é R$100");
+  }
+
+  const db = admin.firestore();
+  const userDoc = await db.collection("users").doc(userId).get();
+  const userData = userDoc.data() || {};
+  const balance = userData.balance || 0;
+  const pixKey = userData.pixKey || "";
+
+  if (!pixKey) {
+    throw new functions.https.HttpsError("failed-precondition", "Cadastre uma chave Pix primeiro");
+  }
+  if (balance < amount) {
+    throw new functions.https.HttpsError("failed-precondition", "Saldo insuficiente");
+  }
+
+  const fee = Math.round(amount * 0.10 * 100) / 100;
+  const netAmount = Math.round((amount - fee) * 100) / 100;
+  const withdrawalRef = db.collection("withdrawals").doc();
+  const batch = db.batch();
+
+  batch.set(withdrawalRef, {
+    userId,
+    amount,
+    fee,
+    netAmount,
+    pixKey,
+    status: "pending",
+    createdAt: new Date().toISOString(),
+  });
+  batch.update(db.collection("users").doc(userId), {
+    balance: admin.firestore.FieldValue.increment(-amount),
+    lockedBalance: admin.firestore.FieldValue.increment(amount),
+  });
+  batch.set(db.collection("transactions").doc(), {
+    userId,
+    amount,
+    type: "withdraw",
+    description: `Saque solicitado — taxa R$${fee.toFixed(2)} (10%)`,
+    createdAt: new Date().toISOString(),
+  });
+
+  await batch.commit();
+  return {withdrawalId: withdrawalRef.id};
+});
+
 // ─── SUBMIT ENTRY ────────────────────────────────────────────────────────────
 
 exports.submitEntry = functions.https.onCall(async (data, context) => {
@@ -158,6 +352,7 @@ async function finalizeChallenge(db, challengeDoc) {
   const challengeId = challengeDoc.id;
   const challenge = challengeDoc.data();
   const prizeAmount = challenge.amount || 0;
+  const creatorContribution = challenge.creatorContribution || 0;
 
   const entriesSnapshot = await db
       .collection("entries")
@@ -174,6 +369,13 @@ async function finalizeChallenge(db, challengeDoc) {
     winnerIds,
     finishedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
+
+  // Always release creator's pendingBalance when challenge ends
+  if (creatorContribution > 0) {
+    batch.update(db.collection("users").doc(challenge.createdBy), {
+      pendingBalance: admin.firestore.FieldValue.increment(-creatorContribution),
+    });
+  }
 
   if (entriesSnapshot.empty) {
     markFinished();

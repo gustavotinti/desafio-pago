@@ -16,14 +16,20 @@ class AdminWithdrawalsPage extends StatelessWidget {
     return doc.data();
   }
 
-  Future<void> approve(String id) async {
-    await FirebaseFirestore.instance
-        .collection('withdrawals')
-        .doc(id)
-        .update({
-      'status': 'approved',
-      'approvedAt': FieldValue.serverTimestamp(),
-      'approvedBy': FirebaseAuth.instance.currentUser?.uid,
+  Future<void> approve(String id, Map<String, dynamic> data) async {
+    final firestore = FirebaseFirestore.instance;
+    final userId = data['userId'] as String;
+    final amount = (data['amount'] ?? 0).toDouble();
+
+    await firestore.runTransaction((tx) async {
+      tx.update(firestore.collection('withdrawals').doc(id), {
+        'status': 'approved',
+        'approvedAt': FieldValue.serverTimestamp(),
+        'approvedBy': FirebaseAuth.instance.currentUser?.uid,
+      });
+      tx.update(firestore.collection('users').doc(userId), {
+        'lockedBalance': FieldValue.increment(-amount),
+      });
     });
   }
 
@@ -32,16 +38,13 @@ class AdminWithdrawalsPage extends StatelessWidget {
     final userId = data['userId'] as String;
     final amount = (data['amount'] ?? 0).toDouble();
 
-    final userRef = firestore.collection('users').doc(userId);
-    final withdrawalRef = firestore.collection('withdrawals').doc(id);
-
     await firestore.runTransaction((tx) async {
-      final userSnapshot = await tx.get(userRef);
-      final currentBalance =
-          ((userSnapshot.data() ?? {})['balance'] ?? 0).toDouble();
-
-      tx.update(userRef, {'balance': currentBalance + amount});
-      tx.update(withdrawalRef, {'status': 'rejected'});
+      tx.update(firestore.collection('users').doc(userId), {
+        'balance': FieldValue.increment(amount),
+        'lockedBalance': FieldValue.increment(-amount),
+      });
+      tx.update(
+          firestore.collection('withdrawals').doc(id), {'status': 'rejected'});
     });
   }
 
@@ -120,7 +123,7 @@ class AdminWithdrawalsPage extends StatelessWidget {
                                     backgroundColor: Colors.green,
                                   ),
                                   onPressed: () async {
-                                    await approve(doc.id);
+                                    await approve(doc.id, data);
 
                                     ScaffoldMessenger.of(context)
                                         .showSnackBar(

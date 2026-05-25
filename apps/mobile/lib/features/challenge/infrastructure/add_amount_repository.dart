@@ -1,34 +1,17 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 class AddAmountRepository {
-  final _firestore = FirebaseFirestore.instance;
+  final _functions =
+      FirebaseFunctions.instanceFor(region: 'us-central1');
 
   Future<void> addAmount(String challengeId, double value) async {
-    final challengeRef = _firestore.collection('challenges').doc(challengeId);
-    final snapshot = await challengeRef.get();
-
-    if (!snapshot.exists) {
-      throw Exception('Desafio não encontrado');
+    try {
+      await _functions.httpsCallable('addAmount').call({
+        'challengeId': challengeId,
+        'value': value,
+      });
+    } on FirebaseFunctionsException catch (e) {
+      throw Exception(e.message ?? 'Erro ao adicionar valor');
     }
-
-    final data = snapshot.data()!;
-    final status = data['status'] as String? ?? '';
-
-    if (status == 'finished') {
-      throw Exception('Desafio já encerrado');
-    }
-
-    final expiresAt = DateTime.parse(data['expiresAt']);
-    final timeLeft = expiresAt.difference(DateTime.now());
-
-    if (timeLeft.inHours < 3) {
-      throw Exception(
-        'Não é possível aumentar o valor com menos de 3 horas para o fim do desafio',
-      );
-    }
-
-    await challengeRef.update({
-      'amount': FieldValue.increment(value),
-    });
   }
 }

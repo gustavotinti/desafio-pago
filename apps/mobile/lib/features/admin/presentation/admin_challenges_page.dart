@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
+final _functions = FirebaseFunctions.instanceFor(region: 'us-central1');
+
 class AdminChallengesPage extends StatelessWidget {
   const AdminChallengesPage({super.key});
 
@@ -93,28 +95,18 @@ class _CreateChallengeDialogState extends State<_CreateChallengeDialog> {
     setState(() => _saving = true);
 
     try {
-      final uid = FirebaseAuth.instance.currentUser!.uid;
-      final now = DateTime.now();
-      final expiresAt = now.add(Duration(days: _durationDays));
-
-      await FirebaseFirestore.instance.collection('challenges').add({
+      await _functions.httpsCallable('createChallenge').call({
         'title': title,
         'description': description,
-        'createdBy': uid,
         'amount': amount,
-        'status': 'active',
-        'voteCount': 0,
-        'entryCount': 0,
-        'winnerIds': [],
-        'createdAt': now.toIso8601String(),
-        'expiresAt': expiresAt.toIso8601String(),
+        'durationDays': _durationDays,
       });
 
       if (mounted) Navigator.pop(context);
-    } catch (e) {
+    } on FirebaseFunctionsException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(e.toString())));
+            .showSnackBar(SnackBar(content: Text(e.message ?? 'Erro')));
       }
     } finally {
       if (mounted) setState(() => _saving = false);

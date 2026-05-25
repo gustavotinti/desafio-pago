@@ -13,6 +13,8 @@ class UserRepository {
       'photoUrl': user.photoUrl ?? '',
       'createdAt': DateTime.now().toIso8601String(),
       'balance': 0,
+      'pendingBalance': 0,
+      'lockedBalance': 0,
       'totalEarned': 0,
       'totalVotesReceived': 0,
       'followersCount': 0,

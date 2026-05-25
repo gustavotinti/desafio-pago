@@ -99,15 +99,21 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Color _txColor(String type) {
-    if (type == 'withdraw') return Colors.red;
-    if (type == 'reward') return Colors.green;
+    if (type == 'reward' || type == 'deposit') return Colors.green;
+    if (type == 'withdraw' || type == 'challenge_created' || type == 'aporte') {
+      return Colors.red;
+    }
     return Colors.black87;
   }
 
   @override
   Widget build(BuildContext context) {
     final authUser = FirebaseAuth.instance.currentUser;
-    final balance = (_userData['balance'] ?? 0 as num).toDouble();
+    final balance = (_userData['balance'] as num? ?? 0).toDouble();
+    final pendingBalance =
+        (_userData['pendingBalance'] as num? ?? 0).toDouble();
+    final lockedBalance =
+        (_userData['lockedBalance'] as num? ?? 0).toDouble();
     final totalEarned = (_userData['totalEarned'] ?? 0 as num).toDouble();
     final followersCount = _userData['followersCount'] ?? 0;
     final followingCount = _userData['followingCount'] ?? 0;
@@ -191,9 +197,23 @@ class _ProfilePageState extends State<ProfilePage> {
 
           // — Saldo —
           Text(
-            'Créditos: R\$ ${balance.toStringAsFixed(2)}',
+            'Créditos disponíveis: R\$ ${balance.toStringAsFixed(2)}',
             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
           ),
+          if (pendingBalance > 0) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Em desafios ativos: R\$ ${pendingBalance.toStringAsFixed(2)}',
+              style: const TextStyle(fontSize: 14, color: Colors.orange),
+            ),
+          ],
+          if (lockedBalance > 0) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Aguardando saque: R\$ ${lockedBalance.toStringAsFixed(2)}',
+              style: const TextStyle(fontSize: 14, color: Colors.blue),
+            ),
+          ],
           const SizedBox(height: 8),
           SizedBox(
             width: double.infinity,

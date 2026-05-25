@@ -16,46 +16,30 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if signedIn();
 
-      // Owner: update profile fields only
+      // Owner: profile fields only
       allow update: if signedIn() && uid() == userId
           && changed().hasOnly(['name', 'bio', 'photoUrl', 'pixKey'])
 
-        // Owner: decrease own balance only (withdrawal deduction)
-        || (signedIn() && uid() == userId
-            && changed().hasOnly(['balance'])
-            && request.resource.data.balance < resource.data.balance)
-
-        // Owner: update own followingCount (follow/unfollow)
+        // Owner: followingCount (follow/unfollow)
         || (signedIn() && uid() == userId
             && changed().hasOnly(['followingCount']))
 
-        // Any user: update target's followersCount (follow/unfollow transaction)
+        // Any auth user: target's followersCount (follow/unfollow)
         || (signedIn() && changed().hasOnly(['followersCount']))
 
-        // Admin: unrestricted
+        // Admin (approve/reject withdrawals updates lockedBalance/balance)
         || isAdmin();
+
+      // balance, pendingBalance, lockedBalance are managed exclusively
+      // by Cloud Functions (Admin SDK) — no direct client writes allowed
     }
 
     // ── CHALLENGES ───────────────────────────────────────────────────────────
     match /challenges/{challengeId} {
       allow read: if signedIn();
 
-      allow create: if signedIn()
-        && request.resource.data.createdBy == uid()
-        && request.resource.data.amount > 0
-        && request.resource.data.status == 'active'
-        && request.resource.data.keys()
-             .hasAll(['title', 'description', 'createdBy', 'amount',
-                      'status', 'expiresAt', 'voteCount', 'entryCount']);
-
-      // Aporte: any user may increase amount
-      // voteCount and entryCount are now updated exclusively by Cloud Functions (Admin SDK)
-      allow update: if signedIn()
-          && changed().hasOnly(['amount'])
-          && request.resource.data.amount > resource.data.amount
-
-        // Admin / Cloud Functions: unrestricted (status, winnerIds, finishedAt)
-        || isAdmin();
+      // create, amount updates, voteCount, entryCount all handled by Cloud Functions
+      allow update: if isAdmin();
     }
 
     // ── ENTRIES ──────────────────────────────────────────────────────────────
@@ -78,24 +62,15 @@ service cloud.firestore {
       allow read: if signedIn()
         && (resource.data.userId == uid() || isAdmin());
 
-      allow create: if signedIn()
-        && request.resource.data.userId == uid()
-        && request.resource.data.status == 'pending'
-        && request.resource.data.amount >= 100;
-
-      // Only admin may approve or reject
-      allow update: if isAdmin()
-        && changed().hasOnly(['status', 'approvedAt', 'approvedBy']);
+      // create handled by requestWithdraw Cloud Function (Admin SDK)
+      // admin approve/reject updates status, approvedAt, approvedBy
+      allow update: if isAdmin();
     }
 
     // ── TRANSACTIONS ─────────────────────────────────────────────────────────
     match /transactions/{txId} {
       allow read: if signedIn() && resource.data.userId == uid();
-
-      // Client writes withdrawal transactions; rewards written by Cloud Functions
-      allow create: if signedIn() && request.resource.data.userId == uid();
-
-      // Transactions are immutable — no update or delete
+      // All transactions created by Cloud Functions (Admin SDK)
     }
 
     // ── FOLLOWS ──────────────────────────────────────────────────────────────
