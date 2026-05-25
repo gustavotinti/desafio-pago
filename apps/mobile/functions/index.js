@@ -254,7 +254,6 @@ exports.submitEntry = functions.https.onCall(async (data, context) => {
     );
   }
 
-  const db = admin.firestore();
   const challengeDoc = await db.collection("challenges").doc(challengeId).get();
 
   if (!challengeDoc.exists) {
@@ -814,13 +813,13 @@ exports.adminBanUser = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError("invalid-argument", "userId obrigatório");
   }
 
-  const update = unban
-    ? {isBanned: false, banReason: null, bannedAt: null}
-    : {
-        isBanned: true,
-        banReason: reason || "Violação dos termos de uso",
-        bannedAt: new Date().toISOString(),
-      };
+  const update = unban ?
+    {isBanned: false, banReason: null, bannedAt: null} :
+    {
+      isBanned: true,
+      banReason: reason || "Violação dos termos de uso",
+      bannedAt: new Date().toISOString(),
+    };
 
   await db.collection("users").doc(userId).update(update);
   await db.collection("audit_logs").add({
