@@ -1,11 +1,11 @@
 {
-    "name": "mobile",
-    "short_name": "mobile",
+    "name": "Desafio Pago",
+    "short_name": "Desafio Pago",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#003b8a",
+    "theme_color": "#003b8a",
+    "description": "Crie desafios, fature muito!",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
