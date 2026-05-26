@@ -154,7 +154,11 @@ class _ProfilePageState extends State<ProfilePage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Perfil'),
+        title: Image.asset(
+          'assets/images/logo_anim_h_dark.gif',
+          height: 36,
+          fit: BoxFit.contain,
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.edit_outlined),

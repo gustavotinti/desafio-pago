@@ -12,7 +12,11 @@ class RankingsPage extends StatelessWidget {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Rankings'),
+          title: Image.asset(
+            'assets/images/logo_anim_h_dark.gif',
+            height: 36,
+            fit: BoxFit.contain,
+          ),
           bottom: const TabBar(
             tabs: [
               Tab(text: 'Maiores ganhos'),
