@@ -38,7 +38,7 @@ class _HomePageState extends State<HomePage>
     _loadActive();
     _loadFinished();
     _loadAdminStatus();
-    Future.delayed(const Duration(milliseconds: 2600), () {
+    Future.delayed(const Duration(milliseconds: 9600), () {
       if (mounted) setState(() => _logoSettled = true);
     });
   }
