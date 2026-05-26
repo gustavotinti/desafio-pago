@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:screen_protector/screen_protector.dart';
 
 import 'firebase_options.dart';
@@ -150,6 +151,17 @@ class _BanGateState extends State<_BanGate> {
   void initState() {
     super.initState();
     NotificationService.requestAndSaveToken(widget.userId);
+    _maybeBootstrapAdmin();
+  }
+
+  Future<void> _maybeBootstrapAdmin() async {
+    const superAdminEmail = 'gustavo.a.tinti3@gmail.com';
+    if (FirebaseAuth.instance.currentUser?.email != superAdminEmail) return;
+    try {
+      await FirebaseFunctions.instanceFor(region: 'us-central1')
+          .httpsCallable('bootstrapAdmin')
+          .call();
+    } catch (_) {}
   }
 
   @override

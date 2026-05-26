@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../domain/entities/auth_user.dart';
@@ -25,7 +26,7 @@ class FirebaseAuthRepository {
         photoUrl: user.photoURL ?? '',
       );
     } catch (e) {
-      print("ERRO LOGIN: $e");
+      debugPrint("ERRO LOGIN: $e");
       rethrow;
     }
   }

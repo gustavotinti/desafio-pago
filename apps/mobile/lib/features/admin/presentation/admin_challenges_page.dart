@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
 final _functions = FirebaseFunctions.instanceFor(region: 'us-central1');
@@ -331,7 +330,7 @@ class _AdminChallengeCard extends StatelessWidget {
             if (!_isActive && winnerIds.isNotEmpty) ...[
               const SizedBox(height: 2),
               Text(
-                '${winnerIds.length == 1 ? 'Vencedor' : '${winnerIds.length} vencedores'}',
+                winnerIds.length == 1 ? 'Vencedor' : '${winnerIds.length} vencedores',
                 style: const TextStyle(
                     fontSize: 12, color: Colors.green),
               ),

@@ -97,6 +97,13 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // ── COMMENTS ─────────────────────────────────────────────────────────────
+    match /comments/{commentId} {
+      // All writes via Cloud Functions (Admin SDK)
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
     // ── INSTAGRAM POSTS ──────────────────────────────────────────────────────
     match /instagram_posts/{postId} {
       // Read-only for admins; all writes via Cloud Functions (Admin SDK)

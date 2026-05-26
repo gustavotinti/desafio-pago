@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -23,7 +24,7 @@ class SubmitEntryPage extends StatefulWidget {
 class _SubmitEntryPageState extends State<SubmitEntryPage> {
   final _textController = TextEditingController();
   ContentType _selectedType = ContentType.text;
-  File? _selectedFile;
+  XFile? _selectedFile;
   bool _isLoading = false;
 
   @override
@@ -35,13 +36,16 @@ class _SubmitEntryPageState extends State<SubmitEntryPage> {
   Future<void> _pickImage() async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(source: ImageSource.gallery);
-    if (picked != null) setState(() => _selectedFile = File(picked.path));
+    if (picked != null) setState(() => _selectedFile = picked);
   }
 
   Future<void> _pickVideo() async {
     final picker = ImagePicker();
-    final picked = await picker.pickVideo(source: ImageSource.gallery);
-    if (picked != null) setState(() => _selectedFile = File(picked.path));
+    final picked = await picker.pickVideo(
+      source: ImageSource.gallery,
+      maxDuration: const Duration(seconds: 15),
+    );
+    if (picked != null) setState(() => _selectedFile = picked);
   }
 
   Future<void> _submit() async {
@@ -87,6 +91,29 @@ class _SubmitEntryPageState extends State<SubmitEntryPage> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Widget _buildImagePreview() {
+    if (_selectedFile == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: kIsWeb
+            ? Image.network(
+                _selectedFile!.path,
+                height: 200,
+                width: double.infinity,
+                fit: BoxFit.cover,
+              )
+            : Image.file(
+                File(_selectedFile!.path),
+                height: 200,
+                width: double.infinity,
+                fit: BoxFit.cover,
+              ),
+      ),
+    );
   }
 
   @override
@@ -144,18 +171,7 @@ class _SubmitEntryPageState extends State<SubmitEntryPage> {
                 icon: const Icon(Icons.photo_library),
                 label: const Text('Escolher imagem'),
               ),
-              if (_selectedFile != null) ...[
-                const SizedBox(height: 12),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.file(
-                    _selectedFile!,
-                    height: 200,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                  ),
-                ),
-              ],
+              _buildImagePreview(),
             ],
             if (_selectedType == ContentType.video) ...[
               ElevatedButton.icon(
@@ -163,11 +179,28 @@ class _SubmitEntryPageState extends State<SubmitEntryPage> {
                 icon: const Icon(Icons.video_library),
                 label: const Text('Escolher vídeo'),
               ),
+              const SizedBox(height: 8),
+              const Text(
+                'Formatos: 9:16 · 4:5 · 1:1 · 16:9  ·  Máx. 15 seg\nRecorte antes de enviar se necessário.',
+                style: TextStyle(fontSize: 12, color: Colors.black54),
+              ),
               if (_selectedFile != null) ...[
                 const SizedBox(height: 8),
-                Text(
-                  'Arquivo selecionado: ${_selectedFile!.path.split('/').last}',
-                  style: const TextStyle(color: Colors.green),
+                Row(
+                  children: [
+                    const Icon(Icons.check_circle,
+                        color: Colors.green, size: 16),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        _selectedFile!.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            color: Colors.green, fontSize: 13),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ],

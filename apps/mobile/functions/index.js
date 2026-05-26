@@ -875,6 +875,200 @@ exports.adminBanUser = functions.https.onCall(async (data, context) => {
   return {success: true};
 });
 
+// ─── BOOTSTRAP ADMIN ─────────────────────────────────────────────────────────
+
+exports.bootstrapAdmin = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Usuário não logado");
+  }
+
+  const SUPER_ADMIN_EMAIL = "gustavo.a.tinti3@gmail.com";
+  if (context.auth.token.email !== SUPER_ADMIN_EMAIL) {
+    throw new functions.https.HttpsError("permission-denied", "Acesso negado");
+  }
+
+  const db = admin.firestore();
+  const adminRef = db.collection("admins").doc(context.auth.uid);
+  const existing = await adminRef.get();
+  if (!existing.exists) {
+    await adminRef.set({
+      email: SUPER_ADMIN_EMAIL,
+      createdAt: new Date().toISOString(),
+    });
+  }
+  return {success: true};
+});
+
+// ─── ADD COMMENT ─────────────────────────────────────────────────────────────
+
+exports.addComment = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Usuário não logado");
+  }
+
+  const userId = context.auth.uid;
+  const db = admin.firestore();
+  await _assertNotBanned(db, userId);
+
+  const {challengeId, text} = data;
+  const entryId = data.entryId || "";
+
+  if (!challengeId || !text || text.trim().length === 0) {
+    throw new functions.https.HttpsError(
+        "invalid-argument", "challengeId e text são obrigatórios",
+    );
+  }
+  if (text.trim().length > 500) {
+    throw new functions.https.HttpsError(
+        "invalid-argument", "Comentário muito longo (máx 500 caracteres)",
+    );
+  }
+
+  const userDoc = await db.collection("users").doc(userId).get();
+  const userName = userDoc.data()?.name || "Usuário";
+
+  await db.collection("comments").add({
+    challengeId,
+    entryId,
+    userId,
+    userName,
+    text: text.trim(),
+    isActive: true,
+    createdAt: new Date().toISOString(),
+  });
+
+  return {success: true};
+});
+
+// ─── ADMIN: MODIFY VOTE COUNT ────────────────────────────────────────────────
+
+exports.adminModifyVoteCount = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Usuário não logado");
+  }
+
+  const db = admin.firestore();
+  const adminDoc = await db.collection("admins").doc(context.auth.uid).get();
+  if (!adminDoc.exists) {
+    throw new functions.https.HttpsError("permission-denied", "Acesso negado");
+  }
+
+  const {entryId, voteCount} = data;
+  if (!entryId || voteCount === undefined || voteCount < 0) {
+    throw new functions.https.HttpsError(
+        "invalid-argument", "entryId e voteCount obrigatórios",
+    );
+  }
+
+  const entryRef = db.collection("entries").doc(entryId);
+  const entryDoc = await entryRef.get();
+  if (!entryDoc.exists) {
+    throw new functions.https.HttpsError("not-found", "Entrada não encontrada");
+  }
+
+  const oldVoteCount = entryDoc.data().voteCount || 0;
+  const diff = voteCount - oldVoteCount;
+  const challengeId = entryDoc.data().challengeId;
+
+  const batch = db.batch();
+  batch.update(entryRef, {voteCount});
+  if (diff !== 0) {
+    batch.update(db.collection("challenges").doc(challengeId), {
+      voteCount: admin.firestore.FieldValue.increment(diff),
+    });
+  }
+  await batch.commit();
+
+  await db.collection("audit_logs").add({
+    type: "admin_vote_edit",
+    entryId,
+    challengeId,
+    adminId: context.auth.uid,
+    oldVoteCount,
+    newVoteCount: voteCount,
+    createdAt: new Date().toISOString(),
+  });
+
+  return {success: true};
+});
+
+// ─── ADMIN: GENERATE COMMENT ─────────────────────────────────────────────────
+
+exports.adminGenerateComment = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Usuário não logado");
+  }
+
+  const db = admin.firestore();
+  const adminDoc = await db.collection("admins").doc(context.auth.uid).get();
+  if (!adminDoc.exists) {
+    throw new functions.https.HttpsError("permission-denied", "Acesso negado");
+  }
+
+  const {challengeId, text} = data;
+  const entryId = data.entryId || "";
+
+  if (!challengeId || !text || text.trim().length === 0) {
+    throw new functions.https.HttpsError(
+        "invalid-argument", "challengeId e text obrigatórios",
+    );
+  }
+
+  const userDoc = await db.collection("users").doc(context.auth.uid).get();
+  const userName = userDoc.data()?.name || "Admin";
+
+  await db.collection("comments").add({
+    challengeId,
+    entryId,
+    userId: context.auth.uid,
+    userName,
+    text: text.trim(),
+    isActive: true,
+    isAdminGenerated: true,
+    createdAt: new Date().toISOString(),
+  });
+
+  return {success: true};
+});
+
+// ─── ADMIN: MARK WITHDRAWAL PAID ─────────────────────────────────────────────
+
+exports.adminMarkWithdrawalPaid = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Usuário não logado");
+  }
+
+  const db = admin.firestore();
+  const adminDoc = await db.collection("admins").doc(context.auth.uid).get();
+  if (!adminDoc.exists) {
+    throw new functions.https.HttpsError("permission-denied", "Acesso negado");
+  }
+
+  const {withdrawalId} = data;
+  if (!withdrawalId) {
+    throw new functions.https.HttpsError("invalid-argument", "withdrawalId obrigatório");
+  }
+
+  const withdrawalRef = db.collection("withdrawals").doc(withdrawalId);
+  const withdrawalDoc = await withdrawalRef.get();
+  if (!withdrawalDoc.exists) {
+    throw new functions.https.HttpsError("not-found", "Saque não encontrado");
+  }
+  if (withdrawalDoc.data().status !== "approved") {
+    throw new functions.https.HttpsError(
+        "failed-precondition", "Saque não está com status aprovado",
+    );
+  }
+
+  await withdrawalRef.update({
+    status: "paid",
+    paidAt: new Date().toISOString(),
+    paidBy: context.auth.uid,
+  });
+
+  return {success: true};
+});
+
 // ─── DELETE ACCOUNT ──────────────────────────────────────────────────────────
 
 exports.deleteAccount = functions.https.onCall(async (data, context) => {

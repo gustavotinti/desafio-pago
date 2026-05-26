@@ -1,8 +1,9 @@
 class Comment {
   final String id;
   final String challengeId;
-  final String? entryId;
+  final String entryId;
   final String userId;
+  final String? userName;
   final String text;
   final bool isActive;
   final DateTime createdAt;
@@ -10,10 +11,24 @@ class Comment {
   Comment({
     required this.id,
     required this.challengeId,
+    required this.entryId,
     required this.userId,
     required this.text,
     required this.isActive,
     required this.createdAt,
-    this.entryId,
+    this.userName,
   });
+
+  factory Comment.fromMap(String id, Map<String, dynamic> data) {
+    return Comment(
+      id: id,
+      challengeId: data['challengeId'] as String,
+      entryId: data['entryId'] as String? ?? '',
+      userId: data['userId'] as String,
+      userName: data['userName'] as String?,
+      text: data['text'] as String,
+      isActive: data['isActive'] as bool? ?? true,
+      createdAt: DateTime.parse(data['createdAt'] as String),
+    );
+  }
 }

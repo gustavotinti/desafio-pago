@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 import '../../challenge/domain/entities/challenge.dart';
 import '../../challenge/domain/entities/challenge_status.dart';
 import '../../challenge/infrastructure/vote_repository.dart';
+import '../../comment/presentation/comment_section.dart';
 import '../../moderation/infrastructure/report_repository.dart';
 import '../domain/entities/content_type.dart';
 import '../domain/entities/entry.dart';
@@ -21,14 +25,27 @@ class ChallengeEntriesPage extends StatefulWidget {
 class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
   late Future<List<Entry>> _entriesFuture;
   late Future<bool> _hasVotedFuture;
+  bool _isAdmin = false;
 
   final _voteRepo = VoteRepository();
   final _reportRepo = ReportRepository();
+  final _functions = FirebaseFunctions.instanceFor(region: 'us-central1');
 
   @override
   void initState() {
     super.initState();
     _load();
+    _loadAdmin();
+  }
+
+  Future<void> _loadAdmin() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final doc = await FirebaseFirestore.instance
+        .collection('admins')
+        .doc(uid)
+        .get();
+    if (mounted) setState(() => _isAdmin = doc.exists);
   }
 
   void _load() {
@@ -46,14 +63,14 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
   Future<void> _vote(String entryId) async {
     try {
       await _voteRepo.vote(widget.challenge.id, entryId);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Voto registrado!')),
-      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Voto registrado!')));
       _reload();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
-      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }
 
@@ -71,12 +88,10 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
       builder: (ctx) => SimpleDialog(
         title: const Text('Motivo da denúncia'),
         children: reasons
-            .map(
-              (r) => SimpleDialogOption(
-                onPressed: () => Navigator.pop(ctx, r),
-                child: Text(r),
-              ),
-            )
+            .map((r) => SimpleDialogOption(
+                  onPressed: () => Navigator.pop(ctx, r),
+                  child: Text(r),
+                ))
             .toList(),
       ),
     );
@@ -91,9 +106,93 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
+
+  Future<void> _shareEntry(Entry entry) async {
+    final url =
+        'https://desafiopago.web.app/challenges/${widget.challenge.id}?entry=${entry.id}';
+    await Clipboard.setData(ClipboardData(text: url));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Link copiado!')),
+    );
+  }
+
+  void _showEntryComments(Entry entry) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.55,
+        maxChildSize: 0.92,
+        minChildSize: 0.3,
+        builder: (_, controller) => Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 12,
+            left: 16,
+            right: 16,
+            top: 16,
+          ),
+          child: SingleChildScrollView(
+            controller: controller,
+            child: CommentSection(
+              challengeId: widget.challenge.id,
+              entryId: entry.id,
+              isAdmin: _isAdmin,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _editVotes(Entry entry) async {
+    final controller = TextEditingController(text: '${entry.voteCount}');
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Editar votos'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Novo total de votos'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Salvar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final newCount = int.tryParse(controller.text.trim()) ?? -1;
+    if (newCount < 0) return;
+    try {
+      await _functions.httpsCallable('adminModifyVoteCount').call({
+        'entryId': entry.id,
+        'voteCount': newCount,
+      });
+      _reload();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Votos atualizados')));
+    } on FirebaseFunctionsException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message ?? 'Erro')));
     }
   }
 
@@ -131,25 +230,49 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
                 final hasVoted = snapshot.data![1] as bool;
                 final canVote = !hasVoted && !_isCreator && !isFinished;
 
+                final uid = FirebaseAuth.instance.currentUser?.uid;
+
+                // entries + challenge-level comment section at bottom
+                final itemCount = entries.isEmpty ? 1 : entries.length + 1;
+
                 if (entries.isEmpty) {
-                  return const Center(child: Text('Nenhuma participação ainda'));
+                  return ListView(
+                    padding: const EdgeInsets.all(12),
+                    children: [
+                      const Center(child: Text('Nenhuma participação ainda')),
+                      const SizedBox(height: 24),
+                      _ChallengeComments(
+                        challengeId: widget.challenge.id,
+                        isAdmin: _isAdmin,
+                      ),
+                    ],
+                  );
                 }
 
                 return ListView.builder(
                   padding: const EdgeInsets.all(12),
-                  itemCount: entries.length,
+                  itemCount: itemCount,
                   itemBuilder: (context, index) {
+                    if (index == entries.length) {
+                      return _ChallengeComments(
+                        challengeId: widget.challenge.id,
+                        isAdmin: _isAdmin,
+                      );
+                    }
                     final entry = entries[index];
                     final isWinner = isFinished &&
                         widget.challenge.winnerIds.contains(entry.userId);
-                    final uid = FirebaseAuth.instance.currentUser?.uid;
                     return _EntryCard(
                       entry: entry,
                       canVote: canVote,
                       isWinner: isWinner,
+                      isAdmin: _isAdmin,
                       onVote: () => _vote(entry.id),
                       canReport: uid != null && uid != entry.userId,
                       onReport: () => _showReportDialog(entry.id),
+                      onShare: () => _shareEntry(entry),
+                      onComments: () => _showEntryComments(entry),
+                      onEditVotes: _isAdmin ? () => _editVotes(entry) : null,
                     );
                   },
                 );
@@ -162,9 +285,42 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
   }
 }
 
+// ─── Challenge-level comments ────────────────────────────────────────────────
+
+class _ChallengeComments extends StatelessWidget {
+  final String challengeId;
+  final bool isAdmin;
+  const _ChallengeComments({required this.challengeId, required this.isAdmin});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Divider(),
+          const SizedBox(height: 4),
+          const Text(
+            'Comentários do desafio',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+          ),
+          const SizedBox(height: 8),
+          CommentSection(
+            challengeId: challengeId,
+            entryId: '',
+            isAdmin: isAdmin,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Finished banner ─────────────────────────────────────────────────────────
+
 class _FinishedBanner extends StatelessWidget {
   final Challenge challenge;
-
   const _FinishedBanner({required this.challenge});
 
   @override
@@ -190,21 +346,31 @@ class _FinishedBanner extends StatelessWidget {
   }
 }
 
+// ─── Entry card ───────────────────────────────────────────────────────────────
+
 class _EntryCard extends StatelessWidget {
   final Entry entry;
   final bool canVote;
   final bool isWinner;
+  final bool isAdmin;
   final bool canReport;
   final VoidCallback onVote;
   final VoidCallback onReport;
+  final VoidCallback onShare;
+  final VoidCallback onComments;
+  final VoidCallback? onEditVotes;
 
   const _EntryCard({
     required this.entry,
     required this.canVote,
     required this.isWinner,
-    required this.onVote,
+    required this.isAdmin,
     required this.canReport,
+    required this.onVote,
     required this.onReport,
+    required this.onShare,
+    required this.onComments,
+    this.onEditVotes,
   });
 
   @override
@@ -237,6 +403,14 @@ class _EntryCard extends StatelessWidget {
                   const Spacer(),
                 ] else
                   const Spacer(),
+                // Share button
+                IconButton(
+                  icon: const Icon(Icons.share_outlined, size: 18),
+                  tooltip: 'Compartilhar',
+                  visualDensity: VisualDensity.compact,
+                  color: Colors.grey,
+                  onPressed: onShare,
+                ),
                 if (canReport)
                   IconButton(
                     icon: const Icon(Icons.flag_outlined, size: 18),
@@ -250,12 +424,34 @@ class _EntryCard extends StatelessWidget {
             _buildContent(),
             const SizedBox(height: 8),
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
                   '${entry.voteCount} voto${entry.voteCount == 1 ? '' : 's'}',
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
+                if (isAdmin && onEditVotes != null) ...[
+                  const SizedBox(width: 4),
+                  InkWell(
+                    onTap: onEditVotes,
+                    borderRadius: BorderRadius.circular(4),
+                    child: const Padding(
+                      padding: EdgeInsets.all(2),
+                      child: Icon(Icons.edit, size: 14, color: Colors.black38),
+                    ),
+                  ),
+                ],
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: onComments,
+                  icon: const Icon(Icons.comment_outlined, size: 16),
+                  label: const Text('Comentários'),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    textStyle: const TextStyle(fontSize: 13),
+                  ),
+                ),
+                const SizedBox(width: 4),
                 ElevatedButton(
                   onPressed: canVote ? onVote : null,
                   child: const Text('Votar'),

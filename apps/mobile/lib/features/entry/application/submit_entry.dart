@@ -1,4 +1,5 @@
-import 'dart:io';
+import 'package:image_picker/image_picker.dart';
+
 import '../domain/entities/content_type.dart';
 import '../infrastructure/entry_repository.dart';
 
@@ -11,7 +12,7 @@ class SubmitEntry {
     required String challengeId,
     required ContentType contentType,
     String? contentText,
-    File? contentFile,
+    XFile? contentFile,
   }) =>
       _repository.submitEntry(
         challengeId: challengeId,
