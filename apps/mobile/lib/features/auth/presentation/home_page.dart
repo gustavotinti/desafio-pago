@@ -29,6 +29,7 @@ class _HomePageState extends State<HomePage>
 
   final String? _currentUserId = FirebaseAuth.instance.currentUser?.uid;
   bool _isAdmin = false;
+  bool _logoSettled = false;
 
   @override
   void initState() {
@@ -37,6 +38,9 @@ class _HomePageState extends State<HomePage>
     _loadActive();
     _loadFinished();
     _loadAdminStatus();
+    Future.delayed(const Duration(milliseconds: 2600), () {
+      if (mounted) setState(() => _logoSettled = true);
+    });
   }
 
   Future<void> _loadAdminStatus() async {
@@ -80,10 +84,21 @@ class _HomePageState extends State<HomePage>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Image.asset(
-          'assets/images/logo_anim_h_dark.gif',
-          height: 36,
-          fit: BoxFit.contain,
+        title: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 500),
+          child: _logoSettled
+              ? Image.asset(
+                  'assets/images/2.png',
+                  key: const ValueKey('static'),
+                  height: 36,
+                  fit: BoxFit.contain,
+                )
+              : Image.asset(
+                  'assets/images/logo_anim_sq_dark.gif',
+                  key: const ValueKey('anim'),
+                  height: 36,
+                  fit: BoxFit.contain,
+                ),
         ),
         bottom: TabBar(
           controller: _tabController,
