@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../challenge/domain/entities/challenge.dart';
 import '../../challenge/domain/entities/challenge_status.dart';
+import '../../challenge/infrastructure/add_amount_repository.dart';
 import '../../challenge/infrastructure/get_challenges.dart';
 import '../../challenge/presentation/create_challenge_page.dart';
 import '../../entry/presentation/challenge_entries_page.dart';
@@ -25,10 +27,8 @@ class _HomePageState extends State<HomePage>
   late Future<List<Challenge>> _activeFuture;
   late Future<List<Challenge>> _finishedFuture;
 
-  final String? _currentUserId =
-      FirebaseAuth.instance.currentUser?.uid;
-  final String? _currentEmail =
-      FirebaseAuth.instance.currentUser?.email;
+  final String? _currentUserId = FirebaseAuth.instance.currentUser?.uid;
+  bool _isAdmin = false;
 
   @override
   void initState() {
@@ -36,6 +36,17 @@ class _HomePageState extends State<HomePage>
     _tabController = TabController(length: 2, vsync: this);
     _loadActive();
     _loadFinished();
+    _loadAdminStatus();
+  }
+
+  Future<void> _loadAdminStatus() async {
+    final uid = _currentUserId;
+    if (uid == null) return;
+    final doc = await FirebaseFirestore.instance
+        .collection('admins')
+        .doc(uid)
+        .get();
+    if (mounted) setState(() => _isAdmin = doc.exists);
   }
 
   @override
@@ -64,8 +75,6 @@ class _HomePageState extends State<HomePage>
       _loadFinished();
     });
   }
-
-  bool get _isAdmin => _currentEmail == 'gustavo.a.tinti3@gmail.com';
 
   @override
   Widget build(BuildContext context) {
@@ -129,6 +138,68 @@ class _HomePageState extends State<HomePage>
   }
 }
 
+// ─── Add-amount dialog ────────────────────────────────────────────────────────
+
+Future<void> _showAddAmountDialog(
+  BuildContext context,
+  Challenge challenge,
+  VoidCallback onSuccess,
+) async {
+  final controller = TextEditingController();
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Aumentar prêmio'),
+      content: TextField(
+        controller: controller,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        autofocus: true,
+        decoration: const InputDecoration(
+          labelText: 'Valor a adicionar (R\$)',
+          border: OutlineInputBorder(),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          child: const Text('Confirmar'),
+        ),
+      ],
+    ),
+  );
+
+  if (confirmed != true || !context.mounted) return;
+
+  final value = double.tryParse(controller.text.trim()) ?? 0;
+  if (value <= 0) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Valor inválido')),
+    );
+    return;
+  }
+
+  try {
+    await AddAmountRepository().addAmount(challenge.id, value);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'R\$ ${value.toStringAsFixed(2)} adicionados ao prêmio!',
+        ),
+      ),
+    );
+    onSuccess();
+  } catch (e) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(e.toString())));
+  }
+}
+
 // ─── Feed tab ────────────────────────────────────────────────────────────────
 
 class _FeedTab extends StatelessWidget {
@@ -185,6 +256,11 @@ class _FeedTab extends StatelessWidget {
                     challenge: challenges[i],
                     currentUserId: currentUserId,
                     onNavigated: onNavigated,
+                    onAddAmount: () => _showAddAmountDialog(
+                      context,
+                      challenges[i],
+                      onNavigated,
+                    ),
                   ),
                 ),
               );
@@ -245,11 +321,13 @@ class _ChallengeCard extends StatelessWidget {
   final Challenge challenge;
   final String? currentUserId;
   final VoidCallback onNavigated;
+  final VoidCallback onAddAmount;
 
   const _ChallengeCard({
     required this.challenge,
     required this.currentUserId,
     required this.onNavigated,
+    required this.onAddAmount,
   });
 
   bool get _isFinished => challenge.status == ChallengeStatus.finished;
@@ -375,7 +453,7 @@ class _ChallengeCard extends StatelessWidget {
             // Action buttons
             Row(
               children: [
-                if (!_isFinished && !_isCreator)
+                if (!_isFinished && !_isCreator) ...[
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(
@@ -395,8 +473,19 @@ class _ChallengeCard extends StatelessWidget {
                     },
                     child: const Text('Participar'),
                   ),
-                if (!_isFinished && !_isCreator)
                   const SizedBox(width: 8),
+                ],
+                if (!_isFinished) ...[
+                  OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 8),
+                        textStyle: const TextStyle(fontSize: 13)),
+                    onPressed: onAddAmount,
+                    child: const Text('+ Prêmio'),
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 OutlinedButton(
                   style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(
