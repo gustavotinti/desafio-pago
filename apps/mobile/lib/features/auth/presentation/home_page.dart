@@ -80,7 +80,11 @@ class _HomePageState extends State<HomePage>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Desafio Pago'),
+        title: Image.asset(
+          'assets/images/logo_anim_h_dark.gif',
+          height: 36,
+          fit: BoxFit.contain,
+        ),
         bottom: TabBar(
           controller: _tabController,
           tabs: const [

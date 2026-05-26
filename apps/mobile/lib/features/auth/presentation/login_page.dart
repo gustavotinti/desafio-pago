@@ -45,8 +45,6 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
-    final primary = Theme.of(context).colorScheme.primary;
-
     return Scaffold(
       body: SafeArea(
         child: Padding(
@@ -55,20 +53,12 @@ class _LoginPageState extends State<LoginPage> {
             children: [
               const Spacer(flex: 2),
 
-              // — Logo / nome —
-              Icon(Icons.emoji_events_rounded,
-                  size: 80, color: primary),
-              const SizedBox(height: 16),
-              Text(
-                'Desafio Pago',
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  color: primary,
-                  letterSpacing: 0.5,
-                ),
+              // — Logo —
+              Image.asset(
+                'assets/images/logo_stacked.png',
+                height: 200,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               const Text(
                 'Crie desafios. Ganhe prêmios.',
                 style: TextStyle(

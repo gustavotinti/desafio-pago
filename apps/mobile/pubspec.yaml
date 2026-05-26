@@ -51,3 +51,9 @@ flutter:
 
   assets:
     - assets/images/google.png
+    - assets/images/logo_icon.png
+    - assets/images/logo_stacked.png
+    - assets/images/logo_anim_h_light.gif
+    - assets/images/logo_anim_h_dark.gif
+    - assets/images/logo_anim_sq_light.gif
+    - assets/images/logo_anim_sq_dark.gif
