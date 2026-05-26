@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'user_profile_page.dart';
+
 class RankingsPage extends StatelessWidget {
   const RankingsPage({super.key});
 
@@ -66,6 +68,13 @@ class _RankingTab extends StatelessWidget {
                 : '$value $label';
 
             return ListTile(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                      UserProfilePage(userId: docs[index].id),
+                ),
+              ),
               leading: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [

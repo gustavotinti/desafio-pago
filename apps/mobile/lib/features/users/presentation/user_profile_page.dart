@@ -1,0 +1,199 @@
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+import '../infrastructure/follow_repository.dart';
+import 'followers_page.dart';
+
+class UserProfilePage extends StatefulWidget {
+  final String userId;
+  const UserProfilePage({super.key, required this.userId});
+
+  @override
+  State<UserProfilePage> createState() => _UserProfilePageState();
+}
+
+class _UserProfilePageState extends State<UserProfilePage> {
+  final _repo = FollowRepository();
+  bool _isFollowing = false;
+  bool _actionLoading = false;
+  Map<String, dynamic> _userData = {};
+  bool _dataLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final results = await Future.wait([
+      FirebaseFirestore.instance.collection('users').doc(widget.userId).get(),
+      _repo.isFollowing(widget.userId),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _userData = (results[0] as DocumentSnapshot).data() as Map<String, dynamic>? ?? {};
+      _isFollowing = results[1] as bool;
+      _dataLoaded = true;
+    });
+  }
+
+  Future<void> _toggleFollow() async {
+    setState(() => _actionLoading = true);
+    try {
+      if (_isFollowing) {
+        await _repo.unfollow(widget.userId);
+      } else {
+        await _repo.follow(widget.userId);
+      }
+      if (!mounted) return;
+      setState(() {
+        _isFollowing = !_isFollowing;
+        final delta = _isFollowing ? 1 : -1;
+        _userData['followersCount'] =
+            (_userData['followersCount'] as int? ?? 0) + delta;
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    } finally {
+      if (mounted) setState(() => _actionLoading = false);
+    }
+  }
+
+  void _openFollowers(FollowType type) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FollowersPage(userId: widget.userId, type: type),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final currentUid = FirebaseAuth.instance.currentUser?.uid;
+    final isOwnProfile = currentUid == widget.userId;
+
+    final name = _userData['name'] as String? ?? 'Usuário';
+    final photoUrl = _userData['photoUrl'] as String? ?? '';
+    final bio = _userData['bio'] as String? ?? '';
+    final followersCount = _userData['followersCount'] as int? ?? 0;
+    final followingCount = _userData['followingCount'] as int? ?? 0;
+    final totalVotes = _userData['totalVotesReceived'] ?? 0;
+    final totalEarned = (_userData['totalEarned'] as num? ?? 0).toDouble();
+
+    return Scaffold(
+      appBar: AppBar(title: Text(name)),
+      body: !_dataLoaded
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                // — Avatar + nome + bio —
+                Center(
+                  child: Column(
+                    children: [
+                      CircleAvatar(
+                        radius: 44,
+                        backgroundImage: photoUrl.isNotEmpty
+                            ? NetworkImage(photoUrl)
+                            : null,
+                        child: photoUrl.isEmpty
+                            ? const Icon(Icons.person, size: 44)
+                            : null,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        name,
+                        style: const TextStyle(
+                            fontSize: 20, fontWeight: FontWeight.bold),
+                      ),
+                      if (bio.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          bio,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.black54),
+                        ),
+                      ],
+                      if (!isOwnProfile) ...[
+                        const SizedBox(height: 12),
+                        _actionLoading
+                            ? const SizedBox(
+                                width: 24,
+                                height: 24,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : FilledButton.tonal(
+                                onPressed: _toggleFollow,
+                                child: Text(
+                                    _isFollowing ? 'Seguindo' : 'Seguir'),
+                              ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // — Stats row —
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _TappableStat(
+                      label: 'Seguidores',
+                      value: '$followersCount',
+                      onTap: () => _openFollowers(FollowType.followers),
+                    ),
+                    _TappableStat(
+                      label: 'Seguindo',
+                      value: '$followingCount',
+                      onTap: () => _openFollowers(FollowType.following),
+                    ),
+                    _TappableStat(label: 'Votos', value: '$totalVotes'),
+                    _TappableStat(
+                      label: 'Ganhos',
+                      value: 'R\$${totalEarned.toStringAsFixed(0)}',
+                    ),
+                  ],
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+class _TappableStat extends StatelessWidget {
+  final String label;
+  final String value;
+  final VoidCallback? onTap;
+
+  const _TappableStat({
+    required this.label,
+    required this.value,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final content = Column(
+      children: [
+        Text(value,
+            style: const TextStyle(
+                fontSize: 18, fontWeight: FontWeight.bold)),
+        Text(label,
+            style: const TextStyle(fontSize: 12, color: Colors.black54)),
+      ],
+    );
+    if (onTap == null) return content;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(padding: const EdgeInsets.all(4), child: content),
+    );
+  }
+}

@@ -6,6 +6,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import '../../withdrawals/infrastructure/withdraw_repository.dart';
 import '../../finance/infrastructure/get_transactions.dart';
 import '../../users/presentation/edit_profile_page.dart';
+import '../../users/presentation/followers_page.dart';
 import '../../payments/presentation/topup_page.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -218,8 +219,40 @@ class _ProfilePageState extends State<ProfilePage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _Stat(label: 'Seguidores', value: '$followersCount'),
-              _Stat(label: 'Seguindo', value: '$followingCount'),
+              _Stat(
+                label: 'Seguidores',
+                value: '$followersCount',
+                onTap: () {
+                  final uid = FirebaseAuth.instance.currentUser?.uid;
+                  if (uid == null) return;
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => FollowersPage(
+                        userId: uid,
+                        type: FollowType.followers,
+                      ),
+                    ),
+                  );
+                },
+              ),
+              _Stat(
+                label: 'Seguindo',
+                value: '$followingCount',
+                onTap: () {
+                  final uid = FirebaseAuth.instance.currentUser?.uid;
+                  if (uid == null) return;
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => FollowersPage(
+                        userId: uid,
+                        type: FollowType.following,
+                      ),
+                    ),
+                  );
+                },
+              ),
               _Stat(label: 'Votos', value: '$totalVotes'),
               _Stat(
                   label: 'Ganhos',
@@ -319,12 +352,13 @@ class _ProfilePageState extends State<ProfilePage> {
 class _Stat extends StatelessWidget {
   final String label;
   final String value;
+  final VoidCallback? onTap;
 
-  const _Stat({required this.label, required this.value});
+  const _Stat({required this.label, required this.value, this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    final content = Column(
       children: [
         Text(value,
             style: const TextStyle(
@@ -333,6 +367,12 @@ class _Stat extends StatelessWidget {
             style:
                 const TextStyle(fontSize: 12, color: Colors.black54)),
       ],
+    );
+    if (onTap == null) return content;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(padding: const EdgeInsets.all(4), child: content),
     );
   }
 }
