@@ -86,19 +86,17 @@ class _HomePageState extends State<HomePage>
       appBar: AppBar(
         title: AnimatedSwitcher(
           duration: const Duration(milliseconds: 500),
-          child: _logoSettled
-              ? Image.asset(
-                  'assets/images/2.png',
-                  key: const ValueKey('static'),
-                  height: 36,
-                  fit: BoxFit.contain,
-                )
-              : Image.asset(
-                  'assets/images/logo_anim_sq_dark.gif',
-                  key: const ValueKey('anim'),
-                  height: 36,
-                  fit: BoxFit.contain,
-                ),
+          child: SizedBox(
+            key: ValueKey(_logoSettled),
+            height: 36,
+            width: 160,
+            child: Image.asset(
+              _logoSettled
+                  ? 'assets/images/2.png'
+                  : 'assets/images/logo_anim_h_dark.gif',
+              fit: BoxFit.contain,
+            ),
+          ),
         ),
         bottom: TabBar(
           controller: _tabController,

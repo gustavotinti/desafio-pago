@@ -20,8 +20,14 @@ class _TermsPageState extends State<TermsPage> {
       await FirebaseFirestore.instance
           .collection('users')
           .doc(uid)
-          .update({'termsAccepted': true});
+          .set({'termsAccepted': true}, SetOptions(merge: true));
       widget.onAccepted();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Erro ao aceitar termos: $e')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }

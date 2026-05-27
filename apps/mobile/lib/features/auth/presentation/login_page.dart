@@ -60,7 +60,7 @@ class _LoginPageState extends State<LoginPage> {
               ),
               const SizedBox(height: 12),
               const Text(
-                'Crie desafios, fature muito!',
+                'Vença desafios, fature muito!',
                 style: TextStyle(
                   fontSize: 16,
                   color: Colors.black54,

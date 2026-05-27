@@ -18,7 +18,7 @@ service cloud.firestore {
 
       // Owner: profile fields only
       allow update: if signedIn() && uid() == userId
-          && changed().hasOnly(['name', 'bio', 'photoUrl', 'pixKey', 'fcmToken'])
+          && changed().hasOnly(['name', 'bio', 'photoUrl', 'pixKey', 'fcmToken', 'termsAccepted'])
 
         // Owner: followingCount (follow/unfollow)
         || (signedIn() && uid() == userId
