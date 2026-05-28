@@ -93,7 +93,7 @@ class _HomePageState extends State<HomePage>
             child: Image.asset(
               _logoSettled
                   ? 'assets/images/2.png'
-                  : 'assets/images/logo_anim_h_dark.gif',
+                  : 'assets/images/logo_anim_sq_dark.gif',
               fit: BoxFit.contain,
             ),
           ),
