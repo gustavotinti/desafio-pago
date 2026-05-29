@@ -16,6 +16,13 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if signedIn();
 
+      // First login: client may create own doc only with zero balances
+      allow create: if signedIn() && uid() == userId
+        && request.resource.data.balance == 0
+        && request.resource.data.pendingBalance == 0
+        && request.resource.data.lockedBalance == 0
+        && request.resource.data.totalEarned == 0;
+
       // Owner: profile fields only
       allow update: if signedIn() && uid() == userId
           && changed().hasOnly(['name', 'bio', 'photoUrl', 'pixKey', 'fcmToken', 'termsAccepted'])

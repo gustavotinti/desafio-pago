@@ -875,6 +875,46 @@ exports.adminBanUser = functions.https.onCall(async (data, context) => {
   return {success: true};
 });
 
+// ─── ACCEPT TERMS ────────────────────────────────────────────────────────────
+// Uses Admin SDK so it bypasses Firestore rules — works even if the user
+// document doesn't exist yet (race between saveUser and auth-state change).
+
+exports.acceptTerms = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Usuário não logado");
+  }
+
+  const uid = context.auth.uid;
+  const db = admin.firestore();
+  const userRef = db.collection("users").doc(uid);
+  const existing = await userRef.get();
+
+  if (existing.exists) {
+    await userRef.update({termsAccepted: true});
+  } else {
+    // Fallback: document was never created (saveUser failed or race condition)
+    const token = context.auth.token;
+    await userRef.set({
+      name: token.name || "",
+      email: token.email || "",
+      photoUrl: token.picture || "",
+      termsAccepted: true,
+      createdAt: new Date().toISOString(),
+      balance: 0,
+      pendingBalance: 0,
+      lockedBalance: 0,
+      totalEarned: 0,
+      totalVotesReceived: 0,
+      followersCount: 0,
+      followingCount: 0,
+      bio: "",
+      pixKey: "",
+    });
+  }
+
+  return {success: true};
+});
+
 // ─── BOOTSTRAP ADMIN ─────────────────────────────────────────────────────────
 
 exports.bootstrapAdmin = functions.https.onCall(async (data, context) => {
