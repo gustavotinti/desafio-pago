@@ -31,7 +31,6 @@ class _LoginPageState extends State<LoginPage> {
       }
 
       await UserRepository().saveUser(authUser);
-      // AuthGate handles navigation automatically
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -46,75 +45,146 @@ class _LoginPageState extends State<LoginPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: Column(
-            children: [
-              const Spacer(flex: 2),
-
-              // — Logo —
-              Image.asset(
-                'assets/images/logo_stacked.png',
-                height: 200,
+      backgroundColor: Colors.white,
+      body: Stack(
+        children: [
+          // ── Decorative blob — top-right outer ─────────────────────
+          Positioned(
+            top: -90, right: -90,
+            child: Container(
+              width: 260, height: 260,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF003b8a).withValues(alpha: 0.06),
               ),
-              const SizedBox(height: 12),
-              const Text(
-                'Vença desafios, fature muito!',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.black54,
-                ),
+            ),
+          ),
+          // ── Decorative blob — top-right inner ─────────────────────
+          Positioned(
+            top: -30, right: -30,
+            child: Container(
+              width: 130, height: 130,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF0cc0df).withValues(alpha: 0.09),
               ),
+            ),
+          ),
+          // ── Decorative blob — bottom-left ─────────────────────────
+          Positioned(
+            bottom: 50, left: -70,
+            child: Container(
+              width: 200, height: 200,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF003b8a).withValues(alpha: 0.05),
+              ),
+            ),
+          ),
+          // ── Decorative blob — bottom-right accent ─────────────────
+          Positioned(
+            bottom: -20, right: -20,
+            child: Container(
+              width: 110, height: 110,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFFff00bf).withValues(alpha: 0.06),
+              ),
+            ),
+          ),
 
-              const Spacer(flex: 3),
+          // ── Main content ──────────────────────────────────────────
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Column(
+                children: [
+                  const Spacer(flex: 2),
 
-              // — Botão Google —
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: Colors.black87,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    side: const BorderSide(color: Colors.black26),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                  // Logo
+                  Image.asset(
+                    'assets/images/logo_stacked.png',
+                    height: 200,
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Vença desafios, fature muito!',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.black54,
+                      letterSpacing: 0.3,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+
+                  const Spacer(flex: 3),
+
+                  // Google sign-in button with elevation shadow
+                  Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.09),
+                          blurRadius: 18,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
+                    ),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: Colors.black87,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          side: BorderSide.none,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        onPressed: _loading ? null : _signIn,
+                        child: _loading
+                            ? const SizedBox(
+                                height: 22,
+                                width: 22,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Image.asset(
+                                      'assets/images/google.png',
+                                      height: 22),
+                                  const SizedBox(width: 12),
+                                  const Text(
+                                    'Entrar com Google',
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                      ),
                     ),
                   ),
-                  onPressed: _loading ? null : _signIn,
-                  child: _loading
-                      ? const SizedBox(
-                          height: 22,
-                          width: 22,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Image.asset('assets/images/google.png',
-                                height: 22),
-                            const SizedBox(width: 12),
-                            const Text(
-                              'Entrar com Google',
-                              style: TextStyle(fontSize: 15),
-                            ),
-                          ],
-                        ),
-                ),
-              ),
 
-              const SizedBox(height: 16),
-              const Text(
-                'Apenas para usuários no Brasil · +18 anos',
-                style: TextStyle(fontSize: 11, color: Colors.black38),
-                textAlign: TextAlign.center,
-              ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    'Apenas para usuários no Brasil · +18 anos',
+                    style:
+                        TextStyle(fontSize: 11, color: Colors.black38),
+                    textAlign: TextAlign.center,
+                  ),
 
-              const Spacer(flex: 1),
-            ],
+                  const Spacer(flex: 1),
+                ],
+              ),
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
