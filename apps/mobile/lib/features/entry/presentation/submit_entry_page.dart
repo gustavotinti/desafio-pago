@@ -236,6 +236,7 @@ class _SubmitEntryPageState extends State<SubmitEntryPage> {
               _FormatGuide(
                 lines: const [
                   'Proporções aceitas: 9:16 · 4:5 · 1:1 · 16:9',
+                  'Tamanho máximo: 10 MB',
                   'Se necessário, recorte a imagem no seu dispositivo antes de selecionar.',
                 ],
               ),
@@ -258,6 +259,7 @@ class _SubmitEntryPageState extends State<SubmitEntryPage> {
                 lines: const [
                   'Proporções aceitas: 9:16 · 4:5 · 1:1 · 16:9',
                   'Duração máxima: 15 segundos',
+                  'Tamanho máximo: 50 MB',
                   'Edite e recorte antes de selecionar, se necessário.',
                 ],
               ),

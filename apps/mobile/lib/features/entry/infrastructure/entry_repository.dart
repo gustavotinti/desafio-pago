@@ -21,6 +21,22 @@ class EntryRepository {
 
     String? contentUrl;
     if (contentFile != null && contentType != ContentType.text) {
+      // ── Limite de tamanho ANTES de ler os bytes ───────────────────────────
+      // Imagem: 10 MB  |  Vídeo: 50 MB
+      const maxImageBytes = 10 * 1024 * 1024;
+      const maxVideoBytes = 50 * 1024 * 1024;
+      final maxBytes =
+          contentType == ContentType.image ? maxImageBytes : maxVideoBytes;
+      final fileSize = await contentFile.length();
+      if (fileSize > maxBytes) {
+        final limitMb = contentType == ContentType.image ? '10' : '50';
+        final actualMb = (fileSize / (1024 * 1024)).toStringAsFixed(1);
+        throw Exception(
+          'Arquivo muito grande: $actualMb MB. '
+          'Limite para ${contentType == ContentType.image ? "imagens" : "vídeos"}: $limitMb MB.',
+        );
+      }
+
       final ext = contentType == ContentType.image ? 'jpg' : 'mp4';
       final mimeType =
           contentType == ContentType.image ? 'image/jpeg' : 'video/mp4';
