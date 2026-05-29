@@ -270,6 +270,23 @@ exports.submitEntry = functions.https.onCall(async (data, context) => {
     );
   }
 
+  // ── Validação de conteúdo ─────────────────────────────────────────────────
+  if (contentType === "text") {
+    if (!contentText || contentText.trim().length === 0) {
+      throw new functions.https.HttpsError("invalid-argument", "Conteúdo de texto é obrigatório");
+    }
+    if (contentText.length > 5000) {
+      throw new functions.https.HttpsError(
+          "invalid-argument",
+          `Texto muito longo: ${contentText.length} caracteres (máximo 5000)`,
+      );
+    }
+  } else {
+    if (!contentUrl) {
+      throw new functions.https.HttpsError("invalid-argument", "URL do arquivo é obrigatória");
+    }
+  }
+
   const challengeDoc = await db.collection("challenges").doc(challengeId).get();
 
   if (!challengeDoc.exists) {
