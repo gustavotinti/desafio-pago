@@ -88,8 +88,8 @@ class _HomePageState extends State<HomePage>
           duration: const Duration(milliseconds: 500),
           child: SizedBox(
             key: ValueKey(_logoSettled),
-            height: 36,
-            width: 160,
+            height: 45,
+            width: 200,
             child: Image.asset(
               _logoSettled
                   ? 'assets/images/2.png'
