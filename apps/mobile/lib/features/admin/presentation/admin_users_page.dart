@@ -8,7 +8,7 @@ class AdminUsersPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Gerenciar Usuários'),
@@ -16,6 +16,7 @@ class AdminUsersPage extends StatelessWidget {
             tabs: [
               Tab(text: 'Acessos'),
               Tab(text: 'Banimentos'),
+              Tab(text: 'Manutenção'),
             ],
           ),
         ),
@@ -23,6 +24,7 @@ class AdminUsersPage extends StatelessWidget {
           children: [
             _AccessTab(),
             _BanTab(),
+            _MaintenanceTab(),
           ],
         ),
       ),
@@ -30,7 +32,7 @@ class AdminUsersPage extends StatelessWidget {
   }
 }
 
-// ── Aba Acessos (admins/moderadores) ─────────────────────────────────────────
+// ── Aba Acessos ───────────────────────────────────────────────────────────────
 
 class _AccessTab extends StatefulWidget {
   const _AccessTab();
@@ -44,6 +46,8 @@ class _AccessTabState extends State<_AccessTab> {
 
   Future<void> _addModerator() async {
     final email = _emailCtrl.text.trim();
+    if (email.isEmpty) return;
+
     final query = await FirebaseFirestore.instance
         .collection('users')
         .where('email', isEqualTo: email)
@@ -60,7 +64,7 @@ class _AccessTabState extends State<_AccessTab> {
     await FirebaseFirestore.instance
         .collection('admins')
         .doc(query.docs.first.id)
-        .set({'role': 'moderator'});
+        .set({'role': 'moderator'}, SetOptions(merge: true));
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -72,9 +76,8 @@ class _AccessTabState extends State<_AccessTab> {
   Future<void> _removeAdmin(String uid) async {
     await FirebaseFirestore.instance.collection('admins').doc(uid).delete();
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Removido')),
-    );
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('Removido')));
   }
 
   Future<void> _makeAdmin(String uid) async {
@@ -94,6 +97,7 @@ class _AccessTabState extends State<_AccessTab> {
             children: [
               TextField(
                 controller: _emailCtrl,
+                keyboardType: TextInputType.emailAddress,
                 decoration: const InputDecoration(
                   labelText: 'Email do usuário',
                   border: OutlineInputBorder(),
@@ -107,10 +111,11 @@ class _AccessTabState extends State<_AccessTab> {
             ],
           ),
         ),
-        const Divider(),
+        const Divider(height: 1),
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance.collection('admins').snapshots(),
+            stream:
+                FirebaseFirestore.instance.collection('admins').snapshots(),
             builder: (context, snapshot) {
               if (!snapshot.hasData) {
                 return const Center(child: CircularProgressIndicator());
@@ -123,24 +128,80 @@ class _AccessTabState extends State<_AccessTab> {
                 itemCount: docs.length,
                 itemBuilder: (context, i) {
                   final doc = docs[i];
-                  final role = (doc.data() as Map<String, dynamic>)['role'];
-                  return ListTile(
-                    title: Text(doc.id),
-                    subtitle: Text('Role: $role'),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (role != 'admin')
-                          IconButton(
-                            icon: const Icon(Icons.upgrade),
-                            onPressed: () => _makeAdmin(doc.id),
+                  final adminData = doc.data() as Map<String, dynamic>;
+                  final role = adminData['role'] as String? ?? 'super';
+                  // Look up the full user profile for name + email
+                  return FutureBuilder<DocumentSnapshot>(
+                    future: FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(doc.id)
+                        .get(),
+                    builder: (context, userSnap) {
+                      final userData =
+                          userSnap.data?.data() as Map<String, dynamic>?;
+                      final name =
+                          (userData?['name'] as String? ?? '').trim();
+                      final email = (userData?['email'] as String? ??
+                              adminData['email'] as String? ??
+                              '')
+                          .trim();
+                      final display =
+                          name.isNotEmpty ? name : email;
+                      final initial = display.isNotEmpty
+                          ? display[0].toUpperCase()
+                          : '?';
+
+                      return ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor:
+                              Colors.orange.withValues(alpha: 0.15),
+                          child: Text(
+                            initial,
+                            style:
+                                const TextStyle(color: Colors.orange),
                           ),
-                        IconButton(
-                          icon: const Icon(Icons.delete),
-                          onPressed: () => _removeAdmin(doc.id),
                         ),
-                      ],
-                    ),
+                        title: Text(
+                          display.isNotEmpty ? display : doc.id,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w500),
+                        ),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (name.isNotEmpty && email.isNotEmpty)
+                              Text(
+                                email,
+                                style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.black45),
+                              ),
+                            _RoleChip(role: role),
+                          ],
+                        ),
+                        isThreeLine:
+                            name.isNotEmpty && email.isNotEmpty,
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (role != 'admin' && role != 'super')
+                              IconButton(
+                                icon: const Icon(Icons.upgrade,
+                                    color: Colors.orange),
+                                tooltip: 'Promover a admin',
+                                onPressed: () => _makeAdmin(doc.id),
+                              ),
+                            IconButton(
+                              icon: const Icon(
+                                  Icons.delete_outline,
+                                  color: Colors.red),
+                              tooltip: 'Remover acesso',
+                              onPressed: () => _removeAdmin(doc.id),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
                   );
                 },
               );
@@ -148,6 +209,35 @@ class _AccessTabState extends State<_AccessTab> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _RoleChip extends StatelessWidget {
+  final String role;
+  const _RoleChip({required this.role});
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, color) = switch (role) {
+      'super' => ('Super Admin', Colors.deepPurple),
+      'admin' => ('Admin', Colors.orange),
+      'moderator' => ('Moderador', Colors.blue),
+      _ => (role, Colors.grey),
+    };
+    return Container(
+      margin: const EdgeInsets.only(top: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+            fontSize: 11, color: color, fontWeight: FontWeight.w600),
+      ),
     );
   }
 }
@@ -197,9 +287,8 @@ class _BanTabState extends State<_BanTab> {
       _reasonCtrl.clear();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }
 
@@ -214,9 +303,8 @@ class _BanTabState extends State<_BanTab> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.toString())));
     }
   }
 
@@ -230,6 +318,7 @@ class _BanTabState extends State<_BanTab> {
             children: [
               TextField(
                 controller: _emailCtrl,
+                keyboardType: TextInputType.emailAddress,
                 decoration: const InputDecoration(
                   labelText: 'Email do usuário',
                   border: OutlineInputBorder(),
@@ -256,7 +345,7 @@ class _BanTabState extends State<_BanTab> {
             ],
           ),
         ),
-        const Divider(),
+        const Divider(height: 1),
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
@@ -269,17 +358,39 @@ class _BanTabState extends State<_BanTab> {
               }
               final docs = snapshot.data!.docs;
               if (docs.isEmpty) {
-                return const Center(child: Text('Nenhum usuário banido'));
+                return const Center(
+                    child: Text('Nenhum usuário banido'));
               }
               return ListView.builder(
                 itemCount: docs.length,
                 itemBuilder: (context, i) {
                   final doc = docs[i];
                   final data = doc.data() as Map<String, dynamic>;
+                  final name =
+                      (data['name'] as String? ?? '').trim();
+                  final email =
+                      (data['email'] as String? ?? '').trim();
                   return ListTile(
                     leading: const Icon(Icons.block, color: Colors.red),
-                    title: Text(data['email'] ?? doc.id),
-                    subtitle: Text(data['banReason'] ?? ''),
+                    title:
+                        Text(name.isNotEmpty ? name : email),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (name.isNotEmpty && email.isNotEmpty)
+                          Text(email,
+                              style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.black45)),
+                        if ((data['banReason'] as String? ?? '')
+                            .isNotEmpty)
+                          Text(data['banReason'] as String,
+                              style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.black54)),
+                      ],
+                    ),
+                    isThreeLine: name.isNotEmpty,
                     trailing: TextButton(
                       onPressed: () => _unbanUser(doc.id),
                       child: const Text('Desbanir'),
@@ -291,6 +402,165 @@ class _BanTabState extends State<_BanTab> {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ── Aba Manutenção ────────────────────────────────────────────────────────────
+
+class _MaintenanceTab extends StatefulWidget {
+  const _MaintenanceTab();
+
+  @override
+  State<_MaintenanceTab> createState() => _MaintenanceTabState();
+}
+
+class _MaintenanceTabState extends State<_MaintenanceTab> {
+  bool _running = false;
+  String? _result;
+
+  Future<void> _migrateUsers() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Migrar usuários'),
+        content: const Text(
+          'Percorre todos os usuários do Firebase Auth e cria ou corrige documentos no Firestore que estejam incompletos ou ausentes.\n\nNão altera saldos existentes.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Executar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() {
+      _running = true;
+      _result = null;
+    });
+
+    try {
+      final res = await FirebaseFunctions.instanceFor(region: 'us-central1')
+          .httpsCallable('adminMigrateUsers',
+              options: HttpsCallableOptions(
+                  timeout: const Duration(minutes: 5)))
+          .call();
+      final count = (res.data as Map)['migrated'] ?? 0;
+      if (mounted) {
+        setState(
+            () => _result = 'Concluído: $count perfis criados/corrigidos.');
+      }
+    } on FirebaseFunctionsException catch (e) {
+      if (mounted) setState(() => _result = 'Erro: ${e.message}');
+    } catch (e) {
+      if (mounted) setState(() => _result = 'Erro: $e');
+    } finally {
+      if (mounted) setState(() => _running = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Ferramentas de manutenção',
+            style:
+                TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Operações que afetam todos os usuários. Use com cuidado.',
+            style: TextStyle(color: Colors.black54, fontSize: 13),
+          ),
+          const SizedBox(height: 24),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.build_circle_outlined,
+                          color: Colors.orange),
+                      SizedBox(width: 8),
+                      Text(
+                        'Corrigir perfis em limbo',
+                        style:
+                            TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Cria documentos Firestore faltantes e preenche campos ausentes com valores padrão. Não altera saldos existentes.',
+                    style: TextStyle(
+                        fontSize: 13, color: Colors.black54),
+                  ),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _running ? null : _migrateUsers,
+                      icon: _running
+                          ? const SizedBox(
+                              height: 16,
+                              width: 16,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2),
+                            )
+                          : const Icon(Icons.auto_fix_high),
+                      label: Text(_running
+                          ? 'Executando...'
+                          : 'Migrar usuários'),
+                    ),
+                  ),
+                  if (_result != null) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Icon(
+                          _result!.startsWith('Erro')
+                              ? Icons.error_outline
+                              : Icons.check_circle_outline,
+                          size: 16,
+                          color: _result!.startsWith('Erro')
+                              ? Colors.red
+                              : Colors.green.shade700,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            _result!,
+                            style: TextStyle(
+                              color: _result!.startsWith('Erro')
+                                  ? Colors.red
+                                  : Colors.green.shade700,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

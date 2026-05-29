@@ -1109,6 +1109,77 @@ exports.adminMarkWithdrawalPaid = functions.https.onCall(async (data, context) =
   return {success: true};
 });
 
+// ─── ADMIN: MIGRATE USERS ────────────────────────────────────────────────────
+// Backfills missing Firestore docs / fields for every Firebase Auth account.
+// Safe to run multiple times — never overwrites existing financial balances.
+
+exports.adminMigrateUsers = functions
+    .runWith({timeoutSeconds: 300, memory: "256MB"})
+    .https.onCall(async (data, context) => {
+      if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "Usuário não logado");
+      }
+      const db = admin.firestore();
+      const adminDoc = await db.collection("admins").doc(context.auth.uid).get();
+      if (!adminDoc.exists) {
+        throw new functions.https.HttpsError("permission-denied", "Acesso negado");
+      }
+
+      const defaultFields = {
+        name: "", email: "", photoUrl: "", bio: "", pixKey: "",
+        termsAccepted: false,
+        balance: 0, pendingBalance: 0, lockedBalance: 0,
+        totalEarned: 0, totalVotesReceived: 0,
+        followersCount: 0, followingCount: 0,
+      };
+
+      let migrated = 0;
+      let pageToken;
+
+      do {
+        const list = await admin.auth().listUsers(1000, pageToken);
+
+        for (const userRecord of list.users) {
+          const uid = userRecord.uid;
+          const userRef = db.collection("users").doc(uid);
+          const existing = await userRef.get();
+
+          if (!existing.exists) {
+            // Doc never created — bootstrap it from Auth profile
+            await userRef.set({
+              ...defaultFields,
+              name: userRecord.displayName || "",
+              email: userRecord.email || "",
+              photoUrl: userRecord.photoURL || "",
+              createdAt: userRecord.metadata.creationTime || new Date().toISOString(),
+            });
+            migrated++;
+          } else {
+            // Fill any missing fields without touching existing values
+            const d = existing.data();
+            const updates = {};
+            for (const [key, val] of Object.entries(defaultFields)) {
+              if (d[key] === undefined || d[key] === null) {
+                updates[key] = val;
+              }
+            }
+            if (!d.createdAt) {
+              updates.createdAt =
+                userRecord.metadata.creationTime || new Date().toISOString();
+            }
+            if (Object.keys(updates).length > 0) {
+              await userRef.update(updates);
+              migrated++;
+            }
+          }
+        }
+
+        pageToken = list.pageToken;
+      } while (pageToken);
+
+      return {migrated};
+    });
+
 // ─── DELETE ACCOUNT ──────────────────────────────────────────────────────────
 
 exports.deleteAccount = functions.https.onCall(async (data, context) => {
