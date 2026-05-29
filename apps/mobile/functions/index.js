@@ -59,77 +59,108 @@ exports.createChallenge = functions.https.onCall(async (data, context) => {
   }
 
   const userId = context.auth.uid;
-  const {title, description, amount, durationDays} = data;
-
-  if (!title || !description || !amount || amount <= 0 ||
-      !durationDays || durationDays < 1 || durationDays > 30) {
-    throw new functions.https.HttpsError("invalid-argument", "Dados inválidos");
-  }
-
   const db = admin.firestore();
-  const adminDoc = await db.collection("admins").doc(userId).get();
-  const isAdmin = adminDoc.exists;
 
-  // Daily limit
-  const now = new Date();
-  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-  const existing = await db.collection("challenges")
-      .where("createdBy", "==", userId)
-      .where("createdAt", ">=", startOfDay)
-      .get();
-  if (existing.size >= 20) {
-    throw new functions.https.HttpsError("resource-exhausted", "Limite de 20 desafios por dia atingido");
-  }
+  try {
+    const {title, description, amount, durationDays} = data;
 
-  if (!isAdmin) {
-    const userDoc = await db.collection("users").doc(userId).get();
-    const balance = userDoc.data()?.balance || 0;
-    if (balance < amount) {
-      throw new functions.https.HttpsError("failed-precondition", "Saldo insuficiente para criar o desafio");
+    if (!title || !description || !amount || amount <= 0 ||
+        !durationDays || durationDays < 1 || durationDays > 30) {
+      throw new functions.https.HttpsError("invalid-argument", "Dados inválidos");
     }
-  }
 
-  const expiresAt = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000).toISOString();
-  const challengeRef = db.collection("challenges").doc();
-  const batch = db.batch();
+    const adminDoc = await db.collection("admins").doc(userId).get();
+    const isAdmin = adminDoc.exists;
 
-  batch.set(challengeRef, {
-    title,
-    description,
-    createdBy: userId,
-    amount,
-    creatorContribution: isAdmin ? 0 : amount,
-    status: "active",
-    voteCount: 0,
-    entryCount: 0,
-    winnerIds: [],
-    createdAt: now.toISOString(),
-    expiresAt,
-  });
+    // Daily limit
+    const now = new Date();
+    const startOfDay = new Date(
+        now.getFullYear(), now.getMonth(), now.getDate(),
+    ).toISOString();
+    const existing = await db.collection("challenges")
+        .where("createdBy", "==", userId)
+        .where("createdAt", ">=", startOfDay)
+        .get();
+    if (existing.size >= 20) {
+      throw new functions.https.HttpsError(
+          "resource-exhausted", "Limite de 20 desafios por dia atingido",
+      );
+    }
 
-  if (!isAdmin) {
-    const userRef = db.collection("users").doc(userId);
-    batch.update(userRef, {
-      balance: admin.firestore.FieldValue.increment(-amount),
-      pendingBalance: admin.firestore.FieldValue.increment(amount),
-    });
-    batch.set(db.collection("transactions").doc(), {
-      userId,
-      amount,
-      type: "challenge_created",
-      description: `Desafio criado: ${title}`,
-      challengeId: challengeRef.id,
+    // Balance check (non-admin only)
+    if (!isAdmin) {
+      const userDoc = await db.collection("users").doc(userId).get();
+      if (!userDoc.exists) {
+        throw new functions.https.HttpsError(
+            "failed-precondition",
+            "Perfil de usuário não encontrado. Faça login novamente.",
+        );
+      }
+      const balance = userDoc.data().balance ?? 0;
+      if (balance < amount) {
+        throw new functions.https.HttpsError(
+            "failed-precondition",
+            `Saldo insuficiente. Saldo: R$${Number(balance).toFixed(2)}, necessário: R$${Number(amount).toFixed(2)}.`,
+        );
+      }
+    }
+
+    const expiresAt = new Date(
+        now.getTime() + durationDays * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    const challengeRef = db.collection("challenges").doc();
+    const batch = db.batch();
+
+    batch.set(challengeRef, {
+      title,
+      description,
+      createdBy: userId,
+      amount: Number(amount),
+      creatorContribution: isAdmin ? 0 : Number(amount),
+      status: "active",
+      voteCount: 0,
+      entryCount: 0,
+      winnerIds: [],
       createdAt: now.toISOString(),
+      expiresAt,
     });
+
+    if (!isAdmin) {
+      const userRef = db.collection("users").doc(userId);
+      batch.update(userRef, {
+        balance: admin.firestore.FieldValue.increment(-Number(amount)),
+        pendingBalance: admin.firestore.FieldValue.increment(Number(amount)),
+      });
+      batch.set(db.collection("transactions").doc(), {
+        userId,
+        amount: Number(amount),
+        type: "challenge_created",
+        description: `Desafio criado: ${title}`,
+        challengeId: challengeRef.id,
+        createdAt: now.toISOString(),
+      });
+    }
+
+    await batch.commit();
+
+    if (!isAdmin) {
+      try {
+        await _maybeScheduleInstagramPost(db, challengeRef.id, 0, Number(amount));
+      } catch (igErr) {
+        // Instagram scheduling is non-critical — log but don't fail the request
+        console.error("Instagram scheduling failed (non-fatal):", igErr);
+      }
+    }
+
+    return {challengeId: challengeRef.id};
+  } catch (err) {
+    if (err instanceof functions.https.HttpsError) throw err;
+    console.error("createChallenge unhandled error:", err);
+    throw new functions.https.HttpsError(
+        "internal",
+        `Erro interno: ${err.message || String(err)}`,
+    );
   }
-
-  await batch.commit();
-
-  if (!isAdmin) {
-    await _maybeScheduleInstagramPost(db, challengeRef.id, 0, amount);
-  }
-
-  return {challengeId: challengeRef.id};
 });
 
 // ─── ADD AMOUNT (APORTE) ─────────────────────────────────────────────────────

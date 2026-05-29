@@ -62,8 +62,9 @@ class _CreateChallengePageState extends State<CreateChallengePage> {
       if (mounted) Navigator.pop(context);
     } catch (e) {
       if (mounted) {
+        final msg = e.toString().replaceFirst('Exception: ', '');
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString())),
+          SnackBar(content: Text(msg)),
         );
       }
     } finally {
