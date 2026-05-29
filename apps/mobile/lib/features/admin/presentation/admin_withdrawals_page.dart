@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../../../core/widgets/web_frame.dart';
+
 class AdminWithdrawalsPage extends StatelessWidget {
   const AdminWithdrawalsPage({super.key});
 
@@ -22,13 +24,16 @@ class AdminWithdrawalsPage extends StatelessWidget {
             ],
           ),
         ),
-        body: const TabBarView(
-          children: [
-            _WithdrawalList(status: 'pending'),
-            _WithdrawalList(status: 'approved'),
-            _WithdrawalList(status: 'paid'),
-            _WithdrawalList(status: 'rejected'),
-          ],
+        body: WebFrame(
+          maxWidth: 900,
+          child: const TabBarView(
+            children: [
+              _WithdrawalList(status: 'pending'),
+              _WithdrawalList(status: 'approved'),
+              _WithdrawalList(status: 'paid'),
+              _WithdrawalList(status: 'rejected'),
+            ],
+          ),
         ),
       ),
     );

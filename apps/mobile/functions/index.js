@@ -383,6 +383,11 @@ exports.vote = functions.https.onCall(async (data, context) => {
 
   const db = admin.firestore();
   await _assertNotBanned(db, userId);
+
+  // Admin bypass: admins can vote on any challenge (including own) multiple times
+  const adminDoc = await db.collection("admins").doc(userId).get();
+  const isAdmin = adminDoc.exists;
+
   const challengeDoc = await db.collection("challenges").doc(challengeId).get();
 
   if (!challengeDoc.exists) {
@@ -391,7 +396,8 @@ exports.vote = functions.https.onCall(async (data, context) => {
 
   const challenge = challengeDoc.data();
 
-  if (challenge.createdBy === userId) {
+  // Creator restriction — admins bypass this for demo purposes
+  if (!isAdmin && challenge.createdBy === userId) {
     throw new functions.https.HttpsError(
         "permission-denied", "Você não pode votar no próprio desafio",
     );
@@ -401,36 +407,47 @@ exports.vote = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError("failed-precondition", "Desafio não está ativo");
   }
 
-  const voteId = `${userId}_${challengeId}`;
-  const voteRef = db.collection("votes").doc(voteId);
+  // Admin gets a unique vote ID per vote so they can cast multiple demo votes
+  const voteId = isAdmin ?
+    `admin_${userId}_${entryId}_${Date.now()}` :
+    `${userId}_${challengeId}`;
 
-  if ((await voteRef.get()).exists) {
-    throw new functions.https.HttpsError("already-exists", "Você já votou neste desafio");
+  if (!isAdmin) {
+    const existingVote = await db.collection("votes").doc(voteId).get();
+    if (existingVote.exists) {
+      throw new functions.https.HttpsError("already-exists", "Você já votou neste desafio");
+    }
   }
 
+  const voteRef = db.collection("votes").doc(voteId);
   const entryRef = db.collection("entries").doc(entryId);
   const challengeRef = db.collection("challenges").doc(challengeId);
   const entryDoc = await entryRef.get();
-  const entryOwnerRef = db.collection("users").doc(entryDoc.data().userId);
 
   await db.runTransaction(async (tx) => {
     tx.set(voteRef, {
       userId, challengeId, entryId,
+      ...(isAdmin ? {isAdminVote: true} : {}),
       createdAt: new Date().toISOString(),
     });
     tx.update(entryRef, {voteCount: admin.firestore.FieldValue.increment(1)});
     tx.update(challengeRef, {voteCount: admin.firestore.FieldValue.increment(1)});
-    tx.update(entryOwnerRef, {totalVotesReceived: admin.firestore.FieldValue.increment(1)});
+    if (!isAdmin) {
+      const entryOwnerRef = db.collection("users").doc(entryDoc.data().userId);
+      tx.update(entryOwnerRef, {totalVotesReceived: admin.firestore.FieldValue.increment(1)});
+    }
   });
 
-  const entryOwnerId = entryDoc.data().userId;
-  if (entryOwnerId !== userId) {
-    await _sendNotification(
-        db, entryOwnerId,
-        "🗳️ Novo voto!",
-        `Alguém votou na sua entrada em "${challenge.title}"`,
-        {type: "vote", challengeId, entryId},
-    );
+  if (!isAdmin) {
+    const entryOwnerId = entryDoc.data().userId;
+    if (entryOwnerId !== userId) {
+      await _sendNotification(
+          db, entryOwnerId,
+          "🗳️ Novo voto!",
+          `Alguém votou na sua entrada em "${challenge.title}"`,
+          {type: "vote", challengeId, entryId},
+      );
+    }
   }
 
   return {success: true};
@@ -1117,6 +1134,80 @@ exports.adminGenerateComment = functions.https.onCall(async (data, context) => {
   });
 
   return {success: true};
+});
+
+// ─── ADMIN: SUBMIT DEMO ENTRY ────────────────────────────────────────────────
+// Creates a fake participant entry on behalf of a demo user.
+// Bypasses creator restriction, duplicate check, and ban check.
+
+exports.adminSubmitDemoEntry = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Usuário não logado");
+  }
+
+  const db = admin.firestore();
+  const adminDoc = await db.collection("admins").doc(context.auth.uid).get();
+  if (!adminDoc.exists) {
+    throw new functions.https.HttpsError("permission-denied", "Acesso negado");
+  }
+
+  const {challengeId, contentType, contentText, contentUrl, demoName} = data;
+
+  if (!challengeId || !contentType) {
+    throw new functions.https.HttpsError(
+        "invalid-argument", "challengeId e contentType são obrigatórios",
+    );
+  }
+
+  if (contentType === "text") {
+    if (!contentText || contentText.trim().length === 0) {
+      throw new functions.https.HttpsError("invalid-argument", "Conteúdo de texto é obrigatório");
+    }
+  } else {
+    if (!contentUrl) {
+      throw new functions.https.HttpsError("invalid-argument", "URL do conteúdo é obrigatória");
+    }
+  }
+
+  const challengeDoc = await db.collection("challenges").doc(challengeId).get();
+  if (!challengeDoc.exists) {
+    throw new functions.https.HttpsError("not-found", "Desafio não encontrado");
+  }
+  if (challengeDoc.data().status !== "active") {
+    throw new functions.https.HttpsError("failed-precondition", "Desafio não está ativo");
+  }
+
+  // Each demo entry gets a unique synthetic userId so they never conflict
+  const demoUserId = `demo_${Date.now()}`;
+  const entryRef = db.collection("entries").doc();
+  const challengeRef = db.collection("challenges").doc(challengeId);
+
+  await db.runTransaction(async (tx) => {
+    tx.set(entryRef, {
+      challengeId,
+      userId: demoUserId,
+      demoName: (demoName || "").trim() || "Participante Demo",
+      isDemo: true,
+      contentType,
+      contentText: contentText || null,
+      contentUrl: contentUrl || null,
+      voteCount: 0,
+      isActive: true,
+      createdAt: new Date().toISOString(),
+    });
+    tx.update(challengeRef, {entryCount: admin.firestore.FieldValue.increment(1)});
+  });
+
+  await db.collection("audit_logs").add({
+    type: "admin_demo_entry",
+    entryId: entryRef.id,
+    challengeId,
+    adminId: context.auth.uid,
+    demoUserId,
+    createdAt: new Date().toISOString(),
+  });
+
+  return {entryId: entryRef.id};
 });
 
 // ─── ADMIN: MARK WITHDRAWAL PAID ─────────────────────────────────────────────

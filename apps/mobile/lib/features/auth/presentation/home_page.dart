@@ -10,6 +10,7 @@ import '../../challenge/presentation/create_challenge_page.dart';
 import '../../entry/presentation/challenge_entries_page.dart';
 import '../../entry/presentation/submit_entry_page.dart';
 import '../../admin/presentation/admin_page.dart';
+import '../../../core/widgets/web_frame.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -241,7 +242,8 @@ class _FeedTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return WebFrame(
+      child: Column(
       children: [
         _SortBar(sortBy: sortBy, onChanged: onSortChanged),
         Expanded(
@@ -289,6 +291,7 @@ class _FeedTab extends StatelessWidget {
           ),
         ),
       ],
+    ),
     );
   }
 }

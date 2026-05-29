@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
+import '../../../core/widgets/web_frame.dart';
 import '../../challenge/domain/entities/challenge.dart';
 import '../../challenge/domain/entities/challenge_status.dart';
 import '../../challenge/infrastructure/vote_repository.dart';
@@ -215,7 +216,8 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
           ),
         ),
       ),
-      body: Column(
+      body: WebFrame(
+        child: Column(
         children: [
           if (isFinished) _FinishedBanner(challenge: widget.challenge),
           Expanded(
@@ -228,7 +230,8 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
 
                 final entries = snapshot.data![0] as List<Entry>;
                 final hasVoted = snapshot.data![1] as bool;
-                final canVote = !hasVoted && !_isCreator && !isFinished;
+                // Admins bypass the creator restriction for demo voting
+                final canVote = !hasVoted && (!_isCreator || _isAdmin) && !isFinished;
 
                 final uid = FirebaseAuth.instance.currentUser?.uid;
 
@@ -280,6 +283,7 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
             ),
           ),
         ],
+        ),
       ),
     );
   }

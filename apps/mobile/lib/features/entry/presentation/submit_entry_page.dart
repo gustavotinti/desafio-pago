@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../core/widgets/web_frame.dart';
 import '../application/submit_entry.dart';
 import '../domain/entities/content_type.dart';
 import '../infrastructure/entry_repository.dart';
@@ -181,7 +182,8 @@ class _SubmitEntryPageState extends State<SubmitEntryPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text(widget.challengeTitle)),
-      body: SingleChildScrollView(
+      body: WebFrame(
+        child: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -293,6 +295,7 @@ class _SubmitEntryPageState extends State<SubmitEntryPage> {
               ),
             ),
           ],
+        ),
         ),
       ),
     );

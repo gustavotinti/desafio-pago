@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
+import '../../../core/widgets/web_frame.dart';
+
 final _functions = FirebaseFunctions.instanceFor(region: 'us-central1');
 
 class AdminChallengesPage extends StatelessWidget {
@@ -11,7 +13,9 @@ class AdminChallengesPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Admin — Desafios')),
-      body: StreamBuilder<QuerySnapshot>(
+      body: WebFrame(
+        maxWidth: 900,
+        child: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('challenges')
             .orderBy('createdAt', descending: true)
@@ -37,6 +41,7 @@ class AdminChallengesPage extends StatelessWidget {
             },
           );
         },
+        ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showCreateDialog(context),
@@ -337,7 +342,9 @@ class _AdminChallengeCard extends StatelessWidget {
             ],
             if (_isActive) ...[
               const SizedBox(height: 8),
-              Row(
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
                 children: [
                   OutlinedButton.icon(
                     onPressed: () => _extendDeadline(context),
@@ -348,7 +355,21 @@ class _AdminChallengeCard extends StatelessWidget {
                             horizontal: 10, vertical: 6),
                         textStyle: const TextStyle(fontSize: 12)),
                   ),
-                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: () => showDialog(
+                      context: context,
+                      builder: (_) => _DemoEntryDialog(challengeId: id),
+                    ),
+                    icon: const Icon(Icons.person_add_outlined,
+                        size: 16, color: Colors.purple),
+                    label: const Text('Demo entry',
+                        style: TextStyle(color: Colors.purple)),
+                    style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 6),
+                        textStyle: const TextStyle(fontSize: 12),
+                        side: const BorderSide(color: Colors.purple)),
+                  ),
                   OutlinedButton.icon(
                     onPressed: () => _forceFinish(context),
                     icon: const Icon(Icons.stop_circle_outlined,
@@ -377,5 +398,137 @@ class _AdminChallengeCard extends StatelessWidget {
     } catch (_) {
       return iso;
     }
+  }
+}
+
+// ─── Demo Entry Dialog ────────────────────────────────────────────────────────
+
+class _DemoEntryDialog extends StatefulWidget {
+  final String challengeId;
+  const _DemoEntryDialog({required this.challengeId});
+
+  @override
+  State<_DemoEntryDialog> createState() => _DemoEntryDialogState();
+}
+
+class _DemoEntryDialogState extends State<_DemoEntryDialog> {
+  final _nameCtrl = TextEditingController();
+  final _contentCtrl = TextEditingController();
+  String _contentType = 'text';
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _contentCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final content = _contentCtrl.text.trim();
+    if (content.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Preencha o conteúdo')),
+      );
+      return;
+    }
+
+    setState(() => _saving = true);
+
+    try {
+      final Map<String, dynamic> callData = {
+        'challengeId': widget.challengeId,
+        'contentType': _contentType,
+        'demoName': _nameCtrl.text.trim().isEmpty
+            ? 'Participante Demo'
+            : _nameCtrl.text.trim(),
+      };
+      if (_contentType == 'text') {
+        callData['contentText'] = content;
+      } else {
+        callData['contentUrl'] = content;
+      }
+
+      await _functions.httpsCallable('adminSubmitDemoEntry').call(callData);
+      if (mounted) Navigator.pop(context);
+    } on FirebaseFunctionsException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message ?? 'Erro')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Adicionar participante demo'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _nameCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Nome do participante (opcional)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'text', label: Text('Texto')),
+                ButtonSegment(value: 'image', label: Text('Imagem')),
+                ButtonSegment(value: 'video', label: Text('Vídeo')),
+              ],
+              selected: {_contentType},
+              onSelectionChanged: (s) => setState(() {
+                _contentType = s.first;
+                _contentCtrl.clear();
+              }),
+            ),
+            const SizedBox(height: 12),
+            if (_contentType == 'text')
+              TextField(
+                controller: _contentCtrl,
+                maxLines: 5,
+                decoration: const InputDecoration(
+                  labelText: 'Texto do participante',
+                  border: OutlineInputBorder(),
+                ),
+              )
+            else
+              TextField(
+                controller: _contentCtrl,
+                decoration: InputDecoration(
+                  labelText: _contentType == 'image'
+                      ? 'URL da imagem'
+                      : 'URL do vídeo',
+                  border: const OutlineInputBorder(),
+                  hintText: 'https://...',
+                ),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancelar'),
+        ),
+        ElevatedButton(
+          onPressed: _saving ? null : _submit,
+          child: _saving
+              ? const SizedBox(
+                  height: 18,
+                  width: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+              : const Text('Adicionar'),
+        ),
+      ],
+    );
   }
 }

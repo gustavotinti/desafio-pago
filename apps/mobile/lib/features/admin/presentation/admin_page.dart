@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/widgets/web_frame.dart';
 import 'admin_withdrawals_page.dart';
 import 'admin_users_page.dart';
 import 'admin_challenges_page.dart';
@@ -11,7 +12,9 @@ class AdminPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Painel Admin')),
-      body: ListView(
+      body: WebFrame(
+        maxWidth: 900,
+        child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           _AdminCard(
@@ -47,6 +50,7 @@ class AdminPage extends StatelessWidget {
             ),
           ),
         ],
+        ),
       ),
     );
   }

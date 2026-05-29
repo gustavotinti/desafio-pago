@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
+import '../../../core/widgets/web_frame.dart';
+
 class AdminUsersPage extends StatelessWidget {
   const AdminUsersPage({super.key});
 
@@ -20,12 +22,15 @@ class AdminUsersPage extends StatelessWidget {
             ],
           ),
         ),
-        body: const TabBarView(
-          children: [
-            _AccessTab(),
-            _BanTab(),
-            _MaintenanceTab(),
-          ],
+        body: WebFrame(
+          maxWidth: 900,
+          child: const TabBarView(
+            children: [
+              _AccessTab(),
+              _BanTab(),
+              _MaintenanceTab(),
+            ],
+          ),
         ),
       ),
     );

@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../auth/infrastructure/firebase_auth_repository.dart';
 import '../../users/infrastructure/user_repository.dart';
+import '../../../core/widgets/web_frame.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -95,7 +96,9 @@ class _LoginPageState extends State<LoginPage> {
 
           // ── Main content ──────────────────────────────────────────
           SafeArea(
-            child: Padding(
+            child: WebFrame(
+              maxWidth: 420,
+              child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 32),
               child: Column(
                 children: [
@@ -184,6 +187,7 @@ class _LoginPageState extends State<LoginPage> {
               ),
             ),
           ),
+        ),
         ],
       ),
     );

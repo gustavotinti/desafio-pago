@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/widgets/web_frame.dart';
 import '../application/create_challenge.dart';
 import '../domain/entities/challenge.dart';
 import '../domain/entities/challenge_status.dart';
@@ -76,7 +77,8 @@ class _CreateChallengePageState extends State<CreateChallengePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text("Criar Desafio")),
-      body: SingleChildScrollView(
+      body: WebFrame(
+        child: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Form(
           key: _formKey,
@@ -148,6 +150,7 @@ class _CreateChallengePageState extends State<CreateChallengePage> {
               ),
             ],
           ),
+        ),
         ),
       ),
     );
