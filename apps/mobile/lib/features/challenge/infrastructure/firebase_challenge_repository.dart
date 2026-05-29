@@ -18,7 +18,10 @@ class FirebaseChallengeRepository {
         'durationDays': durationDays < 1 ? 1 : durationDays,
       });
     } on FirebaseFunctionsException catch (e) {
-      throw Exception(e.message ?? 'Erro ao criar desafio');
+      final msg = (e.message != null && e.message != e.code)
+          ? e.message!
+          : '[${e.code}] ${e.message ?? 'Erro ao criar desafio'}';
+      throw Exception(msg);
     }
   }
 }

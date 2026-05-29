@@ -109,8 +109,11 @@ class _CreateChallengeDialogState extends State<_CreateChallengeDialog> {
       if (mounted) Navigator.pop(context);
     } on FirebaseFunctionsException catch (e) {
       if (mounted) {
+        final msg = (e.message != null && e.message != e.code)
+            ? e.message!
+            : '[${e.code}] ${e.message ?? 'Erro desconhecido'}';
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(e.message ?? 'Erro')));
+            .showSnackBar(SnackBar(content: Text(msg)));
       }
     } finally {
       if (mounted) setState(() => _saving = false);

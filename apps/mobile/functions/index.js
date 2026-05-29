@@ -60,6 +60,7 @@ exports.createChallenge = functions.https.onCall(async (data, context) => {
 
   const userId = context.auth.uid;
   const db = admin.firestore();
+  console.log("createChallenge: invoked by userId:", userId, "data:", JSON.stringify(data));
 
   try {
     const {title, description, amount, durationDays} = data;
