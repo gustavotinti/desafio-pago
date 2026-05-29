@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
+import '../../../core/widgets/web_frame.dart';
 import '../../withdrawals/infrastructure/withdraw_repository.dart';
 import '../../finance/infrastructure/get_transactions.dart';
 import '../../users/presentation/edit_profile_page.dart';
@@ -154,10 +155,13 @@ class _ProfilePageState extends State<ProfilePage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Image.asset(
-          'assets/images/logo_anim_h_dark.gif',
-          height: 36,
-          fit: BoxFit.contain,
+        title: SizedBox(
+          height: 52,
+          width: 220,
+          child: Image.asset(
+            'assets/images/2.png',
+            fit: BoxFit.contain,
+          ),
         ),
         actions: [
           IconButton(
@@ -186,7 +190,8 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
         ],
       ),
-      body: ListView(
+      body: WebFrame(
+        child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           // — Header —
@@ -301,6 +306,81 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
           const SizedBox(height: 16),
 
+          // — Chave Pix —
+          InkWell(
+            onTap: () async {
+              final updated = await Navigator.push<bool>(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => EditProfilePage(
+                    currentName: name,
+                    currentBio: bio,
+                    currentPixKey: pixKey,
+                    currentPhotoUrl: photoUrl,
+                    pixLocked: lockedBalance > 0,
+                  ),
+                ),
+              );
+              if (updated == true) _load();
+            },
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: pixKey.isEmpty
+                    ? Colors.orange.shade50
+                    : Colors.green.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: pixKey.isEmpty
+                      ? Colors.orange.shade200
+                      : Colors.green.shade200,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.pix,
+                    size: 18,
+                    color: pixKey.isEmpty
+                        ? Colors.orange.shade700
+                        : Colors.green.shade700,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Chave Pix',
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.black54),
+                        ),
+                        Text(
+                          pixKey.isEmpty
+                              ? 'Não configurada — toque para adicionar'
+                              : pixKey,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: pixKey.isEmpty
+                                ? Colors.orange.shade800
+                                : Colors.black87,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.edit_outlined,
+                      size: 15, color: Colors.black38),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
           // — Saque —
           TextField(
             controller: _amountController,
@@ -348,6 +428,7 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
           const SizedBox(height: 16),
         ],
+        ),
       ),
     );
   }

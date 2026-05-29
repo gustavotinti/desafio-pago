@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../../core/widgets/web_frame.dart';
 import '../infrastructure/follow_repository.dart';
 import 'followers_page.dart';
 
@@ -90,7 +91,8 @@ class _UserProfilePageState extends State<UserProfilePage> {
       appBar: AppBar(title: Text(name)),
       body: !_dataLoaded
           ? const Center(child: CircularProgressIndicator())
-          : ListView(
+          : WebFrame(
+              child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
                 // — Avatar + nome + bio —
@@ -162,6 +164,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                   ],
                 ),
               ],
+              ),
             ),
     );
   }

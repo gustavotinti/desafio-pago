@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../../core/widgets/web_frame.dart';
 import 'user_profile_page.dart';
 
 class RankingsPage extends StatelessWidget {
@@ -12,10 +13,13 @@ class RankingsPage extends StatelessWidget {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
-          title: Image.asset(
-            'assets/images/logo_anim_h_dark.gif',
-            height: 36,
-            fit: BoxFit.contain,
+          title: SizedBox(
+            height: 52,
+            width: 220,
+            child: Image.asset(
+              'assets/images/2.png',
+              fit: BoxFit.contain,
+            ),
           ),
           bottom: const TabBar(
             tabs: [
@@ -24,11 +28,13 @@ class RankingsPage extends StatelessWidget {
             ],
           ),
         ),
-        body: const TabBarView(
-          children: [
-            _RankingTab(orderBy: 'totalEarned', label: 'R\$'),
-            _RankingTab(orderBy: 'totalVotesReceived', label: 'votos'),
-          ],
+        body: WebFrame(
+          child: TabBarView(
+            children: const [
+              _RankingTab(orderBy: 'totalEarned', label: 'R\$'),
+              _RankingTab(orderBy: 'totalVotesReceived', label: 'votos'),
+            ],
+          ),
         ),
       ),
     );

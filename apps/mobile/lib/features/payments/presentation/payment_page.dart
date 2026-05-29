@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../../core/widgets/web_frame.dart';
+
 class PaymentPage extends StatefulWidget {
   final String paymentId;
   final String qrCode;
@@ -96,7 +98,8 @@ class _PaymentPageState extends State<PaymentPage> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Pagar via Pix')),
-      body: SingleChildScrollView(
+      body: WebFrame(
+        child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
@@ -139,6 +142,7 @@ class _PaymentPageState extends State<PaymentPage> {
               _CountdownTimer(expiresAt: widget.expiresAt),
             ],
           ],
+        ),
         ),
       ),
     );

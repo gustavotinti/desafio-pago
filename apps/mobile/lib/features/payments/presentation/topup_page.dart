@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/widgets/web_frame.dart';
 import 'payment_page.dart';
 import '../infrastructure/payment_repository.dart';
 
@@ -64,7 +65,8 @@ class _TopUpPageState extends State<TopUpPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Adicionar créditos')),
-      body: Padding(
+      body: WebFrame(
+        child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -105,6 +107,7 @@ class _TopUpPageState extends State<TopUpPage> {
               ),
             ),
           ],
+        ),
         ),
       ),
     );

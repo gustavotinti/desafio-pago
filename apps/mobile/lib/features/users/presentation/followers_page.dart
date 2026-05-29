@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../../core/widgets/web_frame.dart';
 import 'user_profile_page.dart';
 
 enum FollowType { followers, following }
@@ -25,7 +26,8 @@ class FollowersPage extends StatelessWidget {
       appBar: AppBar(
         title: Text(isFollowers ? 'Seguidores' : 'Seguindo'),
       ),
-      body: StreamBuilder<QuerySnapshot>(
+      body: WebFrame(
+        child: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('follows')
             .where(filterField, isEqualTo: userId)
@@ -96,6 +98,7 @@ class FollowersPage extends StatelessWidget {
             },
           );
         },
+        ),
       ),
     );
   }

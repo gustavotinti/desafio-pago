@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../core/widgets/web_frame.dart';
 import '../infrastructure/update_profile_repository.dart';
 
 class EditProfilePage extends StatefulWidget {
@@ -118,7 +119,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
+      body: WebFrame(
+        child: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -192,6 +194,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
               ),
             ),
           ],
+        ),
         ),
       ),
     );
