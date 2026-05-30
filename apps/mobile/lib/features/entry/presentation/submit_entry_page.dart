@@ -73,7 +73,8 @@ class _SubmitEntryPageState extends State<SubmitEntryPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'Proporção inválida. Use 9:16, 4:5, 1:1 ou 16:9.\n'
+              'Proporção inválida. Use 9:16 (1080×1920), 4:5 (1080×1350), '
+              '1:1 (1080×1080) ou 16:9 (1920×1080).\n'
               'Recorte a imagem antes de selecioná-la.',
             ),
             duration: Duration(seconds: 4),
@@ -237,7 +238,9 @@ class _SubmitEntryPageState extends State<SubmitEntryPage> {
             if (_selectedType == ContentType.image) ...[
               _FormatGuide(
                 lines: const [
-                  'Proporções aceitas: 9:16 · 4:5 · 1:1 · 16:9',
+                  'Proporções aceitas:',
+                  '  9:16 (1080 × 1920)  ·  4:5 (1080 × 1350)',
+                  '  1:1 (1080 × 1080)  ·  16:9 (1920 × 1080)',
                   'Tamanho máximo: 10 MB',
                   'Se necessário, recorte a imagem no seu dispositivo antes de selecionar.',
                 ],
@@ -259,7 +262,9 @@ class _SubmitEntryPageState extends State<SubmitEntryPage> {
             if (_selectedType == ContentType.video) ...[
               _FormatGuide(
                 lines: const [
-                  'Proporções aceitas: 9:16 · 4:5 · 1:1 · 16:9',
+                  'Proporções aceitas:',
+                  '  9:16 (1080 × 1920)  ·  4:5 (1080 × 1350)',
+                  '  1:1 (1080 × 1080)  ·  16:9 (1920 × 1080)',
                   'Duração máxima: 15 segundos',
                   'Tamanho máximo: 50 MB',
                   'Edite e recorte antes de selecionar, se necessário.',
