@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -585,6 +586,32 @@ class _ChallengeCard extends StatelessWidget {
                         onNavigated();
                       },
                       child: const Text('Ver participações'),
+                    ),
+                    // ── Share button ──────────────────────────────────
+                    IconButton(
+                      tooltip: 'Compartilhar desafio',
+                      icon: const Icon(Icons.share_outlined, size: 20),
+                      style: IconButton.styleFrom(
+                        padding: const EdgeInsets.all(8),
+                        minimumSize: const Size(36, 36),
+                        side: BorderSide(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .outlineVariant),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8)),
+                      ),
+                      onPressed: () async {
+                        final url =
+                            'https://desafiopago.web.app/challenges/${challenge.id}';
+                        await Clipboard.setData(
+                            ClipboardData(text: url));
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                              content: Text('Link do desafio copiado!')),
+                        );
+                      },
                     ),
                   ],
                 ),
