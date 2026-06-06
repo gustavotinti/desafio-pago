@@ -100,49 +100,53 @@ class _PaymentPageState extends State<PaymentPage> {
       appBar: AppBar(title: const Text('Pagar via Pix')),
       body: WebFrame(
         child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          children: [
-            Text(
-              'R\$ ${widget.amount.toStringAsFixed(2)}',
-              style: const TextStyle(
-                  fontSize: 28, fontWeight: FontWeight.bold),
+          padding: const EdgeInsets.all(24),
+          child: SizedBox(
+            width: double.infinity,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  'R\$ ${widget.amount.toStringAsFixed(2)}',
+                  style: const TextStyle(
+                      fontSize: 28, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                if (_status == 'approved')
+                  const Chip(
+                    label: Text('Pago'),
+                    backgroundColor: Colors.green,
+                    labelStyle: TextStyle(color: Colors.white),
+                  )
+                else if (expired)
+                  const Chip(
+                    label: Text('Expirado'),
+                    backgroundColor: Colors.red,
+                    labelStyle: TextStyle(color: Colors.white),
+                  )
+                else
+                  const Chip(label: Text('Aguardando pagamento')),
+                const SizedBox(height: 24),
+                if (!expired && _status != 'approved') ...[
+                  Image.memory(qrBytes, width: 240, height: 240),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Escaneie o QR Code com o app do seu banco\nou copie o código Pix abaixo.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.black54),
+                  ),
+                  const SizedBox(height: 16),
+                  OutlinedButton.icon(
+                    onPressed: _copyCode,
+                    icon: const Icon(Icons.copy),
+                    label: const Text('Copiar código Pix'),
+                  ),
+                  const SizedBox(height: 12),
+                  _CountdownTimer(expiresAt: widget.expiresAt),
+                ],
+              ],
             ),
-            const SizedBox(height: 8),
-            if (_status == 'approved')
-              const Chip(
-                label: Text('Pago'),
-                backgroundColor: Colors.green,
-                labelStyle: TextStyle(color: Colors.white),
-              )
-            else if (expired)
-              const Chip(
-                label: Text('Expirado'),
-                backgroundColor: Colors.red,
-                labelStyle: TextStyle(color: Colors.white),
-              )
-            else
-              const Chip(label: Text('Aguardando pagamento')),
-            const SizedBox(height: 24),
-            if (!expired && _status != 'approved') ...[
-              Image.memory(qrBytes, width: 240, height: 240),
-              const SizedBox(height: 16),
-              const Text(
-                'Escaneie o QR Code com o app do seu banco\nou copie o código Pix abaixo.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.black54),
-              ),
-              const SizedBox(height: 16),
-              OutlinedButton.icon(
-                onPressed: _copyCode,
-                icon: const Icon(Icons.copy),
-                label: const Text('Copiar código Pix'),
-              ),
-              const SizedBox(height: 12),
-              _CountdownTimer(expiresAt: widget.expiresAt),
-            ],
-          ],
-        ),
+          ),
         ),
       ),
     );

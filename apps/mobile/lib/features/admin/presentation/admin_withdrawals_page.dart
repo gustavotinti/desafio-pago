@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/widgets/web_frame.dart';
 
@@ -40,9 +41,29 @@ class AdminWithdrawalsPage extends StatelessWidget {
   }
 }
 
-class _WithdrawalList extends StatelessWidget {
+class _WithdrawalList extends StatefulWidget {
   final String status;
   const _WithdrawalList({required this.status});
+
+  @override
+  State<_WithdrawalList> createState() => _WithdrawalListState();
+}
+
+class _WithdrawalListState extends State<_WithdrawalList> {
+  // Mês exibido no resumo (só usado na aba "paid")
+  DateTime _selectedMonth = DateTime(DateTime.now().year, DateTime.now().month);
+
+  void _prevMonth() => setState(() =>
+      _selectedMonth =
+          DateTime(_selectedMonth.year, _selectedMonth.month - 1));
+
+  void _nextMonth() {
+    final now = DateTime.now();
+    final next = DateTime(_selectedMonth.year, _selectedMonth.month + 1);
+    if (!next.isAfter(DateTime(now.year, now.month))) {
+      setState(() => _selectedMonth = next);
+    }
+  }
 
   Future<Map<String, dynamic>?> _getUser(String userId) async {
     final doc = await FirebaseFirestore.instance
@@ -129,7 +150,7 @@ class _WithdrawalList extends StatelessWidget {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('withdrawals')
-          .where('status', isEqualTo: status)
+          .where('status', isEqualTo: widget.status)
           .orderBy('createdAt', descending: true)
           .snapshots(),
       builder: (context, snapshot) {
@@ -142,7 +163,179 @@ class _WithdrawalList extends StatelessWidget {
 
         final docs = snapshot.data!.docs;
 
-        return ListView.builder(
+        // ── Resumo mensal (todas as abas) ────────────────────────────────
+        final monthStart = _selectedMonth;
+        final monthEnd =
+            DateTime(_selectedMonth.year, _selectedMonth.month + 1);
+
+        double monthGross = 0;
+        double monthFee   = 0;
+        double totalGross = 0;
+        double totalFee   = 0;
+
+        for (final doc in docs) {
+          final d = doc.data() as Map<String, dynamic>;
+          final fee    = (d['fee']    as num? ?? 0).toDouble();
+          final amount = (d['amount'] as num? ?? 0).toDouble();
+          totalGross += amount;
+          totalFee   += fee;
+
+          DateTime? dt;
+          final raw = d['createdAt'];
+          if (raw is Timestamp) {
+            dt = raw.toDate();
+          } else if (raw is String) {
+            dt = DateTime.tryParse(raw);
+          }
+          if (dt != null &&
+              !dt.isBefore(monthStart) &&
+              dt.isBefore(monthEnd)) {
+            monthGross += amount;
+            monthFee   += fee;
+          }
+        }
+
+        final monthLabel =
+            DateFormat('MMMM/yyyy', 'pt_BR').format(_selectedMonth);
+        final isCurrentMonth = _selectedMonth.year == DateTime.now().year &&
+            _selectedMonth.month == DateTime.now().month;
+
+        // Rótulos e cores por aba
+        final (gradColors, grossLabel, feeLabel, totalLabel) =
+            switch (widget.status) {
+          'pending'  => (
+              const [Color(0xFFE65100), Color(0xFFFB8C00)],
+              'Total pendente',
+              'Taxa prevista (10%)',
+              'Total histórico pendente',
+            ),
+          'approved' => (
+              const [Color(0xFF1565C0), Color(0xFF1E88E5)],
+              'Total aprovado',
+              'Taxa a receber (10%)',
+              'Total histórico aprovado',
+            ),
+          'rejected' => (
+              const [Color(0xFF6D4C41), Color(0xFF8D6E63)],
+              'Total rejeitado',
+              'Taxa não aplicada',
+              'Total histórico rejeitado',
+            ),
+          _ => (
+              const [Color(0xFF00897B), Color(0xFF26A69A)],
+              'Saques brutos',
+              'Meu lucro (10%)',
+              'Lucro total histórico',
+            ),
+        };
+
+        final summaryCard = Container(
+          margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: gradColors,
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [
+              BoxShadow(
+                color: gradColors.first.withValues(alpha: 0.3),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Mês + setas ────────────────────────────────────────
+              Row(
+                children: [
+                  const Icon(Icons.bar_chart,
+                      color: Colors.white70, size: 16),
+                  const SizedBox(width: 6),
+                  const Text(
+                    'RESUMO DO MÊS',
+                    style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 1),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_left,
+                        color: Colors.white70, size: 20),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: _prevMonth,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    monthLabel,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(width: 4),
+                  IconButton(
+                    icon: Icon(Icons.chevron_right,
+                        color: isCurrentMonth
+                            ? Colors.white24
+                            : Colors.white70,
+                        size: 20),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: isCurrentMonth ? null : _nextMonth,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              // ── Valores do mês ─────────────────────────────────────
+              Row(
+                children: [
+                  _SummaryCell(
+                    label: grossLabel,
+                    value: 'R\$ ${monthGross.toStringAsFixed(2)}',
+                  ),
+                  const SizedBox(width: 16),
+                  _SummaryCell(
+                    label: feeLabel,
+                    value: 'R\$ ${monthFee.toStringAsFixed(2)}',
+                    highlight: true,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Divider(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  height: 1),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  const Icon(Icons.history,
+                      color: Colors.white54, size: 13),
+                  const SizedBox(width: 4),
+                  Text(
+                    '$totalLabel: R\$ ${totalFee.toStringAsFixed(2)}'
+                    '  (bruto: R\$ ${totalGross.toStringAsFixed(2)})',
+                    style: const TextStyle(
+                        color: Colors.white70, fontSize: 12),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+
+        return Column(
+          children: [
+            if (summaryCard != null) summaryCard,
+            Expanded(
+              child: ListView.builder(
           itemCount: docs.length,
           itemBuilder: (context, index) {
             final doc = docs[index];
@@ -179,7 +372,7 @@ class _WithdrawalList extends StatelessWidget {
                                 ),
                               ),
                             ),
-                            _StatusChip(status: status),
+                            _StatusChip(status: widget.status),
                           ],
                         ),
                         const SizedBox(height: 4),
@@ -207,7 +400,7 @@ class _WithdrawalList extends StatelessWidget {
                           ],
                         ),
                         const SizedBox(height: 10),
-                        if (status == 'pending')
+                        if (widget.status == 'pending')
                           Row(
                             children: [
                               ElevatedButton(
@@ -229,7 +422,7 @@ class _WithdrawalList extends StatelessWidget {
                               ),
                             ],
                           ),
-                        if (status == 'approved')
+                        if (widget.status == 'approved')
                           ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(
                               backgroundColor: Colors.teal,
@@ -246,8 +439,50 @@ class _WithdrawalList extends StatelessWidget {
               },
             );
           },
+              ),
+            ),
+          ],
         );
       },
+    );
+  }
+}
+
+// ── Célula do resumo ──────────────────────────────────────────────────────────
+
+class _SummaryCell extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool highlight;
+
+  const _SummaryCell({
+    required this.label,
+    required this.value,
+    this.highlight = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.7),
+            fontSize: 11,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: highlight ? 20 : 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
     );
   }
 }

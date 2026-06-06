@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:screen_protector/screen_protector.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 import 'firebase_options.dart';
 import 'core/config/emulator.dart';
@@ -17,6 +18,7 @@ import 'features/auth/presentation/terms_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await initializeDateFormatting('pt_BR', null);
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await connectToEmulators();
   await NotificationService.init();
