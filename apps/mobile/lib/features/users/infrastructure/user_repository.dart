@@ -4,27 +4,93 @@ import '../../auth/domain/entities/auth_user.dart';
 class UserRepository {
   final _firestore = FirebaseFirestore.instance;
 
+  // ── Username generation ────────────────────────────────────────────────────
+
+  /// Converts an arbitrary string to a safe username fragment:
+  /// lowercase, accents stripped, only [a-z0-9.], no leading/trailing dots.
+  String _normalizeUsername(String raw) {
+    // Simple accent removal via codepoint checks for common Portuguese chars
+    const accents = {
+      'à': 'a', 'á': 'a', 'â': 'a', 'ã': 'a', 'ä': 'a',
+      'è': 'e', 'é': 'e', 'ê': 'e', 'ë': 'e',
+      'ì': 'i', 'í': 'i', 'î': 'i', 'ï': 'i',
+      'ò': 'o', 'ó': 'o', 'ô': 'o', 'õ': 'o', 'ö': 'o',
+      'ù': 'u', 'ú': 'u', 'û': 'u', 'ü': 'u',
+      'ç': 'c', 'ñ': 'n',
+    };
+    final buf = StringBuffer();
+    for (final ch in raw.toLowerCase().split('')) {
+      final mapped = accents[ch];
+      if (mapped != null) {
+        buf.write(mapped);
+      } else if (RegExp(r'[a-z0-9]').hasMatch(ch)) {
+        buf.write(ch);
+      } else {
+        buf.write('.');
+      }
+    }
+    // Collapse consecutive dots and trim
+    return buf.toString()
+        .replaceAll(RegExp(r'\.+'), '.')
+        .replaceAll(RegExp(r'^\.+|\.+$'), '');
+  }
+
+  /// Finds an available username derived from the email address.
+  /// If the base is taken, appends incrementing numeric suffixes.
+  Future<String> _generateUniqueUsername(String email) async {
+    final localPart = email.split('@').first;
+    final base = _normalizeUsername(localPart).substring(
+      0,
+      _normalizeUsername(localPart).length.clamp(0, 25),
+    );
+
+    String candidate = base.isEmpty ? 'usuario' : base;
+    int suffix = 0;
+
+    while (true) {
+      final doc =
+          await _firestore.collection('usernames').doc(candidate).get();
+      if (!doc.exists) return candidate;
+      suffix++;
+      candidate = '$base.$suffix';
+    }
+  }
+
+  // ── Save / update user on login ────────────────────────────────────────────
+
   Future<void> saveUser(AuthUser user) async {
     final doc = _firestore.collection('users').doc(user.id);
     final snapshot = await doc.get();
 
     if (!snapshot.exists) {
-      // First login — initialize all fields including financial ones
-      await doc.set({
-        'name': user.name ?? '',
-        'email': user.email ?? '',
-        'photoUrl': user.photoUrl ?? '',
-        'createdAt': DateTime.now().toIso8601String(),
-        'balance': 0.0,
-        'pendingBalance': 0.0,
-        'lockedBalance': 0.0,
-        'totalEarned': 0.0,
-        'totalVotesReceived': 0,
-        'followersCount': 0,
-        'followingCount': 0,
-        'bio': '',
-        'pixKey': '',
-        'termsAccepted': false,
+      // First login — generate username and initialize all fields
+      final username =
+          await _generateUniqueUsername(user.email ?? user.id);
+
+      await _firestore.runTransaction((tx) async {
+        tx.set(doc, {
+          'name': user.name ?? '',
+          'email': user.email ?? '',
+          'username': username,
+          'photoUrl': user.photoUrl ?? '',
+          'createdAt': DateTime.now().toIso8601String(),
+          'balance': 0.0,
+          'pendingBalance': 0.0,
+          'lockedBalance': 0.0,
+          'totalEarned': 0.0,
+          'totalVotesReceived': 0,
+          'followersCount': 0,
+          'followingCount': 0,
+          'bio': '',
+          'pixKey': '',
+          'termsAccepted': false,
+          'isVerified': false,
+          'isVirtual': false,
+        });
+        tx.set(
+          _firestore.collection('usernames').doc(username),
+          {'uid': user.id},
+        );
       });
     } else {
       // Subsequent logins — only sync Google profile fields

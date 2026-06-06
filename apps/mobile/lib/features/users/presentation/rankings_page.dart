@@ -53,7 +53,7 @@ class _RankingTab extends StatelessWidget {
       stream: FirebaseFirestore.instance
           .collection('users')
           .orderBy(orderBy, descending: true)
-          .limit(50)
+          .limit(200)
           .snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
@@ -70,12 +70,20 @@ class _RankingTab extends StatelessWidget {
           itemCount: docs.length,
           itemBuilder: (context, index) {
             final data = docs[index].data() as Map<String, dynamic>;
-            final name = data['name'] ?? 'Usuário';
+            final name = data['name'] as String? ?? 'Usuário';
+            final username = data['username'] as String? ?? '';
             final photoUrl = data['photoUrl'] as String? ?? '';
+            final isVerified = data['isVerified'] == true;
             final value = (data[orderBy] ?? 0);
             final displayValue = orderBy == 'totalEarned'
                 ? 'R\$ ${(value as num).toStringAsFixed(2)}'
                 : '$value $label';
+
+            // Medal colour for top 3
+            Color? positionColor;
+            if (index == 0) positionColor = const Color(0xFFFFD700); // gold
+            if (index == 1) positionColor = const Color(0xFFB0BEC5); // silver
+            if (index == 2) positionColor = const Color(0xFFBF8C60); // bronze
 
             return ListTile(
               onTap: () => Navigator.push(
@@ -94,13 +102,8 @@ class _RankingTab extends StatelessWidget {
                       '${index + 1}',
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        color: index == 0
-                            ? Colors.amber
-                            : index == 1
-                                ? Colors.grey
-                                : index == 2
-                                    ? Colors.brown
-                                    : null,
+                        fontSize: index < 3 ? 16 : 14,
+                        color: positionColor,
                       ),
                     ),
                   ),
@@ -115,10 +118,31 @@ class _RankingTab extends StatelessWidget {
                   ),
                 ],
               ),
-              title: Text(name),
+              title: Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      name,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  if (isVerified) ...[
+                    const SizedBox(width: 4),
+                    const Icon(Icons.verified,
+                        color: Colors.blue, size: 14),
+                  ],
+                ],
+              ),
+              subtitle: username.isNotEmpty
+                  ? Text('@$username',
+                      style: const TextStyle(
+                          fontSize: 12, color: Colors.black54))
+                  : null,
               trailing: Text(
                 displayValue,
-                style: const TextStyle(fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold, fontSize: 13),
               ),
             );
           },

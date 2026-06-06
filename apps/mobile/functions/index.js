@@ -1365,3 +1365,245 @@ exports.deleteAccount = functions.https.onCall(async (data, context) => {
 
   return {success: true};
 });
+
+// ─── SEED VIRTUAL USERS ──────────────────────────────────────────────────────
+
+exports.seedVirtualUsers = functions.runWith({timeoutSeconds: 540}).https.onRequest(async (req, res) => {
+  if (req.method !== "POST") return res.status(405).json({error: "Method Not Allowed"});
+  if (!req.body || req.body.secret !== "SEED_2026_DP") {
+    return res.status(403).json({error: "Forbidden"});
+  }
+
+  const db = admin.firestore();
+
+  // Prevent double-seeding
+  const check = await db.collection("users").where("isVirtual", "==", true).limit(1).get();
+  if (!check.empty) {
+    return res.status(409).json({error: "Already seeded. Virtual users already exist."});
+  }
+
+  // ── Name data ──────────────────────────────────────────────────────────────
+  const maleFirst = [
+    "João", "Pedro", "Carlos", "Lucas", "Gabriel", "Rafael", "Daniel", "Mateus", "Thiago", "Rodrigo",
+    "Fernando", "Eduardo", "Bruno", "Diego", "Felipe", "Leandro", "Ricardo", "Alexandre", "Marcelo", "André",
+    "Gustavo", "Paulo", "Henrique", "Roberto", "Vinícius", "Leonardo", "Caio", "Igor", "Renato", "Breno",
+    "Alan", "Sérgio", "Wellington", "Murilo", "Davi", "Arthur", "Bernardo", "Enzo", "Heitor", "Samuel",
+    "Victor", "William", "Yago", "Alisson", "Cláudio", "David", "Elias", "Fábio", "Kevin", "Marco",
+  ];
+  const femaleFirst = [
+    "Maria", "Ana", "Fernanda", "Juliana", "Amanda", "Camila", "Larissa", "Mariana", "Patrícia", "Aline",
+    "Bianca", "Carolina", "Daniela", "Gabriela", "Helena", "Isabela", "Jade", "Karen", "Laura", "Milena",
+    "Natália", "Olivia", "Paula", "Renata", "Sabrina", "Tatiana", "Vanessa", "Yasmin", "Alice", "Beatriz",
+    "Carla", "Débora", "Estela", "Flávia", "Giovanna", "Isadora", "Jéssica", "Letícia", "Manuela", "Nathalia",
+    "Paola", "Sofia", "Thaís", "Valentina", "Vitória", "Eloá", "Priscila", "Mônica", "Lívia", "Bruna",
+  ];
+  const allFirst = [...maleFirst, ...femaleFirst];
+
+  const lastNames = [
+    "Silva", "Santos", "Oliveira", "Souza", "Rodrigues", "Ferreira", "Alves", "Pereira", "Lima", "Carvalho",
+    "Gomes", "Martins", "Costa", "Ribeiro", "Cunha", "Barbosa", "Nunes", "Nascimento", "Araújo", "Moreira",
+    "Almeida", "Castro", "Cardoso", "Cavalcanti", "Correia", "Dias", "Duarte", "Figueiredo", "Freitas", "Gonçalves",
+    "Guimarães", "Lemos", "Lopes", "Macedo", "Machado", "Maia", "Medeiros", "Melo", "Mendes", "Miranda",
+    "Monteiro", "Moraes", "Mota", "Nogueira", "Paiva", "Pinto", "Ramos", "Rocha", "Tavares", "Teixeira",
+  ];
+
+  // ── Build unique name combos ───────────────────────────────────────────────
+  const allCombos = [];
+  for (const fn of allFirst) {
+    for (const ln of lastNames) {
+      allCombos.push([fn, ln]);
+    }
+  }
+  // Fisher-Yates shuffle
+  for (let i = allCombos.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [allCombos[i], allCombos[j]] = [allCombos[j], allCombos[i]];
+  }
+  const selected = allCombos.slice(0, 1000);
+
+  // ── Value distribution ─────────────────────────────────────────────────────
+  // neymarjr = 734,519  → position 7  (exactly 6 regular users above him)
+  // whinderssonnunes = 287,342 → position 21 (13 regular users between them)
+  const MAX_VAL = 1557280;
+  const NEYMAR_VAL = 734519;
+  const WHINDERSSON_VAL = 287342;
+
+  const earnedValues = [];
+  earnedValues.push(MAX_VAL); // position 1 (exactly max)
+  for (let i = 0; i < 5; i++) { // positions 2-6 (above neymar)
+    earnedValues.push(Math.floor(NEYMAR_VAL + 1 + Math.random() * (MAX_VAL - NEYMAR_VAL - 2)));
+  }
+  for (let i = 0; i < 13; i++) { // positions 8-20 (between)
+    earnedValues.push(Math.floor(WHINDERSSON_VAL + 1 + Math.random() * (NEYMAR_VAL - WHINDERSSON_VAL - 2)));
+  }
+  for (let i = 0; i < 981; i++) { // positions 22-1002 (below whindersson)
+    earnedValues.push(Math.floor(100 + Math.random() * (WHINDERSSON_VAL - 101)));
+  }
+  // Shuffle earnings so values aren't ordered by category
+  for (let i = earnedValues.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [earnedValues[i], earnedValues[j]] = [earnedValues[j], earnedValues[i]];
+  }
+
+  // ── Helper: normalize string to username-safe ──────────────────────────────
+  function toUsername(str) {
+    return str.toLowerCase()
+        .normalize("NFD").replace(/[̀-ͯ]/g, "")
+        .replace(/[^a-z0-9]/g, "").slice(0, 20);
+  }
+
+  // ── Build user objects ─────────────────────────────────────────────────────
+  const now = new Date().toISOString();
+  const usernameSet = new Set(["neymarjr", "whinderssonnunes"]);
+  const users = [];
+
+  for (let i = 0; i < 1000; i++) {
+    const [fn, ln] = selected[i];
+    const base = `${toUsername(fn)}.${toUsername(ln)}`;
+    let username = base;
+    let attempt = 0;
+    while (usernameSet.has(username)) {
+      attempt++;
+      username = `${base}${attempt}`;
+    }
+    usernameSet.add(username);
+
+    users.push({
+      id: db.collection("users").doc().id,
+      name: `${fn} ${ln}`,
+      username,
+      email: `${username}.demo@gmail.com`,
+      photoUrl: `https://i.pravatar.cc/150?u=${username}`,
+      createdAt: now,
+      balance: 0.0,
+      pendingBalance: 0.0,
+      lockedBalance: 0.0,
+      totalEarned: earnedValues[i],
+      totalVotesReceived: Math.floor(Math.random() * 50000),
+      followersCount: Math.floor(Math.random() * 8000),
+      followingCount: Math.floor(Math.random() * 800),
+      bio: "",
+      pixKey: "",
+      termsAccepted: true,
+      isVirtual: true,
+      isVerified: false,
+    });
+  }
+
+  // Special verified accounts
+  users.push({
+    id: db.collection("users").doc().id,
+    name: "Neymar Jr",
+    username: "neymarjr",
+    email: "neymarjr.demo@gmail.com",
+    photoUrl: "https://i.pravatar.cc/150?u=neymarjr_official",
+    createdAt: now,
+    balance: 0.0, pendingBalance: 0.0, lockedBalance: 0.0,
+    totalEarned: NEYMAR_VAL,
+    totalVotesReceived: 89432,
+    followersCount: 250000,
+    followingCount: 412,
+    bio: "Futebol e diversão! ⚽🔥",
+    pixKey: "",
+    termsAccepted: true,
+    isVirtual: true,
+    isVerified: true,
+  });
+
+  users.push({
+    id: db.collection("users").doc().id,
+    name: "Whindersson Nunes",
+    username: "whinderssonnunes",
+    email: "whinderssonnunes.demo@gmail.com",
+    photoUrl: "https://i.pravatar.cc/150?u=whinderssonnunes_official",
+    createdAt: now,
+    balance: 0.0, pendingBalance: 0.0, lockedBalance: 0.0,
+    totalEarned: WHINDERSSON_VAL,
+    totalVotesReceived: 54217,
+    followersCount: 180000,
+    followingCount: 387,
+    bio: "Humor e entretenimento! 😂",
+    pixKey: "",
+    termsAccepted: true,
+    isVirtual: true,
+    isVerified: true,
+  });
+
+  // ── Batch write (200 users per batch = 400 ops, well under 500 limit) ──────
+  const CHUNK = 200;
+  let created = 0;
+  for (let i = 0; i < users.length; i += CHUNK) {
+    const batch = db.batch();
+    const chunk = users.slice(i, i + CHUNK);
+    for (const u of chunk) {
+      const {id, ...data} = u;
+      batch.set(db.collection("users").doc(id), data);
+      batch.set(db.collection("usernames").doc(u.username), {uid: id, createdAt: now});
+    }
+    await batch.commit();
+    created += chunk.length;
+    console.log(`seedVirtualUsers: committed ${created} / ${users.length}`);
+  }
+
+  return res.json({success: true, created});
+});
+
+// ─── UPDATE USERNAME ──────────────────────────────────────────────────────────
+
+exports.updateUsername = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Não autenticado");
+  }
+
+  const userId = context.auth.uid;
+  const newUsername = (data.newUsername || "").trim().toLowerCase();
+
+  if (!newUsername || !/^[a-z0-9][a-z0-9._]{2,29}$/.test(newUsername)) {
+    throw new functions.https.HttpsError(
+        "invalid-argument",
+        "Username inválido. Use 3–30 caracteres: letras, números, ponto ou sublinhado.",
+    );
+  }
+
+  const db = admin.firestore();
+
+  // Check availability
+  const existingDoc = await db.collection("usernames").doc(newUsername).get();
+  if (existingDoc.exists && existingDoc.data().uid !== userId) {
+    throw new functions.https.HttpsError("already-exists", "Este username já está em uso.");
+  }
+
+  // Get current username to delete old entry
+  const userDoc = await db.collection("users").doc(userId).get();
+  const oldUsername = userDoc.data()?.username;
+
+  const batch = db.batch();
+  batch.set(
+      db.collection("usernames").doc(newUsername),
+      {uid: userId, updatedAt: new Date().toISOString()},
+  );
+  if (oldUsername && oldUsername !== newUsername) {
+    batch.delete(db.collection("usernames").doc(oldUsername));
+  }
+  batch.update(db.collection("users").doc(userId), {username: newUsername});
+  await batch.commit();
+
+  return {success: true, username: newUsername};
+});
+
+// ─── SET USER VERIFIED ────────────────────────────────────────────────────────
+
+exports.setUserVerified = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Não autenticado");
+  }
+  const db = admin.firestore();
+  const adminDoc = await db.collection("admins").doc(context.auth.uid).get();
+  if (!adminDoc.exists) {
+    throw new functions.https.HttpsError("permission-denied", "Apenas administradores.");
+  }
+  const {userId, isVerified} = data;
+  if (!userId) throw new functions.https.HttpsError("invalid-argument", "userId obrigatório");
+  await db.collection("users").doc(userId).update({isVerified: isVerified === true});
+  return {success: true};
+});

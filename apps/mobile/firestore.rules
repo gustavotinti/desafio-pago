@@ -41,6 +41,18 @@ service cloud.firestore {
       // by Cloud Functions (Admin SDK) — no direct client writes allowed
     }
 
+    // ── USERNAMES ─────────────────────────────────────────────────────────────
+    match /usernames/{username} {
+      // Any signed-in user can check availability
+      allow read: if signedIn();
+      // Client may claim a username on first login if it maps to their own uid
+      allow create: if signedIn()
+        && request.resource.data.uid == uid();
+      // Owner can release their own username (handled when updating to a new one)
+      allow delete: if signedIn() && resource.data.uid == uid();
+      // Updates via Cloud Function (Admin SDK) only
+    }
+
     // ── CHALLENGES ───────────────────────────────────────────────────────────
     match /challenges/{challengeId} {
       allow read: if signedIn();

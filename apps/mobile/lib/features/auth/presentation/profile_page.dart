@@ -152,6 +152,8 @@ class _ProfilePageState extends State<ProfilePage> {
     final name = _userData['name'] as String? ??
         authUser?.displayName ??
         '';
+    final username = _userData['username'] as String? ?? '';
+    final isVerified = _userData['isVerified'] == true;
 
     return Scaffold(
       appBar: AppBar(
@@ -176,6 +178,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     currentBio: bio,
                     currentPixKey: pixKey,
                     currentPhotoUrl: photoUrl,
+                    currentUsername: username,
                     pixLocked: lockedBalance > 0,
                   ),
                 ),
@@ -208,11 +211,29 @@ class _ProfilePageState extends State<ProfilePage> {
                       : null,
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  name,
-                  style: const TextStyle(
-                      fontSize: 20, fontWeight: FontWeight.bold),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      name,
+                      style: const TextStyle(
+                          fontSize: 20, fontWeight: FontWeight.bold),
+                    ),
+                    if (isVerified) ...[
+                      const SizedBox(width: 4),
+                      const Icon(Icons.verified,
+                          color: Colors.blue, size: 20),
+                    ],
+                  ],
                 ),
+                if (username.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    '@$username',
+                    style: const TextStyle(
+                        color: Colors.black54, fontSize: 13),
+                  ),
+                ],
                 if (bio.isNotEmpty) ...[
                   const SizedBox(height: 4),
                   Text(bio,
@@ -317,6 +338,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     currentBio: bio,
                     currentPixKey: pixKey,
                     currentPhotoUrl: photoUrl,
+                    currentUsername: username,
                     pixLocked: lockedBalance > 0,
                   ),
                 ),

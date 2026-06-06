@@ -80,15 +80,28 @@ class _UserProfilePageState extends State<UserProfilePage> {
     final isOwnProfile = currentUid == widget.userId;
 
     final name = _userData['name'] as String? ?? 'Usuário';
+    final username = _userData['username'] as String? ?? '';
     final photoUrl = _userData['photoUrl'] as String? ?? '';
     final bio = _userData['bio'] as String? ?? '';
+    final isVerified = _userData['isVerified'] == true;
     final followersCount = _userData['followersCount'] as int? ?? 0;
     final followingCount = _userData['followingCount'] as int? ?? 0;
     final totalVotes = _userData['totalVotesReceived'] ?? 0;
     final totalEarned = (_userData['totalEarned'] as num? ?? 0).toDouble();
 
     return Scaffold(
-      appBar: AppBar(title: Text(name)),
+      appBar: AppBar(
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(name),
+            if (isVerified) ...[
+              const SizedBox(width: 4),
+              const Icon(Icons.verified, color: Colors.blue, size: 18),
+            ],
+          ],
+        ),
+      ),
       body: !_dataLoaded
           ? const Center(child: CircularProgressIndicator())
           : WebFrame(
@@ -109,11 +122,29 @@ class _UserProfilePageState extends State<UserProfilePage> {
                             : null,
                       ),
                       const SizedBox(height: 8),
-                      Text(
-                        name,
-                        style: const TextStyle(
-                            fontSize: 20, fontWeight: FontWeight.bold),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            name,
+                            style: const TextStyle(
+                                fontSize: 20, fontWeight: FontWeight.bold),
+                          ),
+                          if (isVerified) ...[
+                            const SizedBox(width: 4),
+                            const Icon(Icons.verified,
+                                color: Colors.blue, size: 20),
+                          ],
+                        ],
                       ),
+                      if (username.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          '@$username',
+                          style: const TextStyle(
+                              color: Colors.black54, fontSize: 13),
+                        ),
+                      ],
                       if (bio.isNotEmpty) ...[
                         const SizedBox(height: 4),
                         Text(
