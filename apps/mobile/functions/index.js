@@ -1548,6 +1548,204 @@ exports.seedVirtualUsers = functions.runWith({timeoutSeconds: 540}).https.onRequ
   return res.json({success: true, created});
 });
 
+// ─── FIX VIRTUAL USERS (fotos self-hosted + usernames estilo gamertag) ───────
+
+exports.fixVirtualUsers = functions.runWith({timeoutSeconds: 540})
+    .https.onRequest(async (req, res) => {
+      if (req.method !== "POST") {
+        return res.status(405).json({error: "Method Not Allowed"});
+      }
+      if (!req.body || req.body.secret !== "SEED_2026_DP") {
+        return res.status(403).json({error: "Forbidden"});
+      }
+
+      const db = admin.firestore();
+      const HOST = "https://desafiopago.web.app";
+      const MEN_COUNT = 100;
+      const WOMEN_COUNT = 100;
+      const CHANGE_PCT = 40; // ~40% recebem username estilo gamertag
+
+      // Normaliza removendo acentos e caracteres não alfanuméricos.
+      const norm = (s) => (s || "").toLowerCase().normalize("NFD")
+          .replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
+
+      // Lista feminina (idêntica ao seed) para casar a foto com o nome.
+      // Qualquer nome fora dela cai no padrão masculino.
+      const femaleFirst = [
+        "Maria", "Ana", "Fernanda", "Juliana", "Amanda", "Camila", "Larissa",
+        "Mariana", "Patrícia", "Aline", "Bianca", "Carolina", "Daniela",
+        "Gabriela", "Helena", "Isabela", "Jade", "Karen", "Laura", "Milena",
+        "Natália", "Olivia", "Paula", "Renata", "Sabrina", "Tatiana", "Vanessa",
+        "Yasmin", "Alice", "Beatriz", "Carla", "Débora", "Estela", "Flávia",
+        "Giovanna", "Isadora", "Jéssica", "Letícia", "Manuela", "Nathalia",
+        "Paola", "Sofia", "Thaís", "Valentina", "Vitória", "Eloá", "Priscila",
+        "Mônica", "Lívia", "Bruna",
+      ];
+      const femaleSet = new Set(femaleFirst.map(norm));
+
+      // Apelidos brasileiros para deixar os usernames mais naturais.
+      const nicks = {
+        joao: ["jao"], pedro: ["pedrin", "peu"], carlos: ["carlinhos"],
+        lucas: ["luca", "luquinhas"], gabriel: ["biel", "gabu"],
+        rafael: ["rafa"], daniel: ["dani", "dan"], mateus: ["teteu"],
+        thiago: ["thi"], rodrigo: ["digo"], fernando: ["nando", "fer"],
+        eduardo: ["dudu", "du"], bruno: ["bru"], felipe: ["lipe", "felps"],
+        ricardo: ["ricky"], alexandre: ["xand", "ale"], marcelo: ["celo"],
+        andre: ["dede"], gustavo: ["guga", "gus"], henrique: ["rique"],
+        roberto: ["beto"], vinicius: ["vini"], leonardo: ["leo"],
+        renato: ["nato"], sergio: ["serjao"], wellington: ["well"],
+        murilo: ["muka"], arthur: ["tutu"], bernardo: ["berna"],
+        heitor: ["tor"], samuel: ["samuca", "sam"], victor: ["vitao", "vic"],
+        william: ["will"], alisson: ["ali"], claudio: ["cau"], elias: ["eli"],
+        fabio: ["fabin"], marco: ["marquin"],
+        maria: ["mah", "mari"], ana: ["aninha", "nana"],
+        fernanda: ["nanda", "fe"], juliana: ["ju", "juju"],
+        amanda: ["mandy"], camila: ["mila"], larissa: ["lari"],
+        mariana: ["mary"], patricia: ["paty"], aline: ["line"],
+        bianca: ["bibi"], carolina: ["carol"], daniela: ["dani"],
+        gabriela: ["gabi", "gabs"], helena: ["lena"], isabela: ["isa", "bela"],
+        karen: ["kaka"], laura: ["lala", "lau"], milena: ["mile"],
+        natalia: ["nat", "tata"], olivia: ["livi", "oli"], paula: ["paulinha"],
+        renata: ["naty"], sabrina: ["sah"], tatiana: ["tati"],
+        vanessa: ["nessa"], yasmin: ["yas"], alice: ["lili"],
+        beatriz: ["bia", "bea"], debora: ["deh", "debs"], flavia: ["fafa"],
+        giovanna: ["gi", "giih"], isadora: ["dora"], jessica: ["jeh"],
+        leticia: ["lele"], manuela: ["manu"], nathalia: ["naty"],
+        sofia: ["sofi", "fifi"], valentina: ["tina"], vitoria: ["vivi", "vi"],
+        eloa: ["loa"], priscila: ["pri"], monica: ["moni"],
+        livia: ["livi"], bruna: ["bru", "bruh"],
+      };
+      const gamer = [
+        "dark", "pro", "ninja", "sniper", "king", "lord", "zica", "fera",
+        "craque", "mestre", "top", "gg", "shadow", "red", "mlk", "real",
+        "cyber", "neo", "blaze", "ghost",
+      ];
+
+      const ri = (n) => Math.floor(Math.random() * n);
+      const pick = (arr) => arr[ri(arr.length)];
+      const numStr = () => {
+        const r = Math.random();
+        if (r < 0.35) return String(2007 + ri(7));
+        if (r < 0.7) return String(pick([7, 10, 13, 17, 23, 69, 77, 88, 99]));
+        return String(ri(1000));
+      };
+      const sanitize = (raw) => {
+        let s = raw.toLowerCase().normalize("NFD")
+            .replace(/[̀-ͯ]/g, "")
+            .replace(/[^a-z0-9._]/g, "")
+            .replace(/([._])\1+/g, "$1")
+            .replace(/^[._]+/, "").replace(/[._]+$/, "");
+        if (s.length < 3) s += numStr();
+        return s.slice(0, 30).replace(/[._]+$/, "");
+      };
+      const makeTag = (first) => {
+        const opts = nicks[first] || [first];
+        const base = Math.random() < 0.6 ? pick(opts) : first;
+        const templates = [
+          () => `${base}${numStr()}`,
+          () => `${base}.${numStr()}`,
+          () => `${base}_${numStr()}`,
+          () => `xx_${base}_xx`,
+          () => `${base}.br`,
+          () => `itz${base}`,
+          () => `${base}.pro`,
+          () => `${base}_${pick(gamer)}`,
+          () => `${pick(gamer)}_${base}${Math.random() < 0.5 ? numStr() : ""}`,
+          () => `oo${base}oo`,
+          () => `${base}_oficial`,
+          () => `${base}.ttv`,
+          () => `${pick(gamer)}${base}`,
+          () => `${base}${numStr()}`,
+        ];
+        return sanitize(pick(templates)());
+      };
+
+      // Carrega usernames existentes para garantir unicidade.
+      const unameSnap = await db.collection("usernames").get();
+      const taken = new Set(unameSnap.docs.map((d) => d.id));
+      const uniqueTag = (first) => {
+        let c = makeTag(first);
+        let guard = 0;
+        while ((taken.has(c) || c.length < 3) && guard < 60) {
+          c = sanitize(c + ri(10));
+          guard++;
+        }
+        taken.add(c);
+        return c;
+      };
+
+      // Hash estável do id → seleciona ~40% de forma determinística.
+      const hashId = (id) => {
+        let h = 0;
+        for (let i = 0; i < id.length; i++) {
+          h = (h * 31 + id.charCodeAt(i)) >>> 0;
+        }
+        return h % 100;
+      };
+
+      const snap = await db.collection("users")
+          .where("isVirtual", "==", true).get();
+
+      let batch = db.batch();
+      let ops = 0;
+      let committed = 0;
+      let photosFixed = 0;
+      let namesChanged = 0;
+
+      const flush = async () => {
+        if (ops > 0) {
+          await batch.commit();
+          committed++;
+          batch = db.batch();
+          ops = 0;
+        }
+      };
+
+      for (const docSnap of snap.docs) {
+        const u = docSnap.data();
+        const id = docSnap.id;
+        const uname = u.username || "";
+        const special = uname === "neymarjr" || uname === "whinderssonnunes";
+
+        const first = norm((u.name || "").split(" ")[0]);
+        const gender = femaleSet.has(first) ? "women" : "men";
+        const count = gender === "men" ? MEN_COUNT : WOMEN_COUNT;
+        const photoUrl = `${HOST}/portraits/${gender}/${ri(count)}.jpg`;
+
+        let newUsername = null;
+        if (!special && hashId(id) < CHANGE_PCT) {
+          newUsername = uniqueTag(first || "user");
+        }
+
+        if (ops + 3 > 450) await flush();
+
+        const userUpdate = {photoUrl};
+        if (newUsername && newUsername !== uname) {
+          userUpdate.username = newUsername;
+          batch.set(db.collection("usernames").doc(newUsername),
+              {uid: id, updatedAt: new Date().toISOString()});
+          ops++;
+          if (uname) {
+            batch.delete(db.collection("usernames").doc(uname));
+            ops++;
+          }
+          namesChanged++;
+        }
+        batch.update(db.collection("users").doc(id), userUpdate);
+        ops++;
+        photosFixed++;
+      }
+      await flush();
+
+      return res.json({
+        success: true,
+        total: snap.size,
+        photosFixed,
+        namesChanged,
+        batches: committed,
+      });
+    });
+
 // ─── UPDATE USERNAME ──────────────────────────────────────────────────────────
 
 exports.updateUsername = functions.https.onCall(async (data, context) => {
