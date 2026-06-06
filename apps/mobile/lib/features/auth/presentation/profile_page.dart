@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
+import '../../../core/utils/format.dart';
 import '../../../core/widgets/web_frame.dart';
 import '../../withdrawals/infrastructure/withdraw_repository.dart';
 import '../../finance/infrastructure/get_transactions.dart';
@@ -70,7 +71,7 @@ class _ProfilePageState extends State<ProfilePage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Saque solicitado — você receberá R\$${net.toStringAsFixed(2)} (taxa: R\$${fee.toStringAsFixed(2)})',
+              'Saque solicitado — você receberá ${Fmt.brl(net)} (taxa: ${Fmt.brl(fee)})',
             ),
           ),
         );
@@ -251,7 +252,7 @@ class _ProfilePageState extends State<ProfilePage> {
             children: [
               _Stat(
                 label: 'Seguidores',
-                value: '$followersCount',
+                value: Fmt.number(followersCount),
                 onTap: () {
                   final uid = FirebaseAuth.instance.currentUser?.uid;
                   if (uid == null) return;
@@ -268,7 +269,7 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
               _Stat(
                 label: 'Seguindo',
-                value: '$followingCount',
+                value: Fmt.number(followingCount),
                 onTap: () {
                   final uid = FirebaseAuth.instance.currentUser?.uid;
                   if (uid == null) return;
@@ -283,33 +284,18 @@ class _ProfilePageState extends State<ProfilePage> {
                   );
                 },
               ),
-              _Stat(label: 'Votos', value: '$totalVotes'),
-              _Stat(
-                  label: 'Ganhos',
-                  value: 'R\$${totalEarned.toStringAsFixed(0)}'),
+              _Stat(label: 'Votos', value: Fmt.number(totalVotes)),
+              _Stat(label: 'Ganhos', value: Fmt.brlCompact(totalEarned)),
             ],
           ),
           const Divider(height: 32),
 
-          // — Saldo —
-          Text(
-            'Créditos disponíveis: R\$ ${balance.toStringAsFixed(2)}',
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          // — Saldo (styled card) ——————————————————————————————————————
+          _BalanceCard(
+            balance: balance,
+            pendingBalance: pendingBalance,
+            lockedBalance: lockedBalance,
           ),
-          if (pendingBalance > 0) ...[
-            const SizedBox(height: 4),
-            Text(
-              'Em desafios ativos: R\$ ${pendingBalance.toStringAsFixed(2)}',
-              style: const TextStyle(fontSize: 14, color: Colors.orange),
-            ),
-          ],
-          if (lockedBalance > 0) ...[
-            const SizedBox(height: 4),
-            Text(
-              'Aguardando saque: R\$ ${lockedBalance.toStringAsFixed(2)}',
-              style: const TextStyle(fontSize: 14, color: Colors.blue),
-            ),
-          ],
           const SizedBox(height: 8),
           SizedBox(
             width: double.infinity,
@@ -455,6 +441,138 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 }
+
+// ── Balance card ──────────────────────────────────────────────────────────────
+
+class _BalanceCard extends StatelessWidget {
+  final double balance;
+  final double pendingBalance;
+  final double lockedBalance;
+
+  const _BalanceCard({
+    required this.balance,
+    required this.pendingBalance,
+    required this.lockedBalance,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF003b8a), Color(0xFF0cc0df)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF003b8a).withValues(alpha: 0.25),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.account_balance_wallet_outlined,
+                  color: Colors.white70, size: 16),
+              SizedBox(width: 6),
+              Text(
+                'CRÉDITOS DISPONÍVEIS',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 1,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            Fmt.brl(balance),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 26,
+              fontWeight: FontWeight.bold,
+              letterSpacing: -0.5,
+            ),
+          ),
+          if (pendingBalance > 0 || lockedBalance > 0) ...[
+            const SizedBox(height: 10),
+            Divider(color: Colors.white.withValues(alpha: 0.2), height: 1),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                if (pendingBalance > 0)
+                  _BalanceLine(
+                    icon: Icons.pending_outlined,
+                    label: 'Em desafios',
+                    value: Fmt.brl(pendingBalance),
+                    color: Colors.amber,
+                  ),
+                if (pendingBalance > 0 && lockedBalance > 0)
+                  const SizedBox(width: 20),
+                if (lockedBalance > 0)
+                  _BalanceLine(
+                    icon: Icons.lock_outline,
+                    label: 'Aguard. saque',
+                    value: Fmt.brl(lockedBalance),
+                    color: Colors.cyanAccent,
+                  ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _BalanceLine extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  const _BalanceLine({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 12, color: color.withValues(alpha: 0.85)),
+            const SizedBox(width: 4),
+            Text(label,
+                style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.white.withValues(alpha: 0.7))),
+          ],
+        ),
+        Text(value,
+            style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Colors.white)),
+      ],
+    );
+  }
+}
+
+// ── Stat ──────────────────────────────────────────────────────────────────────
 
 class _Stat extends StatelessWidget {
   final String label;

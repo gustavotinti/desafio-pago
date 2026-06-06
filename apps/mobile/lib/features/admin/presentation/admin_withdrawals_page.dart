@@ -4,6 +4,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/utils/format.dart';
 import '../../../core/widgets/web_frame.dart';
 
 class AdminWithdrawalsPage extends StatelessWidget {
@@ -299,12 +300,12 @@ class _WithdrawalListState extends State<_WithdrawalList> {
                 children: [
                   _SummaryCell(
                     label: grossLabel,
-                    value: 'R\$ ${monthGross.toStringAsFixed(2)}',
+                    value: Fmt.brl(monthGross),
                   ),
                   const SizedBox(width: 16),
                   _SummaryCell(
                     label: feeLabel,
-                    value: 'R\$ ${monthFee.toStringAsFixed(2)}',
+                    value: Fmt.brl(monthFee),
                     highlight: true,
                   ),
                 ],
@@ -320,8 +321,8 @@ class _WithdrawalListState extends State<_WithdrawalList> {
                       color: Colors.white54, size: 13),
                   const SizedBox(width: 4),
                   Text(
-                    '$totalLabel: R\$ ${totalFee.toStringAsFixed(2)}'
-                    '  (bruto: R\$ ${totalGross.toStringAsFixed(2)})',
+                    '$totalLabel: ${Fmt.brl(totalFee)}'
+                    '  (bruto: ${Fmt.brl(totalGross)})',
                     style: const TextStyle(
                         color: Colors.white70, fontSize: 12),
                   ),

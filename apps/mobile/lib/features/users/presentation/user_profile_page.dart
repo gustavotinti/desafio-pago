@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../../core/utils/format.dart';
 import '../../../core/widgets/web_frame.dart';
 import '../infrastructure/follow_repository.dart';
 import 'followers_page.dart';
@@ -187,11 +188,10 @@ class _UserProfilePageState extends State<UserProfilePage> {
                       value: '$followingCount',
                       onTap: () => _openFollowers(FollowType.following),
                     ),
-                    _TappableStat(label: 'Votos', value: '$totalVotes'),
                     _TappableStat(
-                      label: 'Ganhos',
-                      value: 'R\$${totalEarned.toStringAsFixed(0)}',
-                    ),
+                        label: 'Votos', value: Fmt.number(totalVotes)),
+                    _TappableStat(
+                        label: 'Ganhos', value: Fmt.brlCompact(totalEarned)),
                   ],
                 ),
               ],

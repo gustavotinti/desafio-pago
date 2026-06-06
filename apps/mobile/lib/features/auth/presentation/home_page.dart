@@ -11,6 +11,7 @@ import '../../challenge/presentation/create_challenge_page.dart';
 import '../../entry/presentation/challenge_entries_page.dart';
 import '../../entry/presentation/submit_entry_page.dart';
 import '../../admin/presentation/admin_page.dart';
+import '../../../core/utils/format.dart';
 import '../../../core/widgets/web_frame.dart';
 
 class HomePage extends StatefulWidget {
@@ -210,8 +211,7 @@ Future<void> _showAddAmountDialog(
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-            'R\$ ${value.toStringAsFixed(2)} adicionados ao prêmio!'),
+        content: Text('${Fmt.brl(value)} adicionados ao prêmio!'),
       ),
     );
     onSuccess();
@@ -448,7 +448,7 @@ class _ChallengeCard extends StatelessWidget {
                               ],
                       ),
                       child: Text(
-                        'R\$ ${challenge.amount.toStringAsFixed(2)}',
+                        Fmt.brl(challenge.amount),
                         style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,

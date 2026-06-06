@@ -1473,7 +1473,7 @@ exports.seedVirtualUsers = functions.runWith({timeoutSeconds: 540}).https.onRequ
       name: `${fn} ${ln}`,
       username,
       email: `${username}.demo@gmail.com`,
-      photoUrl: `https://i.pravatar.cc/150?u=${username}`,
+      photoUrl: `https://randomuser.me/api/portraits/${i % 2 === 0 ? "men" : "women"}/${Math.floor(i / 2) % 100}.jpg`,
       createdAt: now,
       balance: 0.0,
       pendingBalance: 0.0,
@@ -1606,4 +1606,45 @@ exports.setUserVerified = functions.https.onCall(async (data, context) => {
   if (!userId) throw new functions.https.HttpsError("invalid-argument", "userId obrigatório");
   await db.collection("users").doc(userId).update({isVerified: isVerified === true});
   return {success: true};
+});
+
+// ─── UPDATE VIRTUAL AVATARS ───────────────────────────────────────────────────
+// One-shot migration: replaces pravatar.cc URLs with randomuser.me portraits.
+
+exports.updateVirtualAvatars = functions.runWith({timeoutSeconds: 540}).https.onRequest(async (req, res) => {
+  if (req.method !== "POST") return res.status(405).json({error: "Method Not Allowed"});
+  if (!req.body || req.body.secret !== "SEED_2026_DP") {
+    return res.status(403).json({error: "Forbidden"});
+  }
+
+  const db = admin.firestore();
+  const snap = await db.collection("users").where("isVirtual", "==", true).get();
+  const docs = snap.docs;
+
+  const CHUNK = 490;
+  let updated = 0;
+  let idx = 0;
+
+  for (let i = 0; i < docs.length; i += CHUNK) {
+    const batch = db.batch();
+    const chunk = docs.slice(i, i + CHUNK);
+    for (const doc of chunk) {
+      const d = doc.data();
+      const username = d.username || "";
+      // Keep special accounts' avatars as-is
+      if (username === "neymarjr" || username === "whinderssonnunes") {
+        idx++;
+        continue;
+      }
+      const gender = idx % 2 === 0 ? "men" : "women";
+      const num = Math.floor(idx / 2) % 100;
+      batch.update(doc.ref, {photoUrl: `https://randomuser.me/api/portraits/${gender}/${num}.jpg`});
+      idx++;
+      updated++;
+    }
+    await batch.commit();
+    console.log(`updateVirtualAvatars: ${updated} updated so far`);
+  }
+
+  return res.json({success: true, updated});
 });
