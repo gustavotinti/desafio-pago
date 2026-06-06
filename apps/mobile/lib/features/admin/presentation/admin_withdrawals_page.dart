@@ -334,7 +334,7 @@ class _WithdrawalListState extends State<_WithdrawalList> {
 
         return Column(
           children: [
-            if (summaryCard != null) summaryCard,
+            summaryCard,
             Expanded(
               child: ListView.builder(
           itemCount: docs.length,
@@ -366,7 +366,7 @@ class _WithdrawalListState extends State<_WithdrawalList> {
                           children: [
                             Expanded(
                               child: Text(
-                                'R\$ ${netAmount.toStringAsFixed != null ? netAmount.toStringAsFixed(2) : netAmount}',
+                                Fmt.brl((netAmount as num).toDouble()),
                                 style: const TextStyle(
                                   fontSize: 20,
                                   fontWeight: FontWeight.bold,
@@ -378,7 +378,7 @@ class _WithdrawalListState extends State<_WithdrawalList> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                            'Bruto: R\$ $amount  ·  Taxa: R\$ $fee',
+                            'Bruto: ${Fmt.brl((amount as num).toDouble())}  ·  Taxa: ${Fmt.brl((fee as num).toDouble())}',
                             style: const TextStyle(
                                 fontSize: 12, color: Colors.black54)),
                         const SizedBox(height: 6),
