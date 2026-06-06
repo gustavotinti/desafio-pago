@@ -10,7 +10,7 @@ class AdminUsersPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Gerenciar Usuários'),
@@ -18,6 +18,7 @@ class AdminUsersPage extends StatelessWidget {
             tabs: [
               Tab(text: 'Acessos'),
               Tab(text: 'Banimentos'),
+              Tab(text: 'Verificados'),
               Tab(text: 'Manutenção'),
             ],
           ),
@@ -28,6 +29,7 @@ class AdminUsersPage extends StatelessWidget {
             children: [
               _AccessTab(),
               _BanTab(),
+              _VerifiedTab(),
               _MaintenanceTab(),
             ],
           ),
@@ -399,6 +401,311 @@ class _BanTabState extends State<_BanTab> {
                     trailing: TextButton(
                       onPressed: () => _unbanUser(doc.id),
                       child: const Text('Desbanir'),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Aba Verificados ───────────────────────────────────────────────────────────
+
+class _VerifiedTab extends StatefulWidget {
+  const _VerifiedTab();
+
+  @override
+  State<_VerifiedTab> createState() => _VerifiedTabState();
+}
+
+class _VerifiedTabState extends State<_VerifiedTab> {
+  final _searchCtrl = TextEditingController();
+  Map<String, dynamic>? _foundUser;
+  String? _foundUserId;
+  bool _searching = false;
+  bool _toggling = false;
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _search() async {
+    final query = _searchCtrl.text.trim().toLowerCase();
+    if (query.isEmpty) return;
+    setState(() {
+      _searching = true;
+      _foundUser = null;
+      _foundUserId = null;
+    });
+
+    try {
+      QuerySnapshot? snap;
+
+      // Try by username first (strip leading @)
+      final username = query.startsWith('@') ? query.substring(1) : query;
+      snap = await FirebaseFirestore.instance
+          .collection('users')
+          .where('username', isEqualTo: username)
+          .limit(1)
+          .get();
+
+      // Fallback: try by email
+      if (snap.docs.isEmpty) {
+        snap = await FirebaseFirestore.instance
+            .collection('users')
+            .where('email', isEqualTo: query)
+            .limit(1)
+            .get();
+      }
+
+      if (!mounted) return;
+      if (snap.docs.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Usuário não encontrado')),
+        );
+      } else {
+        setState(() {
+          _foundUserId = snap!.docs.first.id;
+          _foundUser = snap.docs.first.data() as Map<String, dynamic>;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _searching = false);
+    }
+  }
+
+  Future<void> _toggle(bool setVerified) async {
+    if (_foundUserId == null) return;
+    setState(() => _toggling = true);
+    try {
+      await FirebaseFunctions.instanceFor(region: 'us-central1')
+          .httpsCallable('setUserVerified')
+          .call({'userId': _foundUserId, 'isVerified': setVerified});
+      if (!mounted) return;
+      setState(() {
+        _foundUser = {
+          ..._foundUser!,
+          'isVerified': setVerified,
+        };
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(setVerified
+              ? 'Badge verificado concedido ✅'
+              : 'Badge verificado removido'),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    } finally {
+      if (mounted) setState(() => _toggling = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // ── Search ──────────────────────────────────────────────────────────
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                controller: _searchCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Buscar por @username ou email',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.search),
+                ),
+                onSubmitted: (_) => _search(),
+              ),
+              const SizedBox(height: 10),
+              ElevatedButton.icon(
+                onPressed: _searching ? null : _search,
+                icon: _searching
+                    ? const SizedBox(
+                        height: 16,
+                        width: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.search),
+                label: Text(_searching ? 'Buscando...' : 'Buscar'),
+              ),
+
+              // ── Result card ───────────────────────────────────────────────
+              if (_foundUser != null) ...[
+                const SizedBox(height: 12),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 22,
+                          backgroundImage:
+                              (_foundUser!['photoUrl'] as String? ?? '').isNotEmpty
+                                  ? NetworkImage(
+                                      _foundUser!['photoUrl'] as String)
+                                  : null,
+                          child: (_foundUser!['photoUrl'] as String? ?? '').isEmpty
+                              ? const Icon(Icons.person)
+                              : null,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    _foundUser!['name'] as String? ?? '',
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                  if (_foundUser!['isVerified'] == true) ...[
+                                    const SizedBox(width: 4),
+                                    const Icon(Icons.verified,
+                                        color: Colors.blue, size: 16),
+                                  ],
+                                ],
+                              ),
+                              if ((_foundUser!['username'] as String? ?? '')
+                                  .isNotEmpty)
+                                Text(
+                                  '@${_foundUser!['username']}',
+                                  style: const TextStyle(
+                                      fontSize: 12, color: Colors.black54),
+                                ),
+                            ],
+                          ),
+                        ),
+                        _toggling
+                            ? const SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2),
+                              )
+                            : _foundUser!['isVerified'] == true
+                                ? OutlinedButton.icon(
+                                    onPressed: () => _toggle(false),
+                                    icon: const Icon(Icons.verified_outlined,
+                                        color: Colors.red),
+                                    label: const Text('Remover',
+                                        style:
+                                            TextStyle(color: Colors.red)),
+                                    style: OutlinedButton.styleFrom(
+                                      side: const BorderSide(
+                                          color: Colors.red),
+                                    ),
+                                  )
+                                : FilledButton.icon(
+                                    onPressed: () => _toggle(true),
+                                    icon: const Icon(Icons.verified),
+                                    label: const Text('Verificar'),
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: Colors.blue,
+                                    ),
+                                  ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+
+        const Divider(height: 1),
+
+        // ── List of currently verified users ──────────────────────────────
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 10, 16, 4),
+          child: Row(
+            children: [
+              Icon(Icons.verified, color: Colors.blue, size: 16),
+              SizedBox(width: 6),
+              Text(
+                'Usuários verificados',
+                style: TextStyle(
+                    fontWeight: FontWeight.w600, color: Colors.black54),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('users')
+                .where('isVerified', isEqualTo: true)
+                .limit(100)
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final docs = snapshot.data!.docs;
+              if (docs.isEmpty) {
+                return const Center(
+                    child: Text('Nenhum usuário verificado'));
+              }
+              return ListView.builder(
+                itemCount: docs.length,
+                itemBuilder: (context, i) {
+                  final doc = docs[i];
+                  final d = doc.data() as Map<String, dynamic>;
+                  final name = d['name'] as String? ?? '';
+                  final username = d['username'] as String? ?? '';
+                  final photoUrl = d['photoUrl'] as String? ?? '';
+                  return ListTile(
+                    leading: CircleAvatar(
+                      radius: 18,
+                      backgroundImage: photoUrl.isNotEmpty
+                          ? NetworkImage(photoUrl)
+                          : null,
+                      child: photoUrl.isEmpty
+                          ? const Icon(Icons.person, size: 18)
+                          : null,
+                    ),
+                    title: Row(
+                      children: [
+                        Text(name,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w500)),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.verified,
+                            color: Colors.blue, size: 14),
+                      ],
+                    ),
+                    subtitle: username.isNotEmpty
+                        ? Text('@$username',
+                            style: const TextStyle(
+                                fontSize: 12, color: Colors.black45))
+                        : null,
+                    trailing: TextButton(
+                      onPressed: () async {
+                        await FirebaseFunctions.instanceFor(
+                                region: 'us-central1')
+                            .httpsCallable('setUserVerified')
+                            .call({
+                          'userId': doc.id,
+                          'isVerified': false,
+                        });
+                      },
+                      child: const Text('Remover',
+                          style: TextStyle(color: Colors.red)),
                     ),
                   );
                 },

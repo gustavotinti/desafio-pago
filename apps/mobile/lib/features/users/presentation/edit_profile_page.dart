@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -267,6 +268,21 @@ class _EditProfilePageState extends State<EditProfilePage> {
                 autocorrect: false,
                 enableSuggestions: false,
                 keyboardType: TextInputType.text,
+                inputFormatters: [
+                  // Force lowercase on every keystroke
+                  TextInputFormatter.withFunction((oldVal, newVal) {
+                    final lower = newVal.text.toLowerCase();
+                    return newVal.copyWith(
+                      text: lower,
+                      selection: newVal.selection.copyWith(
+                        baseOffset:
+                            newVal.selection.baseOffset.clamp(0, lower.length),
+                        extentOffset:
+                            newVal.selection.extentOffset.clamp(0, lower.length),
+                      ),
+                    );
+                  }),
+                ],
                 decoration: InputDecoration(
                   labelText: 'Username',
                   prefixText: '@',

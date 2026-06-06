@@ -39,12 +39,12 @@ class UserRepository {
   /// If the base is taken, appends incrementing numeric suffixes.
   Future<String> _generateUniqueUsername(String email) async {
     final localPart = email.split('@').first;
-    final base = _normalizeUsername(localPart).substring(
-      0,
-      _normalizeUsername(localPart).length.clamp(0, 25),
-    );
+    final normalized = _normalizeUsername(localPart);
+    final base = normalized.length > 25
+        ? normalized.substring(0, 25)
+        : (normalized.isEmpty ? 'usuario' : normalized);
 
-    String candidate = base.isEmpty ? 'usuario' : base;
+    String candidate = base;
     int suffix = 0;
 
     while (true) {
