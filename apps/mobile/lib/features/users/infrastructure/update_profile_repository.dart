@@ -18,10 +18,16 @@ class UpdateProfileRepository {
     required String pixKey,
     String? newUsername,
     XFile? photo,
+    String? libraryPhotoUrl,
   }) async {
     String? photoUrl;
 
-    if (photo != null) {
+    if (libraryPhotoUrl != null && libraryPhotoUrl.isNotEmpty) {
+      // Avatar da biblioteca: só referenciamos a URL (zero Storage).
+      photoUrl = libraryPhotoUrl;
+      await _auth.currentUser?.updatePhotoURL(photoUrl);
+    } else if (photo != null) {
+      // Upload: caminho fixo por usuário → sobrescreve, 1 imagem por conta.
       final bytes = await photo.readAsBytes();
       final ref = _storage.ref('profiles/$userId/photo.jpg');
       await ref.putData(
@@ -39,7 +45,11 @@ class UpdateProfileRepository {
       'bio': bio,
       'pixKey': pixKey,
     };
-    if (photoUrl != null) updates['photoUrl'] = photoUrl;
+    if (photoUrl != null) {
+      updates['photoUrl'] = photoUrl;
+      // Marca como personalizada para o login não sobrescrever com a do Google.
+      updates['photoIsCustom'] = true;
+    }
 
     await _firestore.collection('users').doc(userId).update(updates);
 

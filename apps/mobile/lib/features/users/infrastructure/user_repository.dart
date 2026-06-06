@@ -86,6 +86,7 @@ class UserRepository {
           'termsAccepted': false,
           'isVerified': false,
           'isVirtual': false,
+          'photoIsCustom': false,
         });
         tx.set(
           _firestore.collection('usernames').doc(username),
@@ -93,12 +94,17 @@ class UserRepository {
         );
       });
     } else {
-      // Subsequent logins — only sync Google profile fields
-      await doc.update({
+      // Subsequent logins — sync Google profile fields, but NEVER overwrite
+      // a photo the user customized (library avatar or upload).
+      final isCustom = snapshot.data()?['photoIsCustom'] == true;
+      final updates = <String, dynamic>{
         'name': user.name ?? '',
         'email': user.email ?? '',
-        'photoUrl': user.photoUrl ?? '',
-      });
+      };
+      if (!isCustom) {
+        updates['photoUrl'] = user.photoUrl ?? '';
+      }
+      await doc.update(updates);
     }
   }
 }

@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../core/avatars.dart';
 import '../../../core/widgets/web_frame.dart';
 import '../infrastructure/update_profile_repository.dart';
 
@@ -34,7 +36,13 @@ class _EditProfilePageState extends State<EditProfilePage> {
   late final TextEditingController _bioController;
   late final TextEditingController _pixController;
   late final TextEditingController _usernameController;
+
+  // Foto: ou um upload novo (_newPhoto/_newPhotoBytes) ou um avatar da
+  // biblioteca (_selectedLibraryUrl). Apenas um fica ativo por vez.
   XFile? _newPhoto;
+  Uint8List? _newPhotoBytes;
+  String? _selectedLibraryUrl;
+
   bool _isLoading = false;
 
   // Username availability state
@@ -118,7 +126,29 @@ class _EditProfilePageState extends State<EditProfilePage> {
       maxHeight: 512,
       imageQuality: 85,
     );
-    if (picked != null) setState(() => _newPhoto = picked);
+    if (picked == null) return;
+    final bytes = await picked.readAsBytes();
+    if (!mounted) return;
+    setState(() {
+      _newPhoto = picked;
+      _newPhotoBytes = bytes;
+      _selectedLibraryUrl = null; // upload vence biblioteca
+    });
+  }
+
+  Future<void> _openLibrary() async {
+    final chosen = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _AvatarLibrarySheet(selected: _selectedLibraryUrl),
+    );
+    if (chosen == null) return;
+    setState(() {
+      _selectedLibraryUrl = chosen;
+      _newPhoto = null;
+      _newPhotoBytes = null;
+    });
   }
 
   Future<void> _save() async {
@@ -157,6 +187,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         pixKey: _pixController.text.trim(),
         newUsername: usernameChanged ? newUsername : null,
         photo: _newPhoto,
+        libraryPhotoUrl: _selectedLibraryUrl,
       );
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -170,11 +201,10 @@ class _EditProfilePageState extends State<EditProfilePage> {
   }
 
   ImageProvider? get _photoProvider {
-    if (_newPhoto != null) return null;
-    if (widget.currentPhotoUrl != null &&
-        widget.currentPhotoUrl!.isNotEmpty) {
-      return NetworkImage(widget.currentPhotoUrl!);
-    }
+    if (_newPhotoBytes != null) return MemoryImage(_newPhotoBytes!);
+    if (_selectedLibraryUrl != null) return NetworkImage(_selectedLibraryUrl!);
+    final cur = widget.currentPhotoUrl;
+    if (cur != null && cur.isNotEmpty) return NetworkImage(cur);
     return null;
   }
 
@@ -198,6 +228,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    final provider = _photoProvider;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Editar perfil'),
@@ -223,14 +254,14 @@ class _EditProfilePageState extends State<EditProfilePage> {
               // ── Foto ──────────────────────────────────────────────────────
               Center(
                 child: GestureDetector(
-                  onTap: _pickPhoto,
+                  onTap: _openLibrary,
                   child: Stack(
                     alignment: Alignment.bottomRight,
                     children: [
                       CircleAvatar(
                         radius: 48,
-                        backgroundImage: _photoProvider,
-                        child: _photoProvider == null && _newPhoto == null
+                        backgroundImage: provider,
+                        child: provider == null
                             ? const Icon(Icons.person, size: 48)
                             : null,
                       ),
@@ -247,8 +278,24 @@ class _EditProfilePageState extends State<EditProfilePage> {
                   ),
                 ),
               ),
-              const SizedBox(height: 6),
-              const Center(child: Text('Toque para alterar a foto')),
+              const SizedBox(height: 14),
+              // ── Ações de foto ─────────────────────────────────────────────
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: _openLibrary,
+                    icon: const Icon(Icons.face_retouching_natural, size: 18),
+                    label: const Text('Escolher avatar'),
+                  ),
+                  const SizedBox(width: 10),
+                  OutlinedButton.icon(
+                    onPressed: _pickPhoto,
+                    icon: const Icon(Icons.upload, size: 18),
+                    label: const Text('Enviar foto'),
+                  ),
+                ],
+              ),
               const SizedBox(height: 24),
 
               // ── Nome ──────────────────────────────────────────────────────
@@ -329,6 +376,68 @@ class _EditProfilePageState extends State<EditProfilePage> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Bottom sheet: grade de avatares da biblioteca ──────────────────────────────
+
+class _AvatarLibrarySheet extends StatelessWidget {
+  final String? selected;
+  const _AvatarLibrarySheet({this.selected});
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                'Escolha um avatar',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+            Flexible(
+              child: GridView.builder(
+                shrinkWrap: true,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                gridDelegate:
+                    const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 4,
+                  mainAxisSpacing: 14,
+                  crossAxisSpacing: 14,
+                ),
+                itemCount: AvatarLibrary.all.length,
+                itemBuilder: (_, i) {
+                  final url = AvatarLibrary.all[i];
+                  final isSel = url == selected;
+                  return GestureDetector(
+                    onTap: () => Navigator.pop(context, url),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: isSel ? Colors.blue : Colors.transparent,
+                          width: 3,
+                        ),
+                      ),
+                      child: CircleAvatar(
+                        backgroundColor: const Color(0xFFE9EEF6),
+                        backgroundImage: NetworkImage(url),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );
