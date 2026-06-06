@@ -603,7 +603,7 @@ class _ChallengeCard extends StatelessWidget {
                       ),
                       onPressed: () async {
                         final url =
-                            'https://desafiopago.web.app/challenges/${challenge.id}';
+                            'https://desafiopago.com.br/challenges/${challenge.id}';
                         await Clipboard.setData(
                             ClipboardData(text: url));
                         if (!context.mounted) return;

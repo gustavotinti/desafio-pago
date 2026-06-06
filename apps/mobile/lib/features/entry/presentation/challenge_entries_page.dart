@@ -114,7 +114,7 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
 
   Future<void> _shareEntry(Entry entry) async {
     final url =
-        'https://desafiopago.web.app/challenges/${widget.challenge.id}?entry=${entry.id}';
+        'https://desafiopago.com.br/challenges/${widget.challenge.id}?entry=${entry.id}';
     await Clipboard.setData(ClipboardData(text: url));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
