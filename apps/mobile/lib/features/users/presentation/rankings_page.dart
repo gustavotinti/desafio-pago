@@ -27,6 +27,7 @@ class RankingsPage extends StatelessWidget {
           ),
         ),
         body: WebFrame(
+          maxWidth: 600,
           child: TabBarView(
             children: const [
               _RankingTab(orderBy: 'totalEarned', isEarnings: true),

@@ -255,6 +255,7 @@ class _FeedTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return WebFrame(
+      maxWidth: 600,
       child: Column(
       children: [
         _SortBar(sortBy: sortBy, onChanged: onSortChanged),
