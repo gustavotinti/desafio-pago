@@ -17,7 +17,7 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _index = 0;
 
-  static const _version = 'Desafio Pago v2.0.1';
+  static const _version = 'Desafio Pago v2.1.0';
 
   @override
   Widget build(BuildContext context) {
