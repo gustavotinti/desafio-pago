@@ -1989,6 +1989,103 @@ exports.decideVerificationRequest =
       return {success: true};
     });
 
+// ─── ADMIN: EDITAR PERFIL VIRTUAL ─────────────────────────────────────────────
+
+exports.adminUpdateVirtualUser =
+    functions.https.onCall(async (data, context) => {
+      if (!context.auth) {
+        throw new functions.https.HttpsError(
+            "unauthenticated", "Não autenticado");
+      }
+      const db = admin.firestore();
+      const adminDoc =
+          await db.collection("admins").doc(context.auth.uid).get();
+      if (!adminDoc.exists) {
+        throw new functions.https.HttpsError(
+            "permission-denied", "Apenas administradores.");
+      }
+
+      const userId = data.userId;
+      if (!userId) {
+        throw new functions.https.HttpsError(
+            "invalid-argument", "userId obrigatório");
+      }
+      const userRef = db.collection("users").doc(userId);
+      const userDoc = await userRef.get();
+      if (!userDoc.exists) {
+        throw new functions.https.HttpsError(
+            "not-found", "Usuário não encontrado");
+      }
+      if (userDoc.data().isVirtual !== true) {
+        throw new functions.https.HttpsError(
+            "failed-precondition", "Só é permitido editar perfis virtuais.");
+      }
+
+      const updates = {};
+      if (typeof data.name === "string" && data.name.trim().length > 0) {
+        updates.name = data.name.trim();
+      }
+      if (typeof data.bio === "string") {
+        updates.bio = data.bio.trim();
+      }
+      if (typeof data.isVerified === "boolean") {
+        updates.isVerified = data.isVerified;
+      }
+
+      // Foto: upload base64 (Admin SDK) tem prioridade; senão usa URL pronta.
+      if (typeof data.photoBase64 === "string" && data.photoBase64.length > 0) {
+        const {randomUUID} = require("crypto");
+        const bucket = admin.storage().bucket();
+        const path = `virtual/${userId}.jpg`;
+        const token = randomUUID();
+        const buffer = Buffer.from(data.photoBase64, "base64");
+        await bucket.file(path).save(buffer, {
+          metadata: {
+            contentType: data.photoContentType || "image/jpeg",
+            metadata: {firebaseStorageDownloadTokens: token},
+          },
+        });
+        updates.photoUrl =
+            "https://firebasestorage.googleapis.com/v0/b/" + bucket.name +
+            "/o/" + encodeURIComponent(path) + "?alt=media&token=" + token;
+      } else if (typeof data.photoUrl === "string" &&
+          data.photoUrl.length > 0) {
+        updates.photoUrl = data.photoUrl;
+      }
+
+      // Username: valida formato + unicidade e troca os docs atomically.
+      const newUsername = typeof data.username === "string" ?
+          data.username.trim().toLowerCase() : "";
+      const oldUsername = userDoc.data().username || "";
+
+      if (newUsername && newUsername !== oldUsername) {
+        if (!/^[a-z0-9][a-z0-9._]{2,29}$/.test(newUsername)) {
+          throw new functions.https.HttpsError(
+              "invalid-argument", "Username inválido.");
+        }
+        const taken = await db.collection("usernames").doc(newUsername).get();
+        if (taken.exists && taken.data().uid !== userId) {
+          throw new functions.https.HttpsError(
+              "already-exists", "Username já está em uso.");
+        }
+        const batch = db.batch();
+        batch.set(db.collection("usernames").doc(newUsername),
+            {uid: userId, updatedAt: new Date().toISOString()});
+        if (oldUsername) {
+          batch.delete(db.collection("usernames").doc(oldUsername));
+        }
+        updates.username = newUsername;
+        batch.update(userRef, updates);
+        await batch.commit();
+        return {success: true, photoUrl: updates.photoUrl || null};
+      }
+
+      if (Object.keys(updates).length > 0) {
+        await userRef.update(updates);
+      }
+      return {success: true, photoUrl: updates.photoUrl || null};
+    });
+
 // ─── UPDATE VIRTUAL AVATARS ───────────────────────────────────────────────────
 // One-shot migration: replaces pravatar.cc URLs with randomuser.me portraits.
 

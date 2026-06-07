@@ -5,6 +5,7 @@ import 'admin_withdrawals_page.dart';
 import 'admin_users_page.dart';
 import 'admin_challenges_page.dart';
 import 'admin_verification_page.dart';
+import 'admin_virtual_users_page.dart';
 
 class AdminPage extends StatelessWidget {
   const AdminPage({super.key});
@@ -59,6 +60,17 @@ class AdminPage extends StatelessWidget {
               context,
               MaterialPageRoute(
                   builder: (_) => const AdminVerificationPage()),
+            ),
+          ),
+          _AdminCard(
+            icon: Icons.smart_toy_outlined,
+            title: 'Perfis virtuais',
+            subtitle: 'Editar nome, @username, bio e foto dos perfis virtuais',
+            color: Colors.teal,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => const AdminVirtualUsersPage()),
             ),
           ),
         ],
