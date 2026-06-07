@@ -6,6 +6,8 @@ const path = require("path");
 
 const base = __dirname;
 const dirs = ["avatars", "portraits"];
+// Arquivos avulsos que o flutter build web não copia (adicionados por nós).
+const files = ["favicon.svg", "favicon.png", "apple-touch-icon.png"];
 
 for (const d of dirs) {
   const src = path.join(base, "web", d);
@@ -17,5 +19,14 @@ for (const d of dirs) {
     console.log(`[copy_web_assets] ${d}: ${count} arquivos -> build/web/${d}`);
   } else {
     console.log(`[copy_web_assets] aviso: web/${d} nao existe, pulando`);
+  }
+}
+
+for (const f of files) {
+  const src = path.join(base, "web", f);
+  const dest = path.join(base, "build", "web", f);
+  if (fs.existsSync(src)) {
+    fs.copyFileSync(src, dest);
+    console.log(`[copy_web_assets] ${f} -> build/web/${f}`);
   }
 }
