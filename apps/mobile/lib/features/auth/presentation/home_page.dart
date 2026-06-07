@@ -9,6 +9,7 @@ import '../../challenge/infrastructure/add_amount_repository.dart';
 import '../../challenge/infrastructure/get_challenges.dart';
 import '../../challenge/presentation/create_challenge_page.dart';
 import '../../entry/presentation/challenge_entries_page.dart';
+import '../../entry/presentation/entry_preview_strip.dart';
 import '../../entry/presentation/submit_entry_page.dart';
 import '../../admin/presentation/admin_page.dart';
 import '../../../core/utils/format.dart';
@@ -26,7 +27,7 @@ class _HomePageState extends State<HomePage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   ChallengeSortBy _activeSort   = ChallengeSortBy.amount;
-  ChallengeSortBy _finishedSort = ChallengeSortBy.newest;
+  ChallengeSortBy _finishedSort = ChallengeSortBy.amount;
 
   late Future<List<Challenge>> _activeFuture;
   late Future<List<Challenge>> _finishedFuture;
@@ -534,6 +535,22 @@ class _ChallengeCard extends StatelessWidget {
                         fontSize: 12, color: Colors.black45),
                   ),
                 ],
+
+                // ── Prévia: 3 participações mais votadas (4:5) ─────
+                const SizedBox(height: 12),
+                EntryPreviewStrip(
+                  challengeId: challenge.id,
+                  onOpen: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            ChallengeEntriesPage(challenge: challenge),
+                      ),
+                    );
+                    onNavigated();
+                  },
+                ),
 
                 const SizedBox(height: 14),
                 const Divider(height: 1),

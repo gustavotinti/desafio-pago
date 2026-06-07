@@ -14,6 +14,7 @@ import '../../moderation/infrastructure/report_repository.dart';
 import '../domain/entities/content_type.dart';
 import '../domain/entities/entry.dart';
 import '../infrastructure/get_entries.dart';
+import 'auto_video.dart';
 
 class ChallengeEntriesPage extends StatefulWidget {
   final Challenge challenge;
@@ -479,31 +480,38 @@ class _EntryCard extends StatelessWidget {
         return Text(entry.contentText ?? '');
       case ContentType.image:
         if (entry.contentUrl == null) return const SizedBox.shrink();
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: Image.network(
-            entry.contentUrl!,
-            height: 200,
-            width: double.infinity,
-            fit: BoxFit.cover,
-            loadingBuilder: (_, child, progress) => progress == null
-                ? child
-                : const Center(child: CircularProgressIndicator()),
+        // Proporção natural (vertical/quadrado), com altura máxima.
+        return ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 460),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.network(
+              entry.contentUrl!,
+              width: double.infinity,
+              fit: BoxFit.contain,
+              loadingBuilder: (_, child, progress) => progress == null
+                  ? child
+                  : const SizedBox(
+                      height: 200,
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+            ),
           ),
         );
       case ContentType.video:
-        return Row(
-          children: [
-            const Icon(Icons.videocam),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                entry.contentUrl ?? 'Vídeo',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+        if (entry.contentUrl == null) return const SizedBox.shrink();
+        // Player 4:5 — toque para reproduzir com som.
+        return Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 320),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: AspectRatio(
+                aspectRatio: 4 / 5,
+                child: AutoVideo(url: entry.contentUrl!),
               ),
             ),
-          ],
+          ),
         );
     }
   }

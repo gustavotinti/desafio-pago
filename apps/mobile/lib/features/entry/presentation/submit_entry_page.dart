@@ -9,8 +9,8 @@ import '../application/submit_entry.dart';
 import '../domain/entities/content_type.dart';
 import '../infrastructure/entry_repository.dart';
 
-// Aspect ratios aceitos: 9:16, 4:5, 1:1, 16:9
-const _allowedRatios = [9 / 16, 4 / 5, 1.0, 16 / 9];
+// Aspect ratios aceitos: 9:16, 4:5, 1:1 (vertical/quadrado — sem 16:9)
+const _allowedRatios = [9 / 16, 4 / 5, 1.0];
 const _ratioTolerance = 0.08; // 8% de margem
 const _maxTextLength = 5000;
 const _maxVideoSeconds = 15;
@@ -73,8 +73,8 @@ class _SubmitEntryPageState extends State<SubmitEntryPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'Proporção inválida. Use 9:16 (1080×1920), 4:5 (1080×1350), '
-              '1:1 (1080×1080) ou 16:9 (1920×1080).\n'
+              'Proporção inválida. Use 9:16 (1080×1920), 4:5 (1080×1350) '
+              'ou 1:1 (1080×1080).\n'
               'Recorte a imagem antes de selecioná-la.',
             ),
             duration: Duration(seconds: 4),
@@ -240,7 +240,7 @@ class _SubmitEntryPageState extends State<SubmitEntryPage> {
                 lines: const [
                   'Proporções aceitas:',
                   '  9:16 (1080 × 1920)  ·  4:5 (1080 × 1350)',
-                  '  1:1 (1080 × 1080)  ·  16:9 (1920 × 1080)',
+                  '  1:1 (1080 × 1080)',
                   'Tamanho máximo: 10 MB',
                   'Se necessário, recorte a imagem no seu dispositivo antes de selecionar.',
                 ],
@@ -264,7 +264,7 @@ class _SubmitEntryPageState extends State<SubmitEntryPage> {
                 lines: const [
                   'Proporções aceitas:',
                   '  9:16 (1080 × 1920)  ·  4:5 (1080 × 1350)',
-                  '  1:1 (1080 × 1080)  ·  16:9 (1920 × 1080)',
+                  '  1:1 (1080 × 1080)',
                   'Duração máxima: 15 segundos',
                   'Tamanho máximo: 50 MB',
                   'Edite e recorte antes de selecionar, se necessário.',

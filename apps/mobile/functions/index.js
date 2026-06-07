@@ -2914,6 +2914,261 @@ exports.seedVirtualCommentInteractions = functions.runWith({timeoutSeconds: 540}
       return res.json({success: true, likesSet, replies});
     });
 
+// ─── REMOVER EMOJIS DOS TÍTULOS DOS DESAFIOS VIRTUAIS ─────────────────────────
+
+exports.fixVirtualChallengeTitles = functions.runWith({timeoutSeconds: 300})
+    .https.onRequest(async (req, res) => {
+      if (req.method !== "POST") {
+        return res.status(405).json({error: "Method Not Allowed"});
+      }
+      if (!req.body || req.body.secret !== "SEED_2026_DP") {
+        return res.status(403).json({error: "Forbidden"});
+      }
+      const db = admin.firestore();
+      const emojiRe =
+          /[\u{1F1E6}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}]/gu;
+      const strip = (s) => String(s || "")
+          .replace(emojiRe, "")
+          .replace(/‍/gu, "")
+          .replace(/️/gu, "")
+          .replace(/\s+/g, " ")
+          .trim();
+
+      const snap = await db.collection("challenges")
+          .where("isVirtual", "==", true).get();
+      let batch = db.batch();
+      let ops = 0;
+      let fixed = 0;
+      for (const doc of snap.docs) {
+        const t = doc.data().title || "";
+        const nt = strip(t);
+        if (nt !== t && nt.length > 0) {
+          batch.update(doc.ref, {title: nt});
+          ops++;
+          fixed++;
+          if (ops >= 450) {
+            await batch.commit();
+            batch = db.batch();
+            ops = 0;
+          }
+        }
+      }
+      if (ops > 0) await batch.commit();
+      return res.json({success: true, fixed});
+    });
+
+// ─── SEED DESAFIOS DE VALOR BAIXO (centavos a R$20, com vídeo) ─────────────────
+
+exports.seedSmallChallenges = functions.runWith({timeoutSeconds: 540})
+    .https.onRequest(async (req, res) => {
+      if (req.method !== "POST") {
+        return res.status(405).json({error: "Method Not Allowed"});
+      }
+      if (!req.body || req.body.secret !== "SEED_2026_DP") {
+        return res.status(403).json({error: "Forbidden"});
+      }
+      const db = admin.firestore();
+
+      const check = await db.collection("challenges")
+          .where("seedWave", "==", 3).limit(1).get();
+      if (!check.empty) {
+        return res.status(409).json({error: "Desafios de valor baixo já existem."});
+      }
+
+      const usersSnap = await db.collection("users")
+          .where("isVirtual", "==", true).limit(400).get();
+      const uids = usersSnap.docs.map((d) => d.id);
+      if (uids.length < 20) {
+        return res.status(412).json({error: "Rode seedVirtualUsers primeiro."});
+      }
+
+      const ri = (n) => Math.floor(Math.random() * n);
+      const shuffle = (arr) => {
+        const a = arr.slice();
+        for (let i = a.length - 1; i > 0; i--) {
+          const j = ri(i + 1);
+          [a[i], a[j]] = [a[j], a[i]];
+        }
+        return a;
+      };
+      const HOST = "https://desafiopago.web.app";
+      let imgC = 0;
+      const nextImg = () => {
+        const n = String((imgC++ % 40) + 1).padStart(2, "0");
+        return `${HOST}/challenge_images/${n}.jpg`;
+      };
+      let vidC = 0;
+      const nextVid = () => {
+        const n = String((vidC++ % 3) + 1).padStart(2, "0");
+        return `${HOST}/challenge_videos/${n}.mp4`;
+      };
+
+      const specs = [
+        {
+          type: "image", status: "active", amount: 0.50, imageN: 5,
+          title: "A foto do seu café da manhã",
+          desc: "Mostra o que rolou no café hoje. Vale tudo!",
+        },
+        {
+          type: "text", status: "finished", amount: 0.99,
+          title: "Resuma o seu dia de ontem em uma frase",
+          desc: "Sem textão. Uma frase só.",
+          entries: [
+            "Acordei, sobrevivi, repeti.", "Trabalho, treino e série.",
+            "Dia cheio, mas produtivo.", "Só café e reunião o dia todo.",
+            "Descansei e não me arrependo.",
+          ],
+        },
+        {
+          type: "text", status: "active", amount: 1.00,
+          title: "Sua melhor dica de produtividade",
+          desc: "O truque que te faz render mais no dia.",
+          entries: [
+            "Desliga as notificações por 1h e foca.",
+            "Pomodoro: 25min de foco, 5 de pausa.",
+            "Faça a tarefa mais difícil logo cedo.",
+            "Anote tudo, não confie na memória.",
+            "Uma coisa por vez, multitarefa é cilada.",
+          ],
+        },
+        {
+          type: "image", status: "active", amount: 2.50, imageN: 5,
+          title: "A foto mais aleatória do seu rolo da câmera",
+          desc: "Aquela foto inexplicável que tá lá. Mostra!",
+        },
+        {
+          type: "text", status: "active", amount: 5.00,
+          title: "Indique um filme pra maratonar",
+          desc: "Aquele que você indicaria de olhos fechados.",
+          entries: [
+            "Interestelar, chora todo mundo.",
+            "Cidade de Deus, clássico nacional.",
+            "De Volta para o Futuro nunca erra.",
+            "Parasita, vale cada minuto.",
+            "Senhor dos Anéis, maratona perfeita.",
+          ],
+        },
+        {
+          type: "text", status: "finished", amount: 12.00,
+          title: "Qual app você não vive sem",
+          desc: "O aplicativo essencial do seu dia.",
+          entries: [
+            "WhatsApp, óbvio.", "Google Maps, me perco sem ele.",
+            "Spotify o dia inteiro.", "Notion pra organizar tudo.",
+            "iFood nos dias de preguiça.",
+          ],
+        },
+        {
+          type: "image", status: "finished", amount: 7.00, imageN: 6,
+          title: "Sua foto favorita do mês",
+          desc: "A melhor que você registrou nas últimas semanas.",
+        },
+        {
+          type: "video", status: "active", amount: 20.00, videoN: 3,
+          title: "Melhor vídeo de ate 15 segundos",
+          desc: "Solta o vídeo mais legal que você tem. Passe o mouse!",
+        },
+        {
+          type: "video", status: "finished", amount: 15.00, videoN: 3,
+          title: "Melhor momento em video",
+          desc: "Aquele clipe que vale ouro.",
+        },
+      ];
+
+      const now = Date.now();
+      const day = 24 * 60 * 60 * 1000;
+      const batch = db.batch();
+      let cCount = 0;
+      let eCount = 0;
+
+      for (const spec of specs) {
+        const pool = shuffle(uids);
+        const creator = pool[0];
+        const isFinished = spec.status === "finished";
+
+        let createdMs;
+        let expiresMs;
+        if (isFinished) {
+          createdMs = now - (20 + ri(25)) * day;
+          expiresMs = createdMs + (7 + ri(9)) * day;
+          if (expiresMs >= now) expiresMs = now - day;
+        } else {
+          createdMs = now - (1 + ri(7)) * day;
+          expiresMs = now + (2 + ri(16)) * day;
+        }
+
+        let n;
+        if (spec.type === "text") {
+          n = spec.entries.length;
+        } else if (spec.type === "video") {
+          n = spec.videoN;
+        } else {
+          n = spec.imageN;
+        }
+        const entrants = pool.slice(1, 1 + n);
+        const challengeRef = db.collection("challenges").doc();
+
+        const entryDocs = [];
+        let totalVotes = 0;
+        let maxVotes = -1;
+        for (let i = 0; i < n; i++) {
+          const top = isFinished ? 400 + ri(3000) : 20 + ri(500);
+          const votes = 1 + ri(top);
+          totalVotes += votes;
+          if (votes > maxVotes) maxVotes = votes;
+          let url = null;
+          if (spec.type === "image") url = nextImg();
+          if (spec.type === "video") url = nextVid();
+          entryDocs.push({
+            ref: db.collection("entries").doc(),
+            uid: entrants[i],
+            votes,
+            contentText: spec.type === "text" ? spec.entries[i] : null,
+            contentUrl: url,
+            createdAt: new Date(createdMs + (i + 1) * 3600 * 1000)
+                .toISOString(),
+          });
+        }
+        const winnerIds = isFinished ?
+          entryDocs.filter((e) => e.votes === maxVotes).map((e) => e.uid) : [];
+
+        batch.set(challengeRef, {
+          title: spec.title,
+          description: spec.desc,
+          createdBy: creator,
+          amount: spec.amount,
+          creatorContribution: 0,
+          status: spec.status,
+          voteCount: totalVotes,
+          entryCount: n,
+          winnerIds,
+          createdAt: new Date(createdMs).toISOString(),
+          expiresAt: new Date(expiresMs).toISOString(),
+          isVirtual: true,
+          seedWave: 3,
+        });
+        cCount++;
+
+        for (const e of entryDocs) {
+          batch.set(e.ref, {
+            challengeId: challengeRef.id,
+            userId: e.uid,
+            contentType: spec.type,
+            contentText: e.contentText,
+            contentUrl: e.contentUrl,
+            voteCount: e.votes,
+            isActive: true,
+            createdAt: e.createdAt,
+            isVirtual: true,
+          });
+          eCount++;
+        }
+      }
+
+      await batch.commit();
+      return res.json({success: true, challenges: cCount, entries: eCount});
+    });
+
 // ─── UPDATE VIRTUAL AVATARS ───────────────────────────────────────────────────
 // One-shot migration: replaces pravatar.cc URLs with randomuser.me portraits.
 

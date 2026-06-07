@@ -37,6 +37,9 @@ dependencies:
   # 🔥 IMAGE PICKER
   image_picker: ^1.1.2
 
+  # 🔥 VÍDEO (preview que toca no hover)
+  video_player: ^2.9.2
+
   # 🔥 UUID (IMPORTANTE PRO DESAFIO)
   uuid: ^4.4.0
 
