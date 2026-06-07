@@ -10,6 +10,10 @@ import '../../finance/infrastructure/get_transactions.dart';
 import '../../users/presentation/edit_profile_page.dart';
 import '../../users/presentation/followers_page.dart';
 import '../../payments/presentation/topup_page.dart';
+import '../../payments/infrastructure/payment_repository.dart';
+import '../../payments/presentation/payment_page.dart';
+import '../../verification/infrastructure/verification_repository.dart';
+import '../../verification/presentation/verification_request_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -245,6 +249,9 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
           ),
           const SizedBox(height: 16),
+
+          // — Verificação —
+          _VerificationSection(isVerified: isVerified, currentName: name),
 
           // — Stats row —
           Row(
@@ -598,6 +605,149 @@ class _Stat extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Padding(padding: const EdgeInsets.all(4), child: content),
+    );
+  }
+}
+
+// ── Verification section ────────────────────────────────────────────────────────
+
+class _VerificationSection extends StatelessWidget {
+  final bool isVerified;
+  final String currentName;
+
+  const _VerificationSection({
+    required this.isVerified,
+    required this.currentName,
+  });
+
+  Future<void> _openRequest(BuildContext context) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => VerificationRequestPage(currentName: currentName),
+      ),
+    );
+  }
+
+  Future<void> _startPriority(BuildContext context) async {
+    try {
+      final data = await PaymentRepository()
+          .createPixPayment(500, purpose: 'verification_priority');
+      if (!context.mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PaymentPage(
+            paymentId: data['paymentId'] as String,
+            qrCode: data['qrCode'] as String,
+            qrCodeBase64: data['qrCodeBase64'] as String,
+            amount: 500,
+            expiresAt: DateTime.parse(data['expiresAt'] as String),
+            successTitle: '⭐ Fila prioritária confirmada!',
+            successMessage: 'Seu pedido entrou na fila prioritária '
+                'e será analisado primeiro.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    }
+  }
+
+  Widget _banner(Color color, IconData icon, String title, String subtitle) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: color,
+                        fontSize: 13)),
+                Text(subtitle,
+                    style: const TextStyle(
+                        fontSize: 12, color: Colors.black54)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (isVerified) return const SizedBox.shrink();
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: VerificationRepository().myRequest(),
+      builder: (context, snap) {
+        final exists = snap.hasData && snap.data!.exists;
+        final data = exists ? snap.data!.data() : null;
+        final status = data?['status'] as String?;
+        final priority = data?['priority'] == true;
+
+        Widget child;
+        if (!exists || status == null || status == 'rejected') {
+          final rejected = status == 'rejected';
+          child = Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (rejected) ...[
+                _banner(Colors.red, Icons.cancel,
+                    'Pedido de verificação recusado',
+                    'Você pode enviar um novo pedido.'),
+                const SizedBox(height: 8),
+              ],
+              OutlinedButton.icon(
+                onPressed: () => _openRequest(context),
+                icon: const Icon(Icons.verified,
+                    size: 18, color: Colors.blue),
+                label: Text(
+                    rejected ? 'Enviar novo pedido' : 'Pedir selo verificado'),
+              ),
+            ],
+          );
+        } else if (status == 'pending' && priority) {
+          child = _banner(Colors.amber.shade800, Icons.bolt,
+              'Em análise • Fila prioritária',
+              'Pagamento confirmado. Seu pedido será analisado primeiro.');
+        } else if (status == 'pending') {
+          child = Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _banner(Colors.blue, Icons.hourglass_top, 'Pedido em análise',
+                  'Quer ser analisado primeiro? Entre na fila prioritária.'),
+              const SizedBox(height: 8),
+              FilledButton.icon(
+                onPressed: () => _startPriority(context),
+                icon: const Icon(Icons.bolt, size: 18),
+                label: const Text('Furar fila — R\$ 500 (Pix)'),
+              ),
+            ],
+          );
+        } else {
+          child = const SizedBox.shrink();
+        }
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: child,
+        );
+      },
     );
   }
 }

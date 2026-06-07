@@ -110,6 +110,14 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // ── VERIFICATION REQUESTS ─────────────────────────────────────────────────
+    match /verificationRequests/{userId} {
+      // Dados sensíveis (CPF, telefone): só o dono e admins podem ler.
+      allow read: if signedIn() && (userId == uid() || isAdmin());
+      // Todas as escritas passam por Cloud Functions (Admin SDK).
+      allow write: if false;
+    }
+
     // ── ADMINS ───────────────────────────────────────────────────────────────
     match /admins/{userId} {
       allow read: if signedIn();

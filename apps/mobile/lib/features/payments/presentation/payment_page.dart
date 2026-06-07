@@ -12,6 +12,8 @@ class PaymentPage extends StatefulWidget {
   final String qrCodeBase64;
   final double amount;
   final DateTime expiresAt;
+  final String successTitle;
+  final String? successMessage;
 
   const PaymentPage({
     super.key,
@@ -20,6 +22,8 @@ class PaymentPage extends StatefulWidget {
     required this.qrCodeBase64,
     required this.amount,
     required this.expiresAt,
+    this.successTitle = 'Pagamento confirmado!',
+    this.successMessage,
   });
 
   @override
@@ -59,9 +63,10 @@ class _PaymentPageState extends State<PaymentPage> {
       context: context,
       barrierDismissible: false,
       builder: (_) => AlertDialog(
-        title: const Text('Pagamento confirmado!'),
+        title: Text(widget.successTitle),
         content: Text(
-          'R\$ ${widget.amount.toStringAsFixed(2)} adicionados aos seus créditos.',
+          widget.successMessage ??
+              'R\$ ${widget.amount.toStringAsFixed(2)} adicionados aos seus créditos.',
         ),
         actions: [
           TextButton(

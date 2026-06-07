@@ -4,6 +4,7 @@ import '../../../core/widgets/web_frame.dart';
 import 'admin_withdrawals_page.dart';
 import 'admin_users_page.dart';
 import 'admin_challenges_page.dart';
+import 'admin_verification_page.dart';
 
 class AdminPage extends StatelessWidget {
   const AdminPage({super.key});
@@ -47,6 +48,17 @@ class AdminPage extends StatelessWidget {
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const AdminUsersPage()),
+            ),
+          ),
+          _AdminCard(
+            icon: Icons.verified,
+            title: 'Verificação',
+            subtitle: 'Pedidos de selo verificado (prioritários primeiro)',
+            color: Colors.indigo,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => const AdminVerificationPage()),
             ),
           ),
         ],

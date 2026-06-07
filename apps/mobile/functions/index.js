@@ -560,22 +560,44 @@ exports.createPixPayment = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError("unauthenticated", "Usuário não logado");
   }
 
-  const {amount} = data;
+  const {amount, purpose = "deposit"} = data;
   const userId = context.auth.uid;
 
-  if (!amount || amount < 1) {
-    throw new functions.https.HttpsError("invalid-argument", "Valor mínimo R$1,00");
+  const db = admin.firestore();
+
+  let txAmount;
+  let description;
+  if (purpose === "verification_priority") {
+    // Fila prioritária de verificação: valor fixo, exige pedido pendente.
+    const reqDoc =
+        await db.collection("verificationRequests").doc(userId).get();
+    if (!reqDoc.exists || reqDoc.data().status !== "pending") {
+      throw new functions.https.HttpsError(
+          "failed-precondition", "Envie o pedido de verificação primeiro");
+    }
+    if (reqDoc.data().priority === true) {
+      throw new functions.https.HttpsError(
+          "failed-precondition", "Você já está na fila prioritária");
+    }
+    txAmount = 500;
+    description = "Fila prioritária de verificação — Desafio Pago";
+  } else {
+    if (!amount || amount < 1) {
+      throw new functions.https.HttpsError(
+          "invalid-argument", "Valor mínimo R$1,00");
+    }
+    txAmount = Number(amount);
+    description = "Recarga de créditos — Desafio Pago";
   }
 
-  const db = admin.firestore();
   const userDoc = await db.collection("users").doc(userId).get();
   const userEmail = userDoc.data()?.email || "payer@desafiopago.com";
 
   const client = mpPaymentClient();
   const mp = await client.create({
     body: {
-      transaction_amount: Number(amount),
-      description: "Recarga de créditos — Desafio Pago",
+      transaction_amount: txAmount,
+      description,
       payment_method_id: "pix",
       payer: {email: userEmail},
     },
@@ -585,7 +607,8 @@ exports.createPixPayment = functions.https.onCall(async (data, context) => {
 
   await db.collection("payments").doc(String(mp.id)).set({
     userId,
-    amount: Number(amount),
+    amount: txAmount,
+    purpose,
     mpPaymentId: mp.id,
     status: "pending",
     qrCode: mp.point_of_interaction.transaction_data.qr_code,
@@ -638,6 +661,31 @@ exports.mercadoPagoWebhook = functions.https.onRequest(async (req, res) => {
 
   if (mp.status !== "approved") {
     await paymentRef.update({status: mp.status});
+    res.sendStatus(200);
+    return;
+  }
+
+  // Fila prioritária de verificação — confirma prioridade, não credita saldo
+  if (paymentData.purpose === "verification_priority") {
+    const vbatch = db.batch();
+    vbatch.update(paymentRef, {
+      status: "approved",
+      approvedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    vbatch.set(
+        db.collection("verificationRequests").doc(paymentData.userId), {
+          priority: true,
+          paidAt: new Date().toISOString(),
+          paymentId: String(paymentId),
+          updatedAt: new Date().toISOString(),
+        }, {merge: true});
+    await vbatch.commit();
+    await _sendNotification(
+        db, paymentData.userId,
+        "⭐ Fila prioritária confirmada!",
+        "Seu pedido de verificação entrou na fila prioritária.",
+        {type: "verification_priority"},
+    );
     res.sendStatus(200);
     return;
   }
@@ -1805,6 +1853,141 @@ exports.setUserVerified = functions.https.onCall(async (data, context) => {
   await db.collection("users").doc(userId).update({isVerified: isVerified === true});
   return {success: true};
 });
+
+// ─── VERIFICAÇÃO: ENVIAR PEDIDO ───────────────────────────────────────────────
+
+exports.submitVerificationRequest =
+    functions.https.onCall(async (data, context) => {
+      if (!context.auth) {
+        throw new functions.https.HttpsError(
+            "unauthenticated", "Não autenticado");
+      }
+      const db = admin.firestore();
+      const userId = context.auth.uid;
+
+      const firstName = String(data.firstName || "").trim();
+      const lastName = String(data.lastName || "").trim();
+      const phoneDigits = String(data.phone || "").replace(/\D/g, "");
+      const cpf = String(data.cpf || "").replace(/\D/g, "");
+
+      const isValidCPF = (c) => {
+        if (!/^\d{11}$/.test(c)) return false;
+        if (/^(\d)\1{10}$/.test(c)) return false;
+        const calc = (len) => {
+          let sum = 0;
+          for (let i = 0; i < len; i++) {
+            sum += parseInt(c[i], 10) * (len + 1 - i);
+          }
+          const mod = (sum * 10) % 11;
+          return mod === 10 ? 0 : mod;
+        };
+        return calc(9) === parseInt(c[9], 10) &&
+            calc(10) === parseInt(c[10], 10);
+      };
+
+      if (firstName.length < 2 || lastName.length < 2) {
+        throw new functions.https.HttpsError(
+            "invalid-argument", "Informe nome e sobrenome");
+      }
+      if (phoneDigits.length < 10 || phoneDigits.length > 11) {
+        throw new functions.https.HttpsError(
+            "invalid-argument", "Telefone inválido");
+      }
+      if (!isValidCPF(cpf)) {
+        throw new functions.https.HttpsError("invalid-argument", "CPF inválido");
+      }
+
+      const userRef = db.collection("users").doc(userId);
+      const userDoc = await userRef.get();
+      if (!userDoc.exists) {
+        throw new functions.https.HttpsError(
+            "not-found", "Usuário não encontrado");
+      }
+      if (userDoc.data().isVerified === true) {
+        throw new functions.https.HttpsError(
+            "failed-precondition", "Você já é verificado");
+      }
+
+      const reqRef = db.collection("verificationRequests").doc(userId);
+      const existing = await reqRef.get();
+      const now = new Date().toISOString();
+
+      const payload = {
+        userId,
+        firstName,
+        lastName,
+        phone: phoneDigits,
+        cpf,
+        name: userDoc.data().name || "",
+        username: userDoc.data().username || "",
+        photoUrl: userDoc.data().photoUrl || "",
+        status: "pending",
+        updatedAt: now,
+      };
+      if (!existing.exists) {
+        payload.priority = false;
+        payload.paymentId = null;
+        payload.paidAt = null;
+        payload.createdAt = now;
+      }
+
+      await reqRef.set(payload, {merge: true});
+      return {success: true};
+    });
+
+// ─── VERIFICAÇÃO: DECISÃO DO ADMIN ────────────────────────────────────────────
+
+exports.decideVerificationRequest =
+    functions.https.onCall(async (data, context) => {
+      if (!context.auth) {
+        throw new functions.https.HttpsError(
+            "unauthenticated", "Não autenticado");
+      }
+      const db = admin.firestore();
+      const adminDoc =
+          await db.collection("admins").doc(context.auth.uid).get();
+      if (!adminDoc.exists) {
+        throw new functions.https.HttpsError(
+            "permission-denied", "Apenas administradores.");
+      }
+
+      const userId = data.userId;
+      const approved = data.approved === true;
+      if (!userId) {
+        throw new functions.https.HttpsError(
+            "invalid-argument", "userId obrigatório");
+      }
+
+      const reqRef = db.collection("verificationRequests").doc(userId);
+      const reqDoc = await reqRef.get();
+      if (!reqDoc.exists) {
+        throw new functions.https.HttpsError(
+            "not-found", "Pedido não encontrado");
+      }
+
+      const batch = db.batch();
+      batch.update(reqRef, {
+        status: approved ? "approved" : "rejected",
+        decidedAt: new Date().toISOString(),
+        decidedBy: context.auth.uid,
+        updatedAt: new Date().toISOString(),
+      });
+      if (approved) {
+        batch.update(db.collection("users").doc(userId), {isVerified: true});
+      }
+      await batch.commit();
+
+      await _sendNotification(
+          db, userId,
+          approved ? "✅ Verificação aprovada!" : "❌ Verificação recusada",
+          approved ?
+            "Seu selo de verificado foi ativado." :
+            "Seu pedido de verificação foi recusado.",
+          {type: "verification_decision"},
+      );
+
+      return {success: true};
+    });
 
 // ─── UPDATE VIRTUAL AVATARS ───────────────────────────────────────────────────
 // One-shot migration: replaces pravatar.cc URLs with randomuser.me portraits.
