@@ -3169,6 +3169,86 @@ exports.seedSmallChallenges = functions.runWith({timeoutSeconds: 540})
       return res.json({success: true, challenges: cCount, entries: eCount});
     });
 
+// ─── RANDOMIZAR VALORES (desafios + ganhos do ranking) ───────────────────────
+
+exports.randomizeVirtualValues = functions.runWith({timeoutSeconds: 540})
+    .https.onRequest(async (req, res) => {
+      if (req.method !== "POST") {
+        return res.status(405).json({error: "Method Not Allowed"});
+      }
+      if (!req.body || req.body.secret !== "SEED_2026_DP") {
+        return res.status(403).json({error: "Forbidden"});
+      }
+      const db = admin.firestore();
+      const sentinel = db.collection("_seedMeta").doc("valuesRandomized");
+      if ((await sentinel.get()).exists) {
+        return res.status(409).json({error: "Valores já randomizados."});
+      }
+
+      const ri = (n) => Math.floor(Math.random() * n);
+      const round2 = (x) => Math.round(x * 100) / 100;
+      const withCents = (x) => {
+        const v = round2(x);
+        if (Math.round(v * 100) % 100 === 0) {
+          return round2(v + (ri(98) + 1) / 100);
+        }
+        return v;
+      };
+
+      const cs = await db.collection("challenges")
+          .where("isVirtual", "==", true).get();
+      const us = await db.collection("users")
+          .where("isVirtual", "==", true).get();
+
+      let batch = db.batch();
+      let ops = 0;
+      let cFixed = 0;
+      let uFixed = 0;
+      const flush = async () => {
+        if (ops > 0) {
+          await batch.commit();
+          batch = db.batch();
+          ops = 0;
+        }
+      };
+
+      // Desafios: mantém a faixa (centavos / 1-20 / maiores), mas quebra o valor.
+      for (const doc of cs.docs) {
+        const a = Number(doc.data().amount || 0);
+        if (a <= 0) continue;
+        let na;
+        if (a < 1) {
+          na = round2((5 + ri(94)) / 100);
+        } else if (a < 25) {
+          na = withCents(1 + Math.random() * 23);
+        } else {
+          na = withCents(a * (0.8 + Math.random() * 0.5));
+        }
+        batch.update(doc.ref, {amount: na});
+        ops++;
+        cFixed++;
+        if (ops >= 440) await flush();
+      }
+
+      // Ganhos: só adiciona centavos (preserva a ordem/posições do ranking).
+      for (const doc of us.docs) {
+        const e = Number(doc.data().totalEarned || 0);
+        const ne = round2(e + (ri(99) + 1) / 100);
+        batch.update(doc.ref, {totalEarned: ne});
+        ops++;
+        batch.set(db.collection("publicProfiles").doc(doc.id),
+            {totalEarned: ne}, {merge: true});
+        ops++;
+        uFixed++;
+        if (ops >= 440) await flush();
+      }
+      await flush();
+      await sentinel.set({
+        createdAt: new Date().toISOString(), cFixed, uFixed,
+      });
+      return res.json({success: true, challenges: cFixed, users: uFixed});
+    });
+
 // ─── UPDATE VIRTUAL AVATARS ───────────────────────────────────────────────────
 // One-shot migration: replaces pravatar.cc URLs with randomuser.me portraits.
 
