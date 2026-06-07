@@ -4,7 +4,10 @@
     "public": "build/web",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
     "predeploy": ["node copy_web_assets.js"],
-    "rewrites": [{ "source": "**", "destination": "/index.html" }],
+    "rewrites": [
+      { "source": "/challenges/**", "function": "entryPreview" },
+      { "source": "**", "destination": "/index.html" }
+    ],
     "headers": [
       {
         "source": "/avatars/**",

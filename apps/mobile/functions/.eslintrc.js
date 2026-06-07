@@ -27,5 +27,7 @@ module.exports = {
       rules: {},
     },
   ],
-  globals: {},
+  globals: {
+    fetch: "readonly",
+  },
 };

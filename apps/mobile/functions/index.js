@@ -3309,6 +3309,86 @@ exports.setTypedChallengeValues = functions.runWith({timeoutSeconds: 540})
       return res.json({success: true, counts});
     });
 
+// ─── PRÉVIA DE LINK (Open Graph) PARA COMPARTILHAMENTO ────────────────────────
+
+let _indexCache = null;
+const _getIndexHtml = async () => {
+  if (_indexCache) return _indexCache;
+  const r = await fetch("https://desafiopago.web.app/index.html");
+  _indexCache = await r.text();
+  return _indexCache;
+};
+
+exports.entryPreview = functions.https.onRequest(async (req, res) => {
+  try {
+    const db = admin.firestore();
+    const parts = (req.path || "").split("/").filter(Boolean);
+    const challengeId = parts.length > 1 ? parts[1] : "";
+    const entryId = req.query.entry ? String(req.query.entry) : "";
+
+    const esc = (s) => String(s == null ? "" : s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+
+    let title = "Desafio Pago";
+    let desc = "Participe de desafios e vote nas melhores participações!";
+    const image = "https://desafiopago.web.app/og-default.png";
+
+    if (challengeId) {
+      const cDoc = await db.collection("challenges").doc(challengeId).get();
+      if (cDoc.exists) {
+        const chTitle = cDoc.data().title || "um desafio";
+        let author = "";
+        if (entryId) {
+          const eDoc = await db.collection("entries").doc(entryId).get();
+          if (eDoc.exists) {
+            const pp = await db.collection("publicProfiles")
+                .doc(eDoc.data().userId).get();
+            author = pp.exists ? (pp.data().name || "") : "";
+          }
+        }
+        if (entryId && author) {
+          title = `${author} quer o seu voto! 🗳️`;
+          desc = `Participação no desafio "${chTitle}". ` +
+              "Toque e vote no Desafio Pago.";
+        } else if (entryId) {
+          title = "Vote nesta participação! 🗳️";
+          desc = `Desafio "${chTitle}" no Desafio Pago. Toque e vote.`;
+        } else {
+          title = chTitle;
+          desc = "Participe e vote no Desafio Pago!";
+        }
+      }
+    }
+
+    let url = `https://desafiopago.com.br/challenges/${challengeId}`;
+    if (entryId) url += `?entry=${encodeURIComponent(entryId)}`;
+
+    const og = "\n" +
+      `<meta property="og:type" content="website">\n` +
+      `<meta property="og:site_name" content="Desafio Pago">\n` +
+      `<meta property="og:title" content="${esc(title)}">\n` +
+      `<meta property="og:description" content="${esc(desc)}">\n` +
+      `<meta property="og:image" content="${image}">\n` +
+      `<meta property="og:image:width" content="1200">\n` +
+      `<meta property="og:image:height" content="630">\n` +
+      `<meta property="og:url" content="${esc(url)}">\n` +
+      `<meta name="twitter:card" content="summary_large_image">\n` +
+      `<meta name="twitter:title" content="${esc(title)}">\n` +
+      `<meta name="twitter:description" content="${esc(desc)}">\n` +
+      `<meta name="twitter:image" content="${image}">\n`;
+
+    let html = await _getIndexHtml();
+    html = html.replace("</head>", `${og}</head>`);
+    res.set("Cache-Control", "public, max-age=600, s-maxage=600");
+    return res.status(200).send(html);
+  } catch (e) {
+    return res.redirect("https://desafiopago.web.app/");
+  }
+});
+
 // ─── UPDATE VIRTUAL AVATARS ───────────────────────────────────────────────────
 // One-shot migration: replaces pravatar.cc URLs with randomuser.me portraits.
 
