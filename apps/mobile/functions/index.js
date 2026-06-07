@@ -3249,6 +3249,66 @@ exports.randomizeVirtualValues = functions.runWith({timeoutSeconds: 540})
       return res.json({success: true, challenges: cFixed, users: uFixed});
     });
 
+// ─── VALORES POR TIPO (texto < 20, imagem < 100, vídeo > 100) ─────────────────
+
+exports.setTypedChallengeValues = functions.runWith({timeoutSeconds: 540})
+    .https.onRequest(async (req, res) => {
+      if (req.method !== "POST") {
+        return res.status(405).json({error: "Method Not Allowed"});
+      }
+      if (!req.body || req.body.secret !== "SEED_2026_DP") {
+        return res.status(403).json({error: "Forbidden"});
+      }
+      const db = admin.firestore();
+      const ri = (n) => Math.floor(Math.random() * n);
+      const round2 = (x) => Math.round(x * 100) / 100;
+      const withCents = (x) => {
+        const v = round2(x);
+        if (Math.round(v * 100) % 100 === 0) {
+          return round2(v + (ri(98) + 1) / 100);
+        }
+        return v;
+      };
+
+      // Tipo do desafio = contentType das participações virtuais.
+      const entriesSnap = await db.collection("entries")
+          .where("isVirtual", "==", true).get();
+      const typeByChallenge = {};
+      entriesSnap.forEach((d) => {
+        const x = d.data();
+        if (!typeByChallenge[x.challengeId]) {
+          typeByChallenge[x.challengeId] = x.contentType || "text";
+        }
+      });
+
+      const cs = await db.collection("challenges")
+          .where("isVirtual", "==", true).get();
+      let batch = db.batch();
+      let ops = 0;
+      const counts = {text: 0, image: 0, video: 0};
+      for (const doc of cs.docs) {
+        const type = typeByChallenge[doc.id] || "text";
+        let amount;
+        if (type === "video") {
+          amount = withCents(120 + Math.random() * 2380); // > 100
+        } else if (type === "image") {
+          amount = withCents(20 + Math.random() * 79); // < 100
+        } else {
+          amount = withCents(0.5 + Math.random() * 19); // < 20
+        }
+        batch.update(doc.ref, {amount});
+        ops++;
+        counts[type] = (counts[type] || 0) + 1;
+        if (ops >= 440) {
+          await batch.commit();
+          batch = db.batch();
+          ops = 0;
+        }
+      }
+      if (ops > 0) await batch.commit();
+      return res.json({success: true, counts});
+    });
+
 // ─── UPDATE VIRTUAL AVATARS ───────────────────────────────────────────────────
 // One-shot migration: replaces pravatar.cc URLs with randomuser.me portraits.
 
