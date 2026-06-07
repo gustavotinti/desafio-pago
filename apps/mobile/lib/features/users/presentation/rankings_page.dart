@@ -59,7 +59,7 @@ class _RankingTab extends StatelessWidget {
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
-          .collection('users')
+          .collection('publicProfiles')
           .orderBy(orderBy, descending: true)
           .limit(200)
           .snapshots(),

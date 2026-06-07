@@ -999,12 +999,23 @@ exports.acceptTerms = functions.https.onCall(async (data, context) => {
   }
 
   const uid = context.auth.uid;
+  const phoneDigits = String(data.phone || "").replace(/\D/g, "");
+  if (phoneDigits.length < 10 || phoneDigits.length > 11) {
+    throw new functions.https.HttpsError(
+        "invalid-argument", "Telefone inválido (informe com DDD)");
+  }
+
   const db = admin.firestore();
   const userRef = db.collection("users").doc(uid);
   const existing = await userRef.get();
+  const now = new Date().toISOString();
 
   if (existing.exists) {
-    await userRef.update({termsAccepted: true});
+    await userRef.update({
+      termsAccepted: true,
+      termsAcceptedAt: now,
+      phone: phoneDigits,
+    });
   } else {
     // Fallback: document was never created (saveUser failed or race condition)
     const token = context.auth.token;
@@ -1013,7 +1024,9 @@ exports.acceptTerms = functions.https.onCall(async (data, context) => {
       email: token.email || "",
       photoUrl: token.picture || "",
       termsAccepted: true,
-      createdAt: new Date().toISOString(),
+      termsAcceptedAt: now,
+      phone: phoneDigits,
+      createdAt: now,
       balance: 0,
       pendingBalance: 0,
       lockedBalance: 0,
@@ -1023,6 +1036,9 @@ exports.acceptTerms = functions.https.onCall(async (data, context) => {
       followingCount: 0,
       bio: "",
       pixKey: "",
+      isVirtual: false,
+      isVerified: false,
+      photoIsCustom: false,
     });
   }
 
@@ -2176,7 +2192,7 @@ exports.exportAudience = functions.runWith({timeoutSeconds: 300})
           fn = sp[0];
           ln = ln || sp[1];
         }
-        const phone = fmtPhone(v ? v.phone : "");
+        const phone = fmtPhone(u.phone || (v ? v.phone : ""));
         rows.push({email, phone, fn, ln});
       });
 
@@ -2198,6 +2214,64 @@ exports.exportAudience = functions.runWith({timeoutSeconds: 300})
       const filename = platform + "-" + segment + "-" + date + ".csv";
 
       return {csv, count: rows.length, filename, segment, platform};
+    });
+
+// ─── MIRROR PERFIL PÚBLICO (somente campos não sensíveis) ─────────────────────
+
+const publicProfileOf = (d) => ({
+  name: d.name || "",
+  username: d.username || "",
+  photoUrl: d.photoUrl || "",
+  bio: d.bio || "",
+  isVerified: d.isVerified === true,
+  isVirtual: d.isVirtual === true,
+  totalEarned: d.totalEarned || 0,
+  totalVotesReceived: d.totalVotesReceived || 0,
+  followersCount: d.followersCount || 0,
+  followingCount: d.followingCount || 0,
+});
+
+exports.mirrorPublicProfile = functions.firestore
+    .document("users/{uid}")
+    .onWrite(async (change, context) => {
+      const ref = admin.firestore()
+          .collection("publicProfiles").doc(context.params.uid);
+      if (!change.after.exists) {
+        await ref.delete().catch(() => {});
+        return null;
+      }
+      await ref.set(publicProfileOf(change.after.data()));
+      return null;
+    });
+
+// ─── BACKFILL PERFIS PÚBLICOS (one-shot) ──────────────────────────────────────
+
+exports.backfillPublicProfiles = functions.runWith({timeoutSeconds: 540})
+    .https.onRequest(async (req, res) => {
+      if (req.method !== "POST") {
+        return res.status(405).json({error: "Method Not Allowed"});
+      }
+      if (!req.body || req.body.secret !== "SEED_2026_DP") {
+        return res.status(403).json({error: "Forbidden"});
+      }
+      const db = admin.firestore();
+      const snap = await db.collection("users").get();
+      let batch = db.batch();
+      let ops = 0;
+      let total = 0;
+      for (const doc of snap.docs) {
+        batch.set(db.collection("publicProfiles").doc(doc.id),
+            publicProfileOf(doc.data()));
+        ops++;
+        total++;
+        if (ops >= 450) {
+          await batch.commit();
+          batch = db.batch();
+          ops = 0;
+        }
+      }
+      if (ops > 0) await batch.commit();
+      return res.json({success: true, total});
     });
 
 // ─── UPDATE VIRTUAL AVATARS ───────────────────────────────────────────────────

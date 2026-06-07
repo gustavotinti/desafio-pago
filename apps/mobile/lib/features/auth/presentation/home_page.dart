@@ -13,6 +13,7 @@ import '../../entry/presentation/submit_entry_page.dart';
 import '../../admin/presentation/admin_page.dart';
 import '../../../core/utils/format.dart';
 import '../../../core/widgets/web_frame.dart';
+import 'auth_guard.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -146,6 +147,11 @@ class _HomePageState extends State<HomePage>
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
+          if (!await ensureLoggedIn(context,
+              message: 'Entre para criar um desafio')) {
+            return;
+          }
+          if (!context.mounted) return;
           await Navigator.push(
             context,
             MaterialPageRoute(
@@ -167,6 +173,11 @@ Future<void> _showAddAmountDialog(
   Challenge challenge,
   VoidCallback onSuccess,
 ) async {
+  if (!await ensureLoggedIn(context,
+      message: 'Entre para aumentar o prêmio')) {
+    return;
+  }
+  if (!context.mounted) return;
   final controller = TextEditingController();
   final confirmed = await showDialog<bool>(
     context: context,
@@ -543,6 +554,11 @@ class _ChallengeCard extends StatelessWidget {
                               fontWeight: FontWeight.w600),
                         ),
                         onPressed: () async {
+                          if (!await ensureLoggedIn(context,
+                              message: 'Entre para participar do desafio')) {
+                            return;
+                          }
+                          if (!context.mounted) return;
                           await Navigator.push(
                             context,
                             MaterialPageRoute(

@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
 import '../../../core/widgets/web_frame.dart';
+import '../../auth/presentation/auth_guard.dart';
 import '../../challenge/domain/entities/challenge.dart';
 import '../../challenge/domain/entities/challenge_status.dart';
 import '../../challenge/infrastructure/vote_repository.dart';
@@ -51,7 +52,10 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
 
   void _load() {
     _entriesFuture = GetEntries()(widget.challenge.id);
-    _hasVotedFuture = _voteRepo.hasVoted(widget.challenge.id);
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    _hasVotedFuture = uid == null
+        ? Future.value(false)
+        : _voteRepo.hasVoted(widget.challenge.id);
   }
 
   void _reload() => setState(() => _load());
@@ -62,6 +66,7 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
   }
 
   Future<void> _vote(String entryId) async {
+    if (!await ensureLoggedIn(context, message: 'Entre para votar')) return;
     try {
       await _voteRepo.vote(widget.challenge.id, entryId);
       if (!mounted) return;

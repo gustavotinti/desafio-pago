@@ -12,7 +12,6 @@ import 'core/config/emulator.dart';
 import 'core/services/notification_service.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/presentation/banned_page.dart';
-import 'features/auth/presentation/login_page.dart';
 import 'features/auth/presentation/main_shell.dart';
 import 'features/auth/presentation/terms_page.dart';
 
@@ -89,7 +88,8 @@ class AuthGate extends StatelessWidget {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const _LoadingScreen();
         }
-        if (!snapshot.hasData) return const LoginPage();
+        // Visitante (sem login): vê o conteúdo no MainShell em modo visitante.
+        if (!snapshot.hasData) return const MainShell();
         return _TermsGate(userId: snapshot.data!.uid);
       },
     );

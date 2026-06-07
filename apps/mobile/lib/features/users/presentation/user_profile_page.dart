@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../core/utils/format.dart';
 import '../../../core/widgets/web_frame.dart';
+import '../../auth/presentation/auth_guard.dart';
 import '../infrastructure/follow_repository.dart';
 import 'followers_page.dart';
 
@@ -29,9 +30,14 @@ class _UserProfilePageState extends State<UserProfilePage> {
   }
 
   Future<void> _load() async {
+    final isGuest = FirebaseAuth.instance.currentUser == null;
     final results = await Future.wait([
-      FirebaseFirestore.instance.collection('users').doc(widget.userId).get(),
-      _repo.isFollowing(widget.userId),
+      // Lê do espelho público (sem PII) — funciona para visitantes também.
+      FirebaseFirestore.instance
+          .collection('publicProfiles')
+          .doc(widget.userId)
+          .get(),
+      isGuest ? Future.value(false) : _repo.isFollowing(widget.userId),
     ]);
     if (!mounted) return;
     setState(() {
@@ -42,6 +48,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
   }
 
   Future<void> _toggleFollow() async {
+    if (!await ensureLoggedIn(context)) return;
     setState(() => _actionLoading = true);
     try {
       if (_isFollowing) {

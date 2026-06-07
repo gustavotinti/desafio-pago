@@ -53,9 +53,19 @@ service cloud.firestore {
       // Updates via Cloud Function (Admin SDK) only
     }
 
+    // ── PUBLIC PROFILES (espelho sem PII — visível para visitantes) ───────────
+    match /publicProfiles/{userId} {
+      // Leitura pública: apenas nome, @username, foto, bio, ganhos, votos…
+      // E-mail, telefone, saldo e Pix NÃO ficam aqui (continuam em /users).
+      allow read: if true;
+      // Mantido exclusivamente por Cloud Functions (Admin SDK).
+      allow write: if false;
+    }
+
     // ── CHALLENGES ───────────────────────────────────────────────────────────
     match /challenges/{challengeId} {
-      allow read: if signedIn();
+      // Conteúdo público: qualquer visitante pode ver os desafios.
+      allow read: if true;
 
       // create, amount updates, voteCount, entryCount all handled by Cloud Functions
       allow update: if isAdmin();
@@ -63,7 +73,8 @@ service cloud.firestore {
 
     // ── ENTRIES ──────────────────────────────────────────────────────────────
     match /entries/{entryId} {
-      allow read: if signedIn();
+      // Conteúdo público: qualquer visitante pode ver as participações.
+      allow read: if true;
 
       // create and voteCount updates are handled exclusively by Cloud Functions (Admin SDK)
       allow update: if isAdmin() && changed().hasOnly(['isActive']);
@@ -126,8 +137,8 @@ service cloud.firestore {
 
     // ── COMMENTS ─────────────────────────────────────────────────────────────
     match /comments/{commentId} {
-      // All writes via Cloud Functions (Admin SDK)
-      allow read: if signedIn();
+      // Conteúdo público; criação de comentário via Cloud Function (exige login)
+      allow read: if true;
       allow write: if false;
     }
 
