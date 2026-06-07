@@ -5,7 +5,7 @@ const fs = require("fs");
 const path = require("path");
 
 const base = __dirname;
-const dirs = ["avatars", "portraits"];
+const dirs = ["avatars", "portraits", "challenge_images"];
 // Arquivos avulsos que o flutter build web não copia (adicionados por nós).
 const files = ["favicon.svg", "favicon.png", "apple-touch-icon.png"];
 

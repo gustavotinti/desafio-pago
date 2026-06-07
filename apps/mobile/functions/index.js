@@ -2274,6 +2274,233 @@ exports.backfillPublicProfiles = functions.runWith({timeoutSeconds: 540})
       return res.json({success: true, total});
     });
 
+// ─── SEED DESAFIOS VIRTUAIS (texto + foto, ativos + encerrados) ───────────────
+
+exports.seedVirtualChallenges = functions.runWith({timeoutSeconds: 540})
+    .https.onRequest(async (req, res) => {
+      if (req.method !== "POST") {
+        return res.status(405).json({error: "Method Not Allowed"});
+      }
+      if (!req.body || req.body.secret !== "SEED_2026_DP") {
+        return res.status(403).json({error: "Forbidden"});
+      }
+
+      const db = admin.firestore();
+
+      // Evita duplicar
+      const check = await db.collection("challenges")
+          .where("isVirtual", "==", true).limit(1).get();
+      if (!check.empty) {
+        return res.status(409).json({
+          error: "Desafios virtuais já existem. Limpe antes de re-seedar.",
+        });
+      }
+
+      const usersSnap = await db.collection("users")
+          .where("isVirtual", "==", true).limit(400).get();
+      const uids = usersSnap.docs.map((d) => d.id);
+      if (uids.length < 20) {
+        return res.status(412).json({
+          error: "Poucos usuários virtuais. Rode seedVirtualUsers primeiro.",
+        });
+      }
+
+      const ri = (n) => Math.floor(Math.random() * n);
+      const shuffle = (arr) => {
+        const a = arr.slice();
+        for (let i = a.length - 1; i > 0; i--) {
+          const j = ri(i + 1);
+          [a[i], a[j]] = [a[j], a[i]];
+        }
+        return a;
+      };
+      const HOST = "https://desafiopago.web.app";
+      const IMG_COUNT = 40;
+      let imgCursor = 0;
+      const nextImg = () => {
+        const n = String((imgCursor++ % IMG_COUNT) + 1).padStart(2, "0");
+        return `${HOST}/challenge_images/${n}.jpg`;
+      };
+
+      const specs = [
+        {
+          type: "text", status: "active", amount: 150,
+          title: "A melhor frase motivacional 💪",
+          desc: "Mande aquela frase que te faz levantar da cama com vontade.",
+          entries: [
+            "Disciplina vence motivação todo santo dia.",
+            "Comece onde você está, com o que você tem.",
+            "Cada dia é uma nova chance de virar o jogo.",
+            "Não pare quando cansar, pare quando terminar.",
+            "Foco no progresso, não na perfeição.",
+            "Quem quer dá um jeito, quem não quer dá uma desculpa.",
+          ],
+        },
+        {
+          type: "text", status: "active", amount: 80,
+          title: "Resuma sua segunda-feira em uma palavra ☕",
+          desc: "Sem textão. Uma palavra que define a sua segunda.",
+          entries: [
+            "Sobrevivência", "Café", "Recomeço", "Caos", "Foco", "Ânimo",
+          ],
+        },
+        {
+          type: "text", status: "active", amount: 300,
+          title: "Qual é o seu sonho pra 2026? 🌟",
+          desc: "Conta pra gente o que você quer muito realizar.",
+          entries: [
+            "Comprar minha casa própria 🏠",
+            "Viajar pra fora do Brasil pela primeira vez ✈️",
+            "Abrir meu próprio negócio.",
+            "Quitar todas as dívidas e respirar aliviado.",
+            "Passar mais tempo com quem eu amo.",
+          ],
+        },
+        {
+          type: "text", status: "finished", amount: 500,
+          title: "A coisa mais engraçada que já te aconteceu 😂",
+          desc: "Solta a história. A mais engraçada levou o prêmio!",
+          entries: [
+            "Acenei de volta pra alguém que acenava pra pessoa atrás de mim 🙈",
+            "Mandei 'te amo' no grupo da firma sem querer.",
+            "Escorreguei numa casca de banana DE VERDADE.",
+            "Chamei a professora de 'mãe' na frente da turma toda.",
+            "Fui pagar o lanche com o cartão do gás.",
+          ],
+        },
+        {
+          type: "text", status: "finished", amount: 250,
+          title: "Melhor dica pra economizar dinheiro 💰",
+          desc: "A dica que realmente funciona no fim do mês.",
+          entries: [
+            "Anote TODOS os gastos por 30 dias. Você vai se assustar.",
+            "Espere 24h antes de qualquer compra por impulso.",
+            "Leve marmita 3x na semana, faz milagre.",
+            "Cancele as assinaturas que você não usou no mês.",
+            "No Pix à vista, sempre peça desconto.",
+          ],
+        },
+        {
+          type: "text", status: "finished", amount: 120,
+          title: "O melhor trocadilho que você conhece 🤪",
+          desc: "Vale o mais sem-vergonha também.",
+          entries: [
+            "Por que o livro de matemática tava triste? Cheio de problemas.",
+            "O que o tomate foi fazer no banco? Tirar extrato.",
+            "Cúmulo da paciência: professor de autoescola de tartaruga.",
+            "A praia terminou com o mar: ele era muito 'sal'gado.",
+          ],
+        },
+        {
+          type: "image", status: "active", amount: 400, imageN: 7,
+          title: "O clique mais bonito do mês 📸",
+          desc: "Aquela foto que você bateu e ficou orgulhoso. Capricha!",
+        },
+        {
+          type: "image", status: "active", amount: 200, imageN: 6,
+          title: "Foto mais criativa 🎨",
+          desc: "Ângulo diferente, ideia diferente. Surpreenda a galera!",
+        },
+        {
+          type: "image", status: "active", amount: 1000, imageN: 6,
+          title: "Mostre seu cantinho favorito 🛋️",
+          desc: "Seu setup, seu canto de ler, sua área. Mostra aí!",
+        },
+        {
+          type: "image", status: "finished", amount: 1500, imageN: 7,
+          title: "Melhor foto da sua viagem ✈️",
+          desc: "A viagem que ficou na memória em uma única foto.",
+        },
+        {
+          type: "image", status: "finished", amount: 700, imageN: 6,
+          title: "Melhor paisagem 🌄",
+          desc: "Tem cada lugar lindo por aí... mostra o seu.",
+        },
+      ];
+
+      const now = Date.now();
+      const day = 24 * 60 * 60 * 1000;
+      const batch = db.batch();
+      let cCount = 0;
+      let eCount = 0;
+
+      for (const spec of specs) {
+        const pool = shuffle(uids);
+        const creator = pool[0];
+        const isFinished = spec.status === "finished";
+
+        let createdMs;
+        let expiresMs;
+        if (isFinished) {
+          createdMs = now - (20 + ri(25)) * day;
+          expiresMs = createdMs + (7 + ri(9)) * day;
+          if (expiresMs >= now) expiresMs = now - day;
+        } else {
+          createdMs = now - (1 + ri(7)) * day;
+          expiresMs = now + (2 + ri(16)) * day;
+        }
+
+        const n = spec.type === "text" ? spec.entries.length : spec.imageN;
+        const entrants = pool.slice(1, 1 + n);
+        const challengeRef = db.collection("challenges").doc();
+
+        const entryDocs = [];
+        let totalVotes = 0;
+        let maxVotes = -1;
+        for (let i = 0; i < n; i++) {
+          const top = isFinished ? 800 + ri(5000) : 30 + ri(700);
+          const votes = 1 + ri(top);
+          totalVotes += votes;
+          if (votes > maxVotes) maxVotes = votes;
+          entryDocs.push({
+            ref: db.collection("entries").doc(),
+            uid: entrants[i],
+            votes,
+            contentText: spec.type === "text" ? spec.entries[i] : null,
+            contentUrl: spec.type === "image" ? nextImg() : null,
+            createdAt: new Date(createdMs + (i + 1) * 3600 * 1000)
+                .toISOString(),
+          });
+        }
+        const winnerIds = isFinished ?
+          entryDocs.filter((e) => e.votes === maxVotes).map((e) => e.uid) : [];
+
+        batch.set(challengeRef, {
+          title: spec.title,
+          description: spec.desc,
+          createdBy: creator,
+          amount: spec.amount,
+          creatorContribution: 0,
+          status: spec.status,
+          voteCount: totalVotes,
+          entryCount: n,
+          winnerIds,
+          createdAt: new Date(createdMs).toISOString(),
+          expiresAt: new Date(expiresMs).toISOString(),
+          isVirtual: true,
+        });
+        cCount++;
+
+        for (const e of entryDocs) {
+          batch.set(e.ref, {
+            challengeId: challengeRef.id,
+            userId: e.uid,
+            contentType: spec.type,
+            contentText: e.contentText,
+            contentUrl: e.contentUrl,
+            voteCount: e.votes,
+            isActive: true,
+            createdAt: e.createdAt,
+            isVirtual: true,
+          });
+          eCount++;
+        }
+      }
+
+      await batch.commit();
+      return res.json({success: true, challenges: cCount, entries: eCount});
+    });
+
 // ─── UPDATE VIRTUAL AVATARS ───────────────────────────────────────────────────
 // One-shot migration: replaces pravatar.cc URLs with randomuser.me portraits.
 
