@@ -6,6 +6,7 @@ import 'admin_users_page.dart';
 import 'admin_challenges_page.dart';
 import 'admin_verification_page.dart';
 import 'admin_virtual_users_page.dart';
+import 'admin_audience_page.dart';
 
 class AdminPage extends StatelessWidget {
   const AdminPage({super.key});
@@ -71,6 +72,16 @@ class AdminPage extends StatelessWidget {
               context,
               MaterialPageRoute(
                   builder: (_) => const AdminVirtualUsersPage()),
+            ),
+          ),
+          _AdminCard(
+            icon: Icons.download_for_offline_outlined,
+            title: 'Dados para campanhas',
+            subtitle: 'Exportar público p/ Google Ads e Meta (CSV)',
+            color: Colors.purple,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const AdminAudiencePage()),
             ),
           ),
         ],

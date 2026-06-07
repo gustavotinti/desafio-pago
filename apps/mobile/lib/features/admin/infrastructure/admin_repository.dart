@@ -29,4 +29,19 @@ class AdminRepository {
         await _functions.httpsCallable('adminUpdateVirtualUser').call(payload);
     return (res.data as Map)['photoUrl'] as String?;
   }
+
+  /// Exporta o público para campanhas.
+  /// [segment]: 'signups' | 'installs' · [platform]: 'google' | 'meta'.
+  /// Retorna { csv, count, filename }.
+  Future<Map<String, dynamic>> exportAudience(
+    String segment,
+    String platform,
+  ) async {
+    final res = await _functions.httpsCallable('exportAudience').call({
+      'segment': segment,
+      'platform': platform,
+    });
+    return Map<String, dynamic>.from(res.data as Map);
+  }
 }
+

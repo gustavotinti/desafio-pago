@@ -2086,6 +2086,120 @@ exports.adminUpdateVirtualUser =
       return {success: true, photoUrl: updates.photoUrl || null};
     });
 
+// ─── REGISTRAR INSTALAÇÃO DO APP ──────────────────────────────────────────────
+
+exports.registerAppInstall =
+    functions.https.onCall(async (data, context) => {
+      if (!context.auth) {
+        throw new functions.https.HttpsError(
+            "unauthenticated", "Não autenticado");
+      }
+      const db = admin.firestore();
+      const ref = db.collection("users").doc(context.auth.uid);
+      const doc = await ref.get();
+      if (!doc.exists) return {success: false};
+      const updates = {
+        appInstalled: true,
+        platform: String(data.platform || "mobile"),
+      };
+      if (!doc.data().installedAt) {
+        updates.installedAt = new Date().toISOString();
+      }
+      await ref.update(updates);
+      return {success: true};
+    });
+
+// ─── EXPORTAR PÚBLICO P/ CAMPANHAS (Google Ads / Meta) ────────────────────────
+
+exports.exportAudience = functions.runWith({timeoutSeconds: 300})
+    .https.onCall(async (data, context) => {
+      if (!context.auth) {
+        throw new functions.https.HttpsError(
+            "unauthenticated", "Não autenticado");
+      }
+      const db = admin.firestore();
+      const adminDoc =
+          await db.collection("admins").doc(context.auth.uid).get();
+      if (!adminDoc.exists) {
+        throw new functions.https.HttpsError(
+            "permission-denied", "Apenas administradores.");
+      }
+
+      const segment = data.segment === "installs" ? "installs" : "signups";
+      const platform = data.platform === "meta" ? "meta" : "google";
+
+      // Telefone e nome reais vêm dos pedidos de verificação (quando houver).
+      const vSnap = await db.collection("verificationRequests").get();
+      const vById = {};
+      vSnap.forEach((d) => {
+        const x = d.data();
+        vById[d.id] = {
+          phone: x.phone || "",
+          firstName: x.firstName || "",
+          lastName: x.lastName || "",
+        };
+      });
+
+      const splitName = (full) => {
+        const parts =
+            String(full || "").trim().split(/\s+/).filter(Boolean);
+        if (parts.length === 0) return ["", ""];
+        if (parts.length === 1) return [parts[0], ""];
+        return [parts[0], parts.slice(1).join(" ")];
+      };
+      const fmtPhone = (raw) => {
+        const p = String(raw || "").replace(/\D/g, "");
+        if (p.length === 10 || p.length === 11) return "+55" + p;
+        if (p.length === 12 || p.length === 13) return "+" + p;
+        return "";
+      };
+      const esc = (v) => {
+        const s = String(v == null ? "" : v);
+        return /[",\n]/.test(s) ? "\"" + s.replace(/"/g, "\"\"") + "\"" : s;
+      };
+
+      const uSnap = await db.collection("users").get();
+      const rows = [];
+      uSnap.forEach((doc) => {
+        const u = doc.data();
+        if (u.isVirtual === true) return;
+        if (u.isBanned === true) return;
+        if (segment === "installs" && u.appInstalled !== true) return;
+        const email = String(u.email || "").trim().toLowerCase();
+        if (!email) return;
+
+        const v = vById[doc.id];
+        let fn = v && v.firstName ? v.firstName : "";
+        let ln = v && v.lastName ? v.lastName : "";
+        if (!fn) {
+          const sp = splitName(u.name);
+          fn = sp[0];
+          ln = ln || sp[1];
+        }
+        const phone = fmtPhone(v ? v.phone : "");
+        rows.push({email, phone, fn, ln});
+      });
+
+      let header;
+      let lines;
+      if (platform === "meta") {
+        header = "email,phone,fn,ln,country";
+        lines = rows.map((r) =>
+          [esc(r.email), esc(r.phone), esc(r.fn), esc(r.ln), "BR"].join(","));
+      } else {
+        header = "Email,Phone,First Name,Last Name,Country,Zip";
+        lines = rows.map((r) =>
+          [esc(r.email), esc(r.phone), esc(r.fn), esc(r.ln), "BR", ""]
+              .join(","));
+      }
+      const csv = [header, ...lines].join("\n");
+
+      const date = new Date().toISOString().slice(0, 10);
+      const filename = platform + "-" + segment + "-" + date + ".csv";
+
+      return {csv, count: rows.length, filename, segment, platform};
+    });
+
 // ─── UPDATE VIRTUAL AVATARS ───────────────────────────────────────────────────
 // One-shot migration: replaces pravatar.cc URLs with randomuser.me portraits.
 

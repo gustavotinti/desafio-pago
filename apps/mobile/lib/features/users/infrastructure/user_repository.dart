@@ -1,4 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform;
 import '../../auth/domain/entities/auth_user.dart';
 
 class UserRepository {
@@ -105,6 +107,17 @@ class UserRepository {
         updates['photoUrl'] = user.photoUrl ?? '';
       }
       await doc.update(updates);
+    }
+
+    // Marca a instalação do app (somente mobile) para públicos de campanha.
+    if (!kIsWeb) {
+      try {
+        await FirebaseFunctions.instanceFor(region: 'us-central1')
+            .httpsCallable('registerAppInstall')
+            .call({'platform': defaultTargetPlatform.name});
+      } catch (_) {
+        // Falha não deve bloquear o login.
+      }
     }
   }
 }
