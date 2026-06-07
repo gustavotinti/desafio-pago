@@ -513,14 +513,17 @@ class _ChallengeCard extends StatelessWidget {
                       const Icon(Icons.emoji_events,
                           size: 16, color: Colors.amber),
                       const SizedBox(width: 6),
-                      Text(
-                        challenge.winnerIds.length == 1
-                            ? 'Vencedor definido'
-                            : '${challenge.winnerIds.length} vencedores (empate)',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.green.shade700,
-                          fontWeight: FontWeight.w600,
+                      Flexible(
+                        child: Text(
+                          challenge.winnerIds.length == 1
+                              ? 'Vencedor definido • ${Fmt.brl(challenge.amount)}'
+                              : '${challenge.winnerIds.length} vencedores '
+                                  '(empate) • ${Fmt.brl(challenge.amount)}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.green.shade700,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ],

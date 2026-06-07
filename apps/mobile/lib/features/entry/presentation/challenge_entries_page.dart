@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
+import '../../../core/utils/format.dart';
 import '../../../core/widgets/web_frame.dart';
 import '../../auth/presentation/auth_guard.dart';
 import '../../challenge/domain/entities/challenge.dart';
@@ -215,7 +216,7 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
           child: Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Text(
-              'Prêmio: R\$ ${widget.challenge.amount.toStringAsFixed(2)}'
+              'Prêmio: ${Fmt.brl(widget.challenge.amount)}'
               '  •  ${widget.challenge.entryCount} participações',
               style: const TextStyle(fontSize: 12),
             ),
@@ -343,8 +344,11 @@ class _FinishedBanner extends StatelessWidget {
       child: Text(
         hasWinners
             ? (challenge.winnerIds.length == 1
-                ? 'Desafio encerrado — vencedor definido!'
-                : 'Desafio encerrado — empate entre ${challenge.winnerIds.length} participantes!')
+                ? 'Desafio encerrado — vencedor definido! '
+                    'Prêmio: ${Fmt.brl(challenge.amount)}'
+                : 'Desafio encerrado — empate entre '
+                    '${challenge.winnerIds.length} participantes! '
+                    'Prêmio: ${Fmt.brl(challenge.amount)}')
             : 'Desafio encerrado — sem vencedor',
         style: TextStyle(
           color: hasWinners ? Colors.green.shade800 : Colors.grey.shade700,
