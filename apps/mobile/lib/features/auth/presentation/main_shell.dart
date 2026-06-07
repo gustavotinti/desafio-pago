@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import 'home_page.dart';
 import 'auth_guard.dart';
+import '../../../core/widgets/web_frame.dart';
 import '../../users/presentation/rankings_page.dart';
 import 'profile_page.dart';
 
@@ -85,37 +86,156 @@ class _GuestProfile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF7F9FC),
       appBar: AppBar(title: const Text('Perfil')),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.account_circle_outlined,
-                  size: 72, color: Color(0xFF003b8a)),
-              const SizedBox(height: 16),
-              const Text(
-                'Entre para acessar seu perfil',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                textAlign: TextAlign.center,
+      body: WebFrame(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+          children: [
+            // — Avatar com anel em gradiente —
+            Center(
+              child: Container(
+                width: 116,
+                height: 116,
+                padding: const EdgeInsets.all(4),
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    colors: [Color(0xFF003b8a), Color(0xFF0cc0df)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: const CircleAvatar(
+                  backgroundColor: Colors.white,
+                  child: Icon(Icons.person_outline,
+                      size: 54, color: Color(0xFF003b8a)),
+                ),
               ),
-              const SizedBox(height: 8),
-              const Text(
-                'Crie sua conta para participar dos desafios, votar, '
-                'criar desafios e sacar prêmios.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.black54),
+            ),
+            const SizedBox(height: 22),
+            const Text(
+              'Crie sua conta grátis',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Entre com o Google para participar dos desafios e '
+              'acompanhar seus ganhos.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.black54, fontSize: 14, height: 1.4),
+            ),
+            const SizedBox(height: 26),
+
+            // — Benefícios —
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: const Color(0xFFE9EEF6)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.03),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
-              const SizedBox(height: 24),
-              FilledButton.icon(
-                onPressed: () => ensureLoggedIn(context),
-                icon: const Icon(Icons.login),
-                label: const Text('Entrar com Google'),
+              child: const Column(
+                children: [
+                  _GuestBenefit(
+                    icon: Icons.emoji_events,
+                    color: Color(0xFFF5A623),
+                    title: 'Ganhe prêmios em dinheiro',
+                    subtitle: 'Participe e vença desafios pagos',
+                  ),
+                  Divider(height: 1),
+                  _GuestBenefit(
+                    icon: Icons.how_to_vote,
+                    color: Color(0xFF003b8a),
+                    title: 'Vote nos melhores',
+                    subtitle: 'Ajude a escolher quem leva o prêmio',
+                  ),
+                  Divider(height: 1),
+                  _GuestBenefit(
+                    icon: Icons.add_circle,
+                    color: Color(0xFFff00bf),
+                    title: 'Crie seus desafios',
+                    subtitle: 'Lance um prêmio e desafie a galera',
+                  ),
+                  Divider(height: 1),
+                  _GuestBenefit(
+                    icon: Icons.pix,
+                    color: Color(0xFF00A86B),
+                    title: 'Saque via Pix',
+                    subtitle: 'Receba seus ganhos quando quiser',
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 28),
+
+            // — Botão oficial do Google —
+            const GoogleSignInButton(),
+            const SizedBox(height: 14),
+            const Text(
+              'Apenas para usuários no Brasil · +18 anos',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 11, color: Colors.black38),
+            ),
+          ],
         ),
+      ),
+    );
+  }
+}
+
+class _GuestBenefit extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String subtitle;
+
+  const _GuestBenefit({
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: color, size: 22),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w600, fontSize: 14.5)),
+                const SizedBox(height: 2),
+                Text(subtitle,
+                    style: const TextStyle(
+                        color: Colors.black54, fontSize: 12.5)),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -21,38 +21,98 @@ Future<bool> ensureLoggedIn(BuildContext context, {String? message}) async {
   return false;
 }
 
-class _LoginSheet extends StatefulWidget {
-  final String? message;
-  const _LoginSheet({this.message});
-
-  @override
-  State<_LoginSheet> createState() => _LoginSheetState();
+/// Faz o login com Google e volta à raiz (o AuthGate exibe onboarding/MainShell).
+/// Retorna `true` se o login foi concluído, `false` se cancelado.
+Future<bool> startGoogleLogin(BuildContext context) async {
+  final authUser =
+      await FirebaseAuthRepository(FirebaseAuth.instance).signInWithGoogle();
+  if (authUser == null) return false;
+  await UserRepository().saveUser(authUser);
+  if (!context.mounted) return true;
+  // Remove rotas empilhadas (e a folha de login) para revelar o AuthGate.
+  Navigator.of(context, rootNavigator: true).popUntil((r) => r.isFirst);
+  return true;
 }
 
-class _LoginSheetState extends State<_LoginSheet> {
+/// Botão branco no padrão Google (logo oficial + texto), com loading próprio.
+class GoogleSignInButton extends StatefulWidget {
+  final String label;
+  const GoogleSignInButton({super.key, this.label = 'Entrar com Google'});
+
+  @override
+  State<GoogleSignInButton> createState() => _GoogleSignInButtonState();
+}
+
+class _GoogleSignInButtonState extends State<GoogleSignInButton> {
   bool _loading = false;
 
-  Future<void> _signIn() async {
+  Future<void> _onTap() async {
     setState(() => _loading = true);
     try {
-      final authUser = await FirebaseAuthRepository(FirebaseAuth.instance)
-          .signInWithGoogle();
-      if (authUser == null) {
-        if (mounted) setState(() => _loading = false);
-        return;
-      }
-      await UserRepository().saveUser(authUser);
-      if (!mounted) return;
-      // Volta à raiz: o AuthGate reconstrói e exibe o onboarding/MainShell.
-      Navigator.of(context, rootNavigator: true).popUntil((r) => r.isFirst);
+      await startGoogleLogin(context);
     } catch (e) {
       if (mounted) {
-        setState(() => _loading = false);
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('Erro ao entrar: $e')));
       }
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.10),
+            blurRadius: 16,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: SizedBox(
+        width: double.infinity,
+        child: OutlinedButton(
+          onPressed: _loading ? null : _onTap,
+          style: OutlinedButton.styleFrom(
+            backgroundColor: Colors.white,
+            foregroundColor: Colors.black87,
+            padding: const EdgeInsets.symmetric(vertical: 15),
+            side: BorderSide(color: Colors.grey.shade200),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+          ),
+          child: _loading
+              ? const SizedBox(
+                  height: 22,
+                  width: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Image.asset('assets/images/google.png', height: 22),
+                    const SizedBox(width: 12),
+                    Text(
+                      widget.label,
+                      style: const TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LoginSheet extends StatelessWidget {
+  final String? message;
+  const _LoginSheet({this.message});
 
   @override
   Widget build(BuildContext context) {
@@ -65,7 +125,7 @@ class _LoginSheetState extends State<_LoginSheet> {
             const Icon(Icons.lock_outline, size: 36, color: Color(0xFF003b8a)),
             const SizedBox(height: 12),
             Text(
-              widget.message ?? 'Entre para participar',
+              message ?? 'Entre para participar',
               style:
                   const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               textAlign: TextAlign.center,
@@ -78,38 +138,7 @@ class _LoginSheetState extends State<_LoginSheet> {
               style: TextStyle(color: Colors.black54, fontSize: 13),
             ),
             const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
-                onPressed: _loading ? null : _signIn,
-                style: OutlinedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: _loading
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Image.asset('assets/images/google.png', height: 20),
-                          const SizedBox(width: 10),
-                          const Text(
-                            'Entrar com Google',
-                            style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                color: Colors.black87),
-                          ),
-                        ],
-                      ),
-              ),
-            ),
+            const GoogleSignInButton(),
           ],
         ),
       ),
