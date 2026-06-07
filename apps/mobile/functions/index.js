@@ -2501,6 +2501,280 @@ exports.seedVirtualChallenges = functions.runWith({timeoutSeconds: 540})
       return res.json({success: true, challenges: cCount, entries: eCount});
     });
 
+// ─── SEED COMENTÁRIOS VIRTUAIS ────────────────────────────────────────────────
+
+exports.seedVirtualComments = functions.runWith({timeoutSeconds: 540})
+    .https.onRequest(async (req, res) => {
+      if (req.method !== "POST") {
+        return res.status(405).json({error: "Method Not Allowed"});
+      }
+      if (!req.body || req.body.secret !== "SEED_2026_DP") {
+        return res.status(403).json({error: "Forbidden"});
+      }
+      const db = admin.firestore();
+
+      const check = await db.collection("comments")
+          .where("isVirtual", "==", true).limit(1).get();
+      if (!check.empty) {
+        return res.status(409).json({error: "Comentários virtuais já existem."});
+      }
+
+      const usersSnap = await db.collection("users")
+          .where("isVirtual", "==", true).limit(400).get();
+      const users = usersSnap.docs
+          .map((d) => ({id: d.id, name: d.data().name || "Usuário"}));
+      if (users.length < 10) {
+        return res.status(412).json({error: "Rode seedVirtualUsers primeiro."});
+      }
+
+      const entriesSnap = await db.collection("entries")
+          .where("isVirtual", "==", true).get();
+      const challSnap = await db.collection("challenges")
+          .where("isVirtual", "==", true).get();
+
+      const ri = (n) => Math.floor(Math.random() * n);
+      const pick = (a) => a[ri(a.length)];
+
+      const generic = [
+        "Top demais! 🔥", "Arrasou!", "Merece ganhar 👏",
+        "Simplesmente perfeito", "Tá levando essa 💪", "Que demais!",
+        "Sensacional", "Muito bom mesmo", "Curti demais", "Brabo 🔥",
+        "Show de bola", "Nota 10", "Meu voto é seu 🗳️", "Apoiado! 👏",
+      ];
+      const imageC = [
+        "Que foto incrível! 📸", "Ângulo perfeito 😍", "Qualidade absurda",
+        "Que clique!", "Ficou lindo demais", "Foto de capa! 🤩",
+      ];
+      const textC = [
+        "kkkk muito boa 😂", "Concordo demais", "Verdade pura 👏",
+        "Anotado!", "Essa foi forte", "Genial kkk", "Real demais",
+      ];
+
+      const now = Date.now();
+      let batch = db.batch();
+      let ops = 0;
+      let total = 0;
+      const flush = async () => {
+        if (ops > 0) {
+          await batch.commit();
+          batch = db.batch();
+          ops = 0;
+        }
+      };
+      const add = async (challengeId, entryId, isImage) => {
+        const u = pick(users);
+        let pool = generic;
+        if (entryId !== "") pool = (isImage ? imageC : textC).concat(generic);
+        batch.set(db.collection("comments").doc(), {
+          challengeId,
+          entryId,
+          userId: u.id,
+          userName: u.name,
+          text: pick(pool),
+          isActive: true,
+          createdAt: new Date(now - ri(8 * 86400000)).toISOString(),
+          isVirtual: true,
+        });
+        ops++;
+        total++;
+        if (ops >= 450) await flush();
+      };
+
+      for (const doc of entriesSnap.docs) {
+        const d = doc.data();
+        const isImage = d.contentType === "image";
+        const count = 1 + ri(4);
+        for (let i = 0; i < count; i++) {
+          await add(d.challengeId, doc.id, isImage);
+        }
+      }
+      for (const doc of challSnap.docs) {
+        const count = 1 + ri(3);
+        for (let i = 0; i < count; i++) {
+          await add(doc.id, "", false);
+        }
+      }
+      await flush();
+      return res.json({success: true, comments: total});
+    });
+
+// ─── SEED DESAFIOS VIRTUAIS — LOTE 2 ──────────────────────────────────────────
+
+exports.seedVirtualChallenges2 = functions.runWith({timeoutSeconds: 540})
+    .https.onRequest(async (req, res) => {
+      if (req.method !== "POST") {
+        return res.status(405).json({error: "Method Not Allowed"});
+      }
+      if (!req.body || req.body.secret !== "SEED_2026_DP") {
+        return res.status(403).json({error: "Forbidden"});
+      }
+      const db = admin.firestore();
+
+      const check = await db.collection("challenges")
+          .where("seedWave", "==", 2).limit(1).get();
+      if (!check.empty) {
+        return res.status(409).json({error: "Lote 2 já foi criado."});
+      }
+
+      const usersSnap = await db.collection("users")
+          .where("isVirtual", "==", true).limit(400).get();
+      const uids = usersSnap.docs.map((d) => d.id);
+      if (uids.length < 20) {
+        return res.status(412).json({error: "Rode seedVirtualUsers primeiro."});
+      }
+
+      const ri = (n) => Math.floor(Math.random() * n);
+      const shuffle = (arr) => {
+        const a = arr.slice();
+        for (let i = a.length - 1; i > 0; i--) {
+          const j = ri(i + 1);
+          [a[i], a[j]] = [a[j], a[i]];
+        }
+        return a;
+      };
+      const HOST = "https://desafiopago.web.app";
+      let imgCursor = 0;
+      const nextImg = () => {
+        const n = String((imgCursor++ % 40) + 1).padStart(2, "0");
+        return `${HOST}/challenge_images/${n}.jpg`;
+      };
+
+      const specs = [
+        {
+          type: "text", status: "active", amount: 180,
+          title: "Descreva o Brasil em 3 palavras 🇧🇷",
+          desc: "Sem enrolação: três palavras que definem o nosso país.",
+          entries: [
+            "Futebol, samba e fé", "Calor, praia e caipirinha",
+            "Resiliência, alegria e jeitinho", "Café, sol e abraço",
+            "Saudade, festa e esperança",
+          ],
+        },
+        {
+          type: "text", status: "finished", amount: 350,
+          title: "O melhor conselho que você já recebeu 🧠",
+          desc: "Aquele conselho que mudou a sua vida.",
+          entries: [
+            "Guarde 10% de tudo que ganhar, sempre.",
+            "Escolha a paz, não a razão.",
+            "Faça hoje o que pode te livrar de um problema amanhã.",
+            "Não empreste o que você não pode perder.",
+            "Cerque-se de quem te puxa pra cima.",
+          ],
+        },
+        {
+          type: "text", status: "finished", amount: 200,
+          title: "A maior mancada que você já pagou 🤦",
+          desc: "Vai, assume aí. Todo mundo tem uma.",
+          entries: [
+            "Esqueci o aniversário da minha mãe 😭",
+            "Mandei o print da conversa pra própria pessoa.",
+            "Liguei o microfone na reunião na hora errada.",
+            "Errei o nome da sogra no casamento.",
+            "Estacionei na vaga do chefe sem saber.",
+          ],
+        },
+        {
+          type: "image", status: "active", amount: 600, imageN: 6,
+          title: "Foto que conta uma história 📖",
+          desc: "Uma imagem que vale mais que mil palavras.",
+        },
+        {
+          type: "image", status: "active", amount: 250, imageN: 6,
+          title: "A foto mais surpreendente 😮",
+          desc: "Aquele clique no momento certo. Mostra!",
+        },
+        {
+          type: "image", status: "finished", amount: 900, imageN: 7,
+          title: "Seu melhor registro de 2025 🗓️",
+          desc: "A foto que resume o seu ano.",
+        },
+      ];
+
+      const now = Date.now();
+      const day = 24 * 60 * 60 * 1000;
+      const batch = db.batch();
+      let cCount = 0;
+      let eCount = 0;
+
+      for (const spec of specs) {
+        const pool = shuffle(uids);
+        const creator = pool[0];
+        const isFinished = spec.status === "finished";
+
+        let createdMs;
+        let expiresMs;
+        if (isFinished) {
+          createdMs = now - (20 + ri(25)) * day;
+          expiresMs = createdMs + (7 + ri(9)) * day;
+          if (expiresMs >= now) expiresMs = now - day;
+        } else {
+          createdMs = now - (1 + ri(7)) * day;
+          expiresMs = now + (2 + ri(16)) * day;
+        }
+
+        const n = spec.type === "text" ? spec.entries.length : spec.imageN;
+        const entrants = pool.slice(1, 1 + n);
+        const challengeRef = db.collection("challenges").doc();
+
+        const entryDocs = [];
+        let totalVotes = 0;
+        let maxVotes = -1;
+        for (let i = 0; i < n; i++) {
+          const top = isFinished ? 800 + ri(5000) : 30 + ri(700);
+          const votes = 1 + ri(top);
+          totalVotes += votes;
+          if (votes > maxVotes) maxVotes = votes;
+          entryDocs.push({
+            ref: db.collection("entries").doc(),
+            uid: entrants[i],
+            votes,
+            contentText: spec.type === "text" ? spec.entries[i] : null,
+            contentUrl: spec.type === "image" ? nextImg() : null,
+            createdAt: new Date(createdMs + (i + 1) * 3600 * 1000)
+                .toISOString(),
+          });
+        }
+        const winnerIds = isFinished ?
+          entryDocs.filter((e) => e.votes === maxVotes).map((e) => e.uid) : [];
+
+        batch.set(challengeRef, {
+          title: spec.title,
+          description: spec.desc,
+          createdBy: creator,
+          amount: spec.amount,
+          creatorContribution: 0,
+          status: spec.status,
+          voteCount: totalVotes,
+          entryCount: n,
+          winnerIds,
+          createdAt: new Date(createdMs).toISOString(),
+          expiresAt: new Date(expiresMs).toISOString(),
+          isVirtual: true,
+          seedWave: 2,
+        });
+        cCount++;
+
+        for (const e of entryDocs) {
+          batch.set(e.ref, {
+            challengeId: challengeRef.id,
+            userId: e.uid,
+            contentType: spec.type,
+            contentText: e.contentText,
+            contentUrl: e.contentUrl,
+            voteCount: e.votes,
+            isActive: true,
+            createdAt: e.createdAt,
+            isVirtual: true,
+          });
+          eCount++;
+        }
+      }
+
+      await batch.commit();
+      return res.json({success: true, challenges: cCount, entries: eCount});
+    });
+
 // ─── UPDATE VIRTUAL AVATARS ───────────────────────────────────────────────────
 // One-shot migration: replaces pravatar.cc URLs with randomuser.me portraits.
 
