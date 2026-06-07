@@ -1082,6 +1082,7 @@ exports.addComment = functions.https.onCall(async (data, context) => {
 
   const {challengeId, text} = data;
   const entryId = data.entryId || "";
+  const parentId = data.parentId || "";
 
   if (!challengeId || !text || text.trim().length === 0) {
     throw new functions.https.HttpsError(
@@ -1100,14 +1101,64 @@ exports.addComment = functions.https.onCall(async (data, context) => {
   await db.collection("comments").add({
     challengeId,
     entryId,
+    parentId,
     userId,
     userName,
     text: text.trim(),
+    likeCount: 0,
     isActive: true,
     createdAt: new Date().toISOString(),
   });
 
   return {success: true};
+});
+
+// ─── TOGGLE COMMENT LIKE ──────────────────────────────────────────────────────
+
+exports.toggleCommentLike = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Usuário não logado");
+  }
+  const uid = context.auth.uid;
+  const db = admin.firestore();
+  await _assertNotBanned(db, uid);
+
+  const {commentId} = data;
+  if (!commentId) {
+    throw new functions.https.HttpsError("invalid-argument", "commentId obrigatório");
+  }
+
+  const commentRef = db.collection("comments").doc(commentId);
+  const likeRef = db.collection("commentLikes").doc(`${commentId}_${uid}`);
+
+  let liked;
+  await db.runTransaction(async (tx) => {
+    const commentDoc = await tx.get(commentRef);
+    if (!commentDoc.exists) {
+      throw new functions.https.HttpsError("not-found", "Comentário não encontrado");
+    }
+    const likeDoc = await tx.get(likeRef);
+    if (likeDoc.exists) {
+      tx.delete(likeRef);
+      tx.update(commentRef, {
+        likeCount: admin.firestore.FieldValue.increment(-1),
+      });
+      liked = false;
+    } else {
+      tx.set(likeRef, {
+        commentId,
+        uid,
+        challengeId: commentDoc.data().challengeId || "",
+        createdAt: new Date().toISOString(),
+      });
+      tx.update(commentRef, {
+        likeCount: admin.firestore.FieldValue.increment(1),
+      });
+      liked = true;
+    }
+  });
+
+  return {liked};
 });
 
 // ─── ADMIN: MODIFY VOTE COUNT ────────────────────────────────────────────────
@@ -2773,6 +2824,94 @@ exports.seedVirtualChallenges2 = functions.runWith({timeoutSeconds: 540})
 
       await batch.commit();
       return res.json({success: true, challenges: cCount, entries: eCount});
+    });
+
+// ─── SEED INTERAÇÕES (curtidas + respostas) NOS COMENTÁRIOS VIRTUAIS ──────────
+
+exports.seedVirtualCommentInteractions = functions.runWith({timeoutSeconds: 540})
+    .https.onRequest(async (req, res) => {
+      if (req.method !== "POST") {
+        return res.status(405).json({error: "Method Not Allowed"});
+      }
+      if (!req.body || req.body.secret !== "SEED_2026_DP") {
+        return res.status(403).json({error: "Forbidden"});
+      }
+      const db = admin.firestore();
+
+      const sentinel = db.collection("_seedMeta").doc("commentInteractions");
+      if ((await sentinel.get()).exists) {
+        return res.status(409).json({error: "Interações já foram criadas."});
+      }
+
+      const usersSnap = await db.collection("users")
+          .where("isVirtual", "==", true).limit(400).get();
+      const users = usersSnap.docs
+          .map((d) => ({id: d.id, name: d.data().name || "Usuário"}));
+      if (users.length < 10) {
+        return res.status(412).json({error: "Rode seedVirtualUsers primeiro."});
+      }
+
+      const ri = (n) => Math.floor(Math.random() * n);
+      const pick = (a) => a[ri(a.length)];
+      const replyPool = [
+        "Concordo! 🙌", "Verdade kkk", "Pensei o mesmo", "Boa!", "kkkkk",
+        "Exatamente isso", "Apoiado 👏", "Também acho", "Top", "Demais!",
+        "haha boa", "Isso aí 🔥",
+      ];
+      const likeFor = () => {
+        const r = Math.random();
+        if (r < 0.7) return ri(12);
+        if (r < 0.95) return 10 + ri(40);
+        return 50 + ri(150);
+      };
+
+      const snap = await db.collection("comments")
+          .where("isVirtual", "==", true).get();
+
+      let batch = db.batch();
+      let ops = 0;
+      let likesSet = 0;
+      let replies = 0;
+      const flush = async () => {
+        if (ops > 0) {
+          await batch.commit();
+          batch = db.batch();
+          ops = 0;
+        }
+      };
+
+      for (const doc of snap.docs) {
+        const d = doc.data();
+        if (d.parentId) continue;
+        batch.update(doc.ref, {likeCount: likeFor()});
+        ops++;
+        likesSet++;
+        const nReplies = Math.random() < 0.5 ? 0 : 1 + ri(2);
+        const baseMs = Date.parse(d.createdAt || new Date().toISOString());
+        for (let i = 0; i < nReplies; i++) {
+          const u = pick(users);
+          batch.set(db.collection("comments").doc(), {
+            challengeId: d.challengeId,
+            entryId: d.entryId || "",
+            parentId: doc.id,
+            userId: u.id,
+            userName: u.name,
+            text: pick(replyPool),
+            likeCount: ri(8),
+            isActive: true,
+            createdAt: new Date(baseMs + (i + 1) * 1800 * 1000).toISOString(),
+            isVirtual: true,
+          });
+          ops++;
+          replies++;
+        }
+        if (ops >= 440) await flush();
+      }
+      await flush();
+      await sentinel.set({
+        createdAt: new Date().toISOString(), likesSet, replies,
+      });
+      return res.json({success: true, likesSet, replies});
     });
 
 // ─── UPDATE VIRTUAL AVATARS ───────────────────────────────────────────────────

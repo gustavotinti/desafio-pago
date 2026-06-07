@@ -142,6 +142,13 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // ── COMMENT LIKES ─────────────────────────────────────────────────────────
+    match /commentLikes/{likeId} {
+      // Usuário logado consulta os próprios likes; escrita via Cloud Function.
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
     // ── INSTAGRAM POSTS ──────────────────────────────────────────────────────
     match /instagram_posts/{postId} {
       // Read-only for admins; all writes via Cloud Functions (Admin SDK)

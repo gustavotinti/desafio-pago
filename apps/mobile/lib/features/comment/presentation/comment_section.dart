@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../../auth/presentation/auth_guard.dart';
 import '../domain/entities/comment.dart';
 import '../infrastructure/comment_repository.dart';
 
@@ -23,12 +24,31 @@ class CommentSection extends StatefulWidget {
 class _CommentSectionState extends State<CommentSection> {
   final _repo = CommentRepository();
   final _controller = TextEditingController();
+  final _inputFocus = FocusNode();
   bool _sending = false;
+  Set<String> _liked = {};
+  String? _replyToId;
+  String? _replyToName;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLikes();
+  }
 
   @override
   void dispose() {
     _controller.dispose();
+    _inputFocus.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadLikes() async {
+    if (FirebaseAuth.instance.currentUser == null) return;
+    try {
+      final ids = await _repo.loadMyLikedIds();
+      if (mounted) setState(() => _liked = ids);
+    } catch (_) {/* silencioso */}
   }
 
   Future<void> _submit() async {
@@ -40,8 +60,13 @@ class _CommentSectionState extends State<CommentSection> {
         challengeId: widget.challengeId,
         entryId: widget.entryId,
         text: text,
+        parentId: _replyToId ?? '',
       );
       _controller.clear();
+      setState(() {
+        _replyToId = null;
+        _replyToName = null;
+      });
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -50,6 +75,38 @@ class _CommentSectionState extends State<CommentSection> {
     } finally {
       if (mounted) setState(() => _sending = false);
     }
+  }
+
+  Future<void> _toggleLike(Comment c) async {
+    if (!await ensureLoggedIn(context, message: 'Entre para curtir')) return;
+    final wasLiked = _liked.contains(c.id);
+    setState(() {
+      if (wasLiked) {
+        _liked.remove(c.id);
+      } else {
+        _liked.add(c.id);
+      }
+    });
+    try {
+      await _repo.toggleLike(c.id);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        if (wasLiked) {
+          _liked.add(c.id);
+        } else {
+          _liked.remove(c.id);
+        }
+      });
+    }
+  }
+
+  void _startReply(Comment c) {
+    setState(() {
+      _replyToId = c.id;
+      _replyToName = c.userName ?? 'Usuário';
+    });
+    _inputFocus.requestFocus();
   }
 
   Future<void> _generateFake() async {
@@ -134,8 +191,8 @@ class _CommentSectionState extends State<CommentSection> {
                 ),
               );
             }
-            final comments = snapshot.data!;
-            if (comments.isEmpty) {
+            final all = snapshot.data!;
+            if (all.isEmpty) {
               return const Padding(
                 padding: EdgeInsets.symmetric(vertical: 4),
                 child: Text(
@@ -144,31 +201,83 @@ class _CommentSectionState extends State<CommentSection> {
                 ),
               );
             }
-            return ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: comments.length,
-              itemBuilder: (_, i) => _CommentTile(comment: comments[i]),
-            );
+            final tops = all.where((c) => !c.isReply).toList();
+            final repliesByParent = <String, List<Comment>>{};
+            for (final c in all.where((c) => c.isReply)) {
+              repliesByParent.putIfAbsent(c.parentId, () => []).add(c);
+            }
+
+            final widgets = <Widget>[];
+            for (final top in tops) {
+              widgets.add(_CommentTile(
+                comment: top,
+                isLiked: _liked.contains(top.id),
+                onLike: () => _toggleLike(top),
+                onReply: () => _startReply(top),
+              ));
+              for (final reply in (repliesByParent[top.id] ?? [])) {
+                widgets.add(Padding(
+                  padding: const EdgeInsets.only(left: 36),
+                  child: _CommentTile(
+                    comment: reply,
+                    isLiked: _liked.contains(reply.id),
+                    onLike: () => _toggleLike(reply),
+                  ),
+                ));
+              }
+            }
+            return Column(children: widgets);
           },
         ),
         if (uid != null) ...[
           const SizedBox(height: 8),
+          if (_replyToId != null)
+            Container(
+              margin: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEDF1F8),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.reply, size: 14, color: Colors.black54),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Respondendo a $_replyToName',
+                      style: const TextStyle(
+                          fontSize: 12, color: Colors.black54),
+                    ),
+                  ),
+                  InkWell(
+                    onTap: () => setState(() {
+                      _replyToId = null;
+                      _replyToName = null;
+                    }),
+                    child: const Icon(Icons.close, size: 16),
+                  ),
+                ],
+              ),
+            ),
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(
                 child: TextField(
                   controller: _controller,
+                  focusNode: _inputFocus,
                   maxLines: 1,
                   maxLength: 500,
                   textInputAction: TextInputAction.send,
                   onSubmitted: (_) => _submit(),
-                  decoration: const InputDecoration(
-                    hintText: 'Adicionar comentário...',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    hintText: _replyToId != null
+                        ? 'Escreva sua resposta...'
+                        : 'Adicionar comentário...',
+                    border: const OutlineInputBorder(),
                     isDense: true,
-                    contentPadding: EdgeInsets.symmetric(
+                    contentPadding: const EdgeInsets.symmetric(
                       horizontal: 10,
                       vertical: 8,
                     ),
@@ -199,7 +308,16 @@ class _CommentSectionState extends State<CommentSection> {
 
 class _CommentTile extends StatelessWidget {
   final Comment comment;
-  const _CommentTile({required this.comment});
+  final bool isLiked;
+  final VoidCallback onLike;
+  final VoidCallback? onReply;
+
+  const _CommentTile({
+    required this.comment,
+    required this.isLiked,
+    required this.onLike,
+    this.onReply,
+  });
 
   String _formatDate(DateTime dt) {
     final diff = DateTime.now().difference(dt);
@@ -227,11 +345,14 @@ class _CommentTile extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    Text(
-                      comment.userName ?? 'Usuário',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 12,
+                    Flexible(
+                      child: Text(
+                        comment.userName ?? 'Usuário',
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 6),
@@ -244,9 +365,57 @@ class _CommentTile extends StatelessWidget {
                     ),
                   ],
                 ),
-                Text(
-                  comment.text,
-                  style: const TextStyle(fontSize: 13),
+                Text(comment.text, style: const TextStyle(fontSize: 13)),
+                const SizedBox(height: 2),
+                // ── Ações: curtir + responder ──────────────────────────
+                Row(
+                  children: [
+                    InkWell(
+                      onTap: onLike,
+                      borderRadius: BorderRadius.circular(6),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 2, vertical: 2),
+                        child: Row(
+                          children: [
+                            Icon(
+                              isLiked
+                                  ? Icons.favorite
+                                  : Icons.favorite_border,
+                              size: 15,
+                              color: isLiked ? Colors.red : Colors.black45,
+                            ),
+                            if (comment.likeCount > 0) ...[
+                              const SizedBox(width: 3),
+                              Text(
+                                '${comment.likeCount}',
+                                style: const TextStyle(
+                                    fontSize: 11, color: Colors.black54),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (onReply != null) ...[
+                      const SizedBox(width: 14),
+                      InkWell(
+                        onTap: onReply,
+                        borderRadius: BorderRadius.circular(6),
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(
+                              horizontal: 2, vertical: 2),
+                          child: Text(
+                            'Responder',
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.black54,
+                                fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ],
             ),
