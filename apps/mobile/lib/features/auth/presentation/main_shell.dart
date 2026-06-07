@@ -89,6 +89,7 @@ class _GuestProfile extends StatelessWidget {
       backgroundColor: const Color(0xFFF7F9FC),
       appBar: AppBar(title: const Text('Perfil')),
       body: WebFrame(
+        maxWidth: 420,
         child: ListView(
           padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
           children: [

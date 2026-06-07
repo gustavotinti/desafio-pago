@@ -117,7 +117,10 @@ class _LoginSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: Padding(
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Padding(
         padding: const EdgeInsets.fromLTRB(24, 8, 24, 28),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -140,6 +143,8 @@ class _LoginSheet extends StatelessWidget {
             const SizedBox(height: 20),
             const GoogleSignInButton(),
           ],
+        ),
+          ),
         ),
       ),
     );

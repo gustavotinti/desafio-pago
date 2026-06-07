@@ -199,6 +199,7 @@ class _ProfilePageState extends State<ProfilePage> {
         ],
       ),
       body: WebFrame(
+        maxWidth: 500,
         child: ListView(
         padding: const EdgeInsets.all(16),
         children: [

@@ -66,6 +66,7 @@ class _TopUpPageState extends State<TopUpPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('Adicionar créditos')),
       body: WebFrame(
+        maxWidth: 440,
         child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
