@@ -211,21 +211,11 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.challenge.title),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(24),
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Text(
-              'Prêmio: ${Fmt.brl(widget.challenge.amount)}'
-              '  •  ${widget.challenge.entryCount} participações',
-              style: const TextStyle(fontSize: 12),
-            ),
-          ),
-        ),
       ),
       body: WebFrame(
         child: Column(
         children: [
+          _PrizeHeader(challenge: widget.challenge),
           if (isFinished) _FinishedBanner(challenge: widget.challenge),
           Expanded(
             child: FutureBuilder<List<dynamic>>(
@@ -344,17 +334,107 @@ class _FinishedBanner extends StatelessWidget {
       child: Text(
         hasWinners
             ? (challenge.winnerIds.length == 1
-                ? 'Desafio encerrado — vencedor definido! '
-                    'Prêmio: ${Fmt.brl(challenge.amount)}'
+                ? 'Desafio encerrado — vencedor definido!'
                 : 'Desafio encerrado — empate entre '
-                    '${challenge.winnerIds.length} participantes! '
-                    'Prêmio: ${Fmt.brl(challenge.amount)}')
+                    '${challenge.winnerIds.length} participantes!')
             : 'Desafio encerrado — sem vencedor',
         style: TextStyle(
           color: hasWinners ? Colors.green.shade800 : Colors.grey.shade700,
           fontWeight: FontWeight.w600,
         ),
         textAlign: TextAlign.center,
+      ),
+    );
+  }
+}
+
+// ─── Prize header (destaque do prêmio) ────────────────────────────────────────
+
+class _PrizeHeader extends StatelessWidget {
+  final Challenge challenge;
+  const _PrizeHeader({required this.challenge});
+
+  @override
+  Widget build(BuildContext context) {
+    final finished = challenge.status == ChallengeStatus.finished;
+    final colors = finished
+        ? const [Color(0xFF64748B), Color(0xFF94A3B8)]
+        : const [Color(0xFF00B09B), Color(0xFF0cc0df)];
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 6),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: colors,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: colors.first.withValues(alpha: 0.30),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(11),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.22),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.emoji_events, color: Colors.white, size: 24),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  finished ? 'PRÊMIO • ENCERRADO' : 'PRÊMIO EM DISPUTA',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.85),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.1,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    Fmt.brl(challenge.amount),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    const Icon(Icons.people_alt_rounded,
+                        color: Colors.white70, size: 14),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${challenge.entryCount} participações',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.9),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
