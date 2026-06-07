@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../infrastructure/firebase_auth_repository.dart';
 import '../../users/infrastructure/user_repository.dart';
+import '../../../core/deep_link.dart';
 
 /// Garante que há um usuário logado para executar uma ação que exige conta.
 ///
@@ -28,6 +29,8 @@ Future<bool> startGoogleLogin(BuildContext context) async {
       await FirebaseAuthRepository(FirebaseAuth.instance).signInWithGoogle();
   if (authUser == null) return false;
   await UserRepository().saveUser(authUser);
+  // Reabre a arte compartilhada após o onboarding, para o amigo votar.
+  PendingDeepLink.handled = false;
   if (!context.mounted) return true;
   // Remove rotas empilhadas (e a folha de login) para revelar o AuthGate.
   Navigator.of(context, rootNavigator: true).popUntil((r) => r.isFirst);

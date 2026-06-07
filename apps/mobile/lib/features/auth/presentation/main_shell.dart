@@ -3,7 +3,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import 'home_page.dart';
 import 'auth_guard.dart';
+import '../../../core/deep_link.dart';
 import '../../../core/widgets/web_frame.dart';
+import '../../challenge/infrastructure/get_challenges.dart';
+import '../../entry/presentation/challenge_entries_page.dart';
 import '../../users/presentation/rankings_page.dart';
 import 'profile_page.dart';
 
@@ -18,6 +21,31 @@ class _MainShellState extends State<MainShell> {
   int _index = 0;
 
   static const _version = 'Desafio Pago v2.1.0';
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _maybeOpenDeepLink());
+  }
+
+  // Abre direto a arte compartilhada (link com ?entry=...), pronta pra votar.
+  Future<void> _maybeOpenDeepLink() async {
+    if (PendingDeepLink.handled || !PendingDeepLink.hasLink) return;
+    PendingDeepLink.handled = true;
+    final challenge =
+        await GetChallenges().getById(PendingDeepLink.challengeId!);
+    if (challenge == null || !mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChallengeEntriesPage(
+          challenge: challenge,
+          highlightEntryId: PendingDeepLink.entryId,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {

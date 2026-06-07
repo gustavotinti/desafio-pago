@@ -30,24 +30,32 @@ class GetChallenges {
 
     final snapshot = await query.get();
 
-    return snapshot.docs.map((doc) {
-      final data = doc.data();
-      return Challenge(
-        id: doc.id,
-        title: data['title'] ?? '',
-        description: data['description'] ?? '',
-        createdBy: data['createdBy'] ?? '',
-        amount: (data['amount'] as num).toDouble(),
-        status: ChallengeStatus.values.firstWhere(
-          (s) => s.name == (data['status'] ?? ''),
-          orElse: () => ChallengeStatus.active,
-        ),
-        voteCount: data['voteCount'] ?? 0,
-        entryCount: data['entryCount'] ?? 0,
-        winnerIds: List<String>.from(data['winnerIds'] ?? []),
-        createdAt: DateTime.parse(data['createdAt']),
-        expiresAt: DateTime.parse(data['expiresAt']),
-      );
-    }).toList();
+    return snapshot.docs.map((doc) => _map(doc.id, doc.data())).toList();
+  }
+
+  /// Carrega um desafio pelo id (usado pelo deep link de compartilhamento).
+  Future<Challenge?> getById(String id) async {
+    final doc = await _firestore.collection('challenges').doc(id).get();
+    if (!doc.exists) return null;
+    return _map(doc.id, doc.data()!);
+  }
+
+  Challenge _map(String id, Map<String, dynamic> data) {
+    return Challenge(
+      id: id,
+      title: data['title'] ?? '',
+      description: data['description'] ?? '',
+      createdBy: data['createdBy'] ?? '',
+      amount: (data['amount'] as num).toDouble(),
+      status: ChallengeStatus.values.firstWhere(
+        (s) => s.name == (data['status'] ?? ''),
+        orElse: () => ChallengeStatus.active,
+      ),
+      voteCount: data['voteCount'] ?? 0,
+      entryCount: data['entryCount'] ?? 0,
+      winnerIds: List<String>.from(data['winnerIds'] ?? []),
+      createdAt: DateTime.parse(data['createdAt']),
+      expiresAt: DateTime.parse(data['expiresAt']),
+    );
   }
 }

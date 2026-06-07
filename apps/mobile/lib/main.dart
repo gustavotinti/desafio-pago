@@ -8,6 +8,7 @@ import 'package:screen_protector/screen_protector.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 import 'firebase_options.dart';
+import 'core/deep_link.dart';
 import 'core/config/emulator.dart';
 import 'core/services/notification_service.dart';
 import 'core/theme/app_theme.dart';
@@ -17,6 +18,7 @@ import 'features/auth/presentation/terms_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  PendingDeepLink.parse(); // captura link de participação compartilhada
   await initializeDateFormatting('pt_BR', null);
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   await connectToEmulators();

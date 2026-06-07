@@ -19,8 +19,13 @@ import 'auto_video.dart';
 
 class ChallengeEntriesPage extends StatefulWidget {
   final Challenge challenge;
+  final String? highlightEntryId;
 
-  const ChallengeEntriesPage({super.key, required this.challenge});
+  const ChallengeEntriesPage({
+    super.key,
+    required this.challenge,
+    this.highlightEntryId,
+  });
 
   @override
   State<ChallengeEntriesPage> createState() => _ChallengeEntriesPageState();
@@ -216,6 +221,8 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
         child: Column(
         children: [
           _PrizeHeader(challenge: widget.challenge),
+          if (widget.highlightEntryId != null)
+            _SharedEntryBanner(canVote: !isFinished),
           if (isFinished) _FinishedBanner(challenge: widget.challenge),
           Expanded(
             child: FutureBuilder<List<dynamic>>(
@@ -226,6 +233,15 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
                 }
 
                 final entries = snapshot.data![0] as List<Entry>;
+                // Arte compartilhada (link) vai para o topo.
+                if (widget.highlightEntryId != null) {
+                  final hi = entries
+                      .indexWhere((e) => e.id == widget.highlightEntryId);
+                  if (hi > 0) {
+                    final e = entries.removeAt(hi);
+                    entries.insert(0, e);
+                  }
+                }
                 final hasVoted = snapshot.data![1] as bool;
                 // Admins bypass the creator restriction for demo voting
                 final canVote = !hasVoted && (!_isCreator || _isAdmin) && !isFinished;
@@ -266,6 +282,7 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
                       entry: entry,
                       canVote: canVote,
                       isWinner: isWinner,
+                      isHighlighted: entry.id == widget.highlightEntryId,
                       isAdmin: _isAdmin,
                       onVote: () => _vote(entry.id),
                       canReport: uid != null && uid != entry.userId,
@@ -440,12 +457,51 @@ class _PrizeHeader extends StatelessWidget {
   }
 }
 
+// ─── Banner de participação compartilhada (deep link) ─────────────────────────
+
+class _SharedEntryBanner extends StatelessWidget {
+  final bool canVote;
+  const _SharedEntryBanner({required this.canVote});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEAF6FB),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF0cc0df)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.how_to_vote, color: Color(0xFF003b8a), size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              canVote
+                  ? 'Participação compartilhada — em destaque abaixo. '
+                      'Vote nela! 🗳️'
+                  : 'Participação compartilhada — veja em destaque abaixo.',
+              style: const TextStyle(
+                  fontSize: 12.5,
+                  color: Color(0xFF003b8a),
+                  fontWeight: FontWeight.w500),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ─── Entry card ───────────────────────────────────────────────────────────────
 
 class _EntryCard extends StatelessWidget {
   final Entry entry;
   final bool canVote;
   final bool isWinner;
+  final bool isHighlighted;
   final bool isAdmin;
   final bool canReport;
   final VoidCallback onVote;
@@ -460,6 +516,7 @@ class _EntryCard extends StatelessWidget {
     required this.isWinner,
     required this.isAdmin,
     required this.canReport,
+    this.isHighlighted = false,
     required this.onVote,
     required this.onReport,
     required this.onShare,
@@ -471,10 +528,15 @@ class _EntryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      shape: isWinner
+      shape: (isHighlighted || isWinner)
           ? RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),
-              side: const BorderSide(color: Colors.amber, width: 2),
+              side: BorderSide(
+                color: isHighlighted
+                    ? const Color(0xFF0cc0df)
+                    : Colors.amber,
+                width: isHighlighted ? 2.5 : 2,
+              ),
             )
           : null,
       child: Padding(
@@ -484,6 +546,20 @@ class _EntryCard extends StatelessWidget {
           children: [
             Row(
               children: [
+                if (isHighlighted) ...[
+                  const Icon(Icons.campaign,
+                      color: Color(0xFF003b8a), size: 18),
+                  const SizedBox(width: 4),
+                  const Text(
+                    'Vote nesta arte',
+                    style: TextStyle(
+                      color: Color(0xFF003b8a),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 if (isWinner) ...[
                   const Icon(Icons.emoji_events, color: Colors.amber, size: 18),
                   const SizedBox(width: 4),
@@ -494,9 +570,8 @@ class _EntryCard extends StatelessWidget {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const Spacer(),
-                ] else
-                  const Spacer(),
+                ],
+                const Spacer(),
                 // Share button
                 IconButton(
                   icon: const Icon(Icons.share_outlined, size: 18),
