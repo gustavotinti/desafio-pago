@@ -45,8 +45,7 @@ class _AdminVirtualUsersPageState extends State<AdminVirtualUsersPage> {
           .get();
 
       final virtual = snap.docs
-          .where((d) =>
-              (d.data() as Map<String, dynamic>)['isVirtual'] == true)
+          .where((d) => d.data()['isVirtual'] == true)
           .toList();
 
       if (mounted) setState(() => _results = virtual);
