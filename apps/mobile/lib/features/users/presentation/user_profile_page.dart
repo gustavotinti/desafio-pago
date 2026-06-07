@@ -73,7 +73,9 @@ class _UserProfilePageState extends State<UserProfilePage> {
     }
   }
 
-  void _openFollowers(FollowType type) {
+  Future<void> _openFollowers(FollowType type) async {
+    if (!await ensureLoggedIn(context)) return;
+    if (!mounted) return;
     Navigator.push(
       context,
       MaterialPageRoute(
