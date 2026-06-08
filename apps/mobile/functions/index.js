@@ -88,31 +88,11 @@ exports.createChallenge = functions.https.onCall(async (data, context) => {
       );
     }
 
-    // Balance check (non-admin only)
-    if (!isAdmin) {
-      const userDoc = await db.collection("users").doc(userId).get();
-      if (!userDoc.exists) {
-        throw new functions.https.HttpsError(
-            "failed-precondition",
-            "Perfil de usuário não encontrado. Faça login novamente.",
-        );
-      }
-      const balance = userDoc.data().balance ?? 0;
-      if (balance < amount) {
-        throw new functions.https.HttpsError(
-            "failed-precondition",
-            `Saldo insuficiente. Saldo: R$${Number(balance).toFixed(2)}, necessário: R$${Number(amount).toFixed(2)}.`,
-        );
-      }
-    }
-
     const expiresAt = new Date(
         now.getTime() + durationDays * 24 * 60 * 60 * 1000,
     ).toISOString();
     const challengeRef = db.collection("challenges").doc();
-    const batch = db.batch();
-
-    batch.set(challengeRef, {
+    const challengeData = {
       title,
       description,
       createdBy: userId,
@@ -124,25 +104,45 @@ exports.createChallenge = functions.https.onCall(async (data, context) => {
       winnerIds: [],
       createdAt: now.toISOString(),
       expiresAt,
-    });
+    };
 
-    if (!isAdmin) {
+    if (isAdmin) {
+      await challengeRef.set(challengeData);
+    } else {
+      // Transação: lê o saldo e debita atomicamente (evita saldo negativo).
       const userRef = db.collection("users").doc(userId);
-      batch.update(userRef, {
-        balance: admin.firestore.FieldValue.increment(-Number(amount)),
-        pendingBalance: admin.firestore.FieldValue.increment(Number(amount)),
-      });
-      batch.set(db.collection("transactions").doc(), {
-        userId,
-        amount: Number(amount),
-        type: "challenge_created",
-        description: `Desafio criado: ${title}`,
-        challengeId: challengeRef.id,
-        createdAt: now.toISOString(),
+      await db.runTransaction(async (tx) => {
+        const userDoc = await tx.get(userRef);
+        if (!userDoc.exists) {
+          throw new functions.https.HttpsError(
+              "failed-precondition",
+              "Perfil de usuário não encontrado. Faça login novamente.",
+          );
+        }
+        const balance = userDoc.data().balance ?? 0;
+        if (balance < amount) {
+          throw new functions.https.HttpsError(
+              "failed-precondition",
+              `Saldo insuficiente. Saldo: R$${Number(balance).toFixed(2)}, ` +
+              `necessário: R$${Number(amount).toFixed(2)}.`,
+          );
+        }
+        tx.set(challengeRef, challengeData);
+        tx.update(userRef, {
+          balance: admin.firestore.FieldValue.increment(-Number(amount)),
+          pendingBalance:
+              admin.firestore.FieldValue.increment(Number(amount)),
+        });
+        tx.set(db.collection("transactions").doc(), {
+          userId,
+          amount: Number(amount),
+          type: "challenge_created",
+          description: `Desafio criado: ${title}`,
+          challengeId: challengeRef.id,
+          createdAt: now.toISOString(),
+        });
       });
     }
-
-    await batch.commit();
 
     if (!isAdmin) {
       try {
@@ -199,30 +199,35 @@ exports.addAmount = functions.https.onCall(async (data, context) => {
     );
   }
 
-  const userDoc = await db.collection("users").doc(userId).get();
-  const balance = userDoc.data()?.balance || 0;
-  if (balance < value) {
-    throw new functions.https.HttpsError("failed-precondition", "Saldo insuficiente");
-  }
+  const userRef = db.collection("users").doc(userId);
+  const now = new Date().toISOString();
 
-  const batch = db.batch();
-  batch.update(db.collection("challenges").doc(challengeId), {
-    amount: admin.firestore.FieldValue.increment(value),
-  });
-  batch.update(db.collection("users").doc(userId), {
-    balance: admin.firestore.FieldValue.increment(-value),
-  });
-  batch.set(db.collection("transactions").doc(), {
-    userId,
-    amount: value,
-    type: "aporte",
-    description: `Aporte: ${challenge.title}`,
-    challengeId,
-    createdAt: new Date().toISOString(),
+  // Transação: lê o saldo e debita atomicamente (evita saldo negativo).
+  await db.runTransaction(async (tx) => {
+    const userDoc = await tx.get(userRef);
+    const balance = userDoc.data()?.balance || 0;
+    if (balance < value) {
+      throw new functions.https.HttpsError(
+          "failed-precondition", "Saldo insuficiente");
+    }
+    tx.update(db.collection("challenges").doc(challengeId), {
+      amount: admin.firestore.FieldValue.increment(value),
+    });
+    tx.update(userRef, {
+      balance: admin.firestore.FieldValue.increment(-value),
+    });
+    tx.set(db.collection("transactions").doc(), {
+      userId,
+      amount: value,
+      type: "aporte",
+      description: `Aporte: ${challenge.title}`,
+      challengeId,
+      createdAt: now,
+    });
   });
 
-  await batch.commit();
-  await _maybeScheduleInstagramPost(db, challengeId, challenge.amount, challenge.amount + value);
+  await _maybeScheduleInstagramPost(
+      db, challengeId, challenge.amount, challenge.amount + value);
   return {success: true};
 });
 
@@ -241,45 +246,50 @@ exports.requestWithdraw = functions.https.onCall(async (data, context) => {
   }
 
   const db = admin.firestore();
-  const userDoc = await db.collection("users").doc(userId).get();
-  const userData = userDoc.data() || {};
-  const balance = userData.balance || 0;
-  const pixKey = userData.pixKey || "";
-
-  if (!pixKey) {
-    throw new functions.https.HttpsError("failed-precondition", "Cadastre uma chave Pix primeiro");
-  }
-  if (balance < amount) {
-    throw new functions.https.HttpsError("failed-precondition", "Saldo insuficiente");
-  }
-
+  const userRef = db.collection("users").doc(userId);
+  const withdrawalRef = db.collection("withdrawals").doc();
   const fee = Math.round(amount * 0.10 * 100) / 100;
   const netAmount = Math.round((amount - fee) * 100) / 100;
-  const withdrawalRef = db.collection("withdrawals").doc();
-  const batch = db.batch();
+  const now = new Date().toISOString();
 
-  batch.set(withdrawalRef, {
-    userId,
-    amount,
-    fee,
-    netAmount,
-    pixKey,
-    status: "pending",
-    createdAt: new Date().toISOString(),
-  });
-  batch.update(db.collection("users").doc(userId), {
-    balance: admin.firestore.FieldValue.increment(-amount),
-    lockedBalance: admin.firestore.FieldValue.increment(amount),
-  });
-  batch.set(db.collection("transactions").doc(), {
-    userId,
-    amount,
-    type: "withdraw",
-    description: `Saque solicitado — taxa R$${fee.toFixed(2)} (10%)`,
-    createdAt: new Date().toISOString(),
+  // Transação: lê o saldo e debita atomicamente (evita saldo negativo).
+  await db.runTransaction(async (tx) => {
+    const userDoc = await tx.get(userRef);
+    const userData = userDoc.data() || {};
+    const balance = userData.balance || 0;
+    const pixKey = userData.pixKey || "";
+
+    if (!pixKey) {
+      throw new functions.https.HttpsError(
+          "failed-precondition", "Cadastre uma chave Pix primeiro");
+    }
+    if (balance < amount) {
+      throw new functions.https.HttpsError(
+          "failed-precondition", "Saldo insuficiente");
+    }
+
+    tx.set(withdrawalRef, {
+      userId,
+      amount,
+      fee,
+      netAmount,
+      pixKey,
+      status: "pending",
+      createdAt: now,
+    });
+    tx.update(userRef, {
+      balance: admin.firestore.FieldValue.increment(-amount),
+      lockedBalance: admin.firestore.FieldValue.increment(amount),
+    });
+    tx.set(db.collection("transactions").doc(), {
+      userId,
+      amount,
+      type: "withdraw",
+      description: `Saque solicitado — taxa R$${fee.toFixed(2)} (10%)`,
+      createdAt: now,
+    });
   });
 
-  await batch.commit();
   return {withdrawalId: withdrawalRef.id};
 });
 
@@ -475,80 +485,86 @@ exports.finalizeChallenges = functions.pubsub
 
 async function finalizeChallenge(db, challengeDoc) {
   const challengeId = challengeDoc.id;
-  const challenge = challengeDoc.data();
-  const prizeAmount = challenge.amount || 0;
-  const creatorContribution = challenge.creatorContribution || 0;
+  const challengeRef = db.collection("challenges").doc(challengeId);
 
+  // Entradas são estáveis após o término — leitura fora da transação.
   const entriesSnapshot = await db
       .collection("entries")
       .where("challengeId", "==", challengeId)
       .where("isActive", "==", true)
       .orderBy("voteCount", "desc")
       .get();
+  const entries = entriesSnapshot.docs.map((d) => ({id: d.id, ...d.data()}));
 
-  const challengeRef = db.collection("challenges").doc(challengeId);
-  const batch = db.batch();
+  let winnersToNotify = [];
+  let prizePerWinner = 0;
+  let challengeTitle = "";
 
-  const markFinished = (winnerIds = []) => batch.update(challengeRef, {
-    status: "finished",
-    winnerIds,
-    finishedAt: admin.firestore.FieldValue.serverTimestamp(),
+  // Transação idempotente: só finaliza se ainda estiver ativo (evita pagar
+  // o prêmio em dobro se o cron sobrepuser ou o admin encerrar junto).
+  await db.runTransaction(async (tx) => {
+    const cDoc = await tx.get(challengeRef);
+    if (!cDoc.exists || cDoc.data().status !== "active") return;
+    const challenge = cDoc.data();
+    challengeTitle = challenge.title || "";
+    const prizeAmount = challenge.amount || 0;
+    const creatorContribution = challenge.creatorContribution || 0;
+
+    if (creatorContribution > 0) {
+      tx.update(db.collection("users").doc(challenge.createdBy), {
+        pendingBalance:
+            admin.firestore.FieldValue.increment(-creatorContribution),
+      });
+    }
+
+    const maxVotes = entries.length > 0 ? entries[0].voteCount : 0;
+    if (entries.length === 0 || maxVotes === 0) {
+      tx.update(challengeRef, {
+        status: "finished",
+        winnerIds: [],
+        finishedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      return;
+    }
+
+    const winners = entries.filter((e) => e.voteCount === maxVotes);
+    const winnerIds = winners.map((e) => e.userId);
+    const prizeCents = Math.round(prizeAmount * 100);
+    const perWinnerCents = Math.floor(prizeCents / winnerIds.length);
+    prizePerWinner = perWinnerCents / 100;
+
+    tx.update(challengeRef, {
+      status: "finished",
+      winnerIds,
+      finishedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    for (const winner of winners) {
+      tx.update(db.collection("users").doc(winner.userId), {
+        balance: admin.firestore.FieldValue.increment(prizePerWinner),
+        totalEarned: admin.firestore.FieldValue.increment(prizePerWinner),
+      });
+      tx.set(db.collection("transactions").doc(), {
+        userId: winner.userId,
+        amount: prizePerWinner,
+        type: "reward",
+        description: `Prêmio: ${challenge.title}`,
+        challengeId,
+        createdAt: new Date().toISOString(),
+      });
+    }
+    winnersToNotify = winners;
   });
 
-  // Always release creator's pendingBalance when challenge ends
-  if (creatorContribution > 0) {
-    batch.update(db.collection("users").doc(challenge.createdBy), {
-      pendingBalance: admin.firestore.FieldValue.increment(-creatorContribution),
-    });
+  if (winnersToNotify.length > 0) {
+    await Promise.all(winnersToNotify.map((w) => _sendNotification(
+        db, w.userId,
+        "🏆 Você ganhou!",
+        `Você venceu "${challengeTitle}" e recebeu ` +
+        `R$${prizePerWinner.toFixed(2)}!`,
+        {type: "win", challengeId},
+    )));
   }
-
-  if (entriesSnapshot.empty) {
-    markFinished();
-    await batch.commit();
-    return;
-  }
-
-  const entries = entriesSnapshot.docs.map((d) => ({id: d.id, ...d.data()}));
-  const maxVotes = entries[0].voteCount;
-
-  if (maxVotes === 0) {
-    markFinished();
-    await batch.commit();
-    return;
-  }
-
-  const winners = entries.filter((e) => e.voteCount === maxVotes);
-  const winnerIds = winners.map((e) => e.userId);
-  const prizeCents = Math.round(prizeAmount * 100);
-  const perWinnerCents = Math.floor(prizeCents / winnerIds.length);
-  const prizePerWinner = perWinnerCents / 100;
-
-  markFinished(winnerIds);
-
-  for (const winner of winners) {
-    const userRef = db.collection("users").doc(winner.userId);
-    batch.update(userRef, {
-      balance: admin.firestore.FieldValue.increment(prizePerWinner),
-      totalEarned: admin.firestore.FieldValue.increment(prizePerWinner),
-    });
-    batch.set(db.collection("transactions").doc(), {
-      userId: winner.userId,
-      amount: prizePerWinner,
-      type: "reward",
-      description: `Prêmio: ${challenge.title}`,
-      challengeId,
-      createdAt: new Date().toISOString(),
-    });
-  }
-
-  await batch.commit();
-
-  await Promise.all(winners.map((w) => _sendNotification(
-      db, w.userId,
-      "🏆 Você ganhou!",
-      `Você venceu "${challenge.title}" e recebeu R$${prizePerWinner.toFixed(2)}!`,
-      {type: "win", challengeId},
-  )));
 }
 
 // ─── CREATE PIX PAYMENT ──────────────────────────────────────────────────────
@@ -639,6 +655,30 @@ exports.mercadoPagoWebhook = functions.https.onRequest(async (req, res) => {
     return;
   }
 
+  // Validação opcional da assinatura do Mercado Pago.
+  // Ativa quando MP_WEBHOOK_SECRET está definido (em functions/.env +
+  // configurado no painel do MP). Sem o segredo, é ignorada — a segurança
+  // já é garantida pela re-consulta do status real no MP abaixo.
+  const webhookSecret = process.env.MP_WEBHOOK_SECRET;
+  if (webhookSecret) {
+    const parts = {};
+    String(req.headers["x-signature"] || "").split(",").forEach((kv) => {
+      const i = kv.indexOf("=");
+      if (i > 0) parts[kv.slice(0, i).trim()] = kv.slice(i + 1).trim();
+    });
+    const reqId = req.headers["x-request-id"] || "";
+    const dataId = String(req.query["data.id"] || paymentId).toLowerCase();
+    const manifest = `id:${dataId};request-id:${reqId};ts:${parts.ts};`;
+    const expected = require("crypto")
+        .createHmac("sha256", webhookSecret)
+        .update(manifest)
+        .digest("hex");
+    if (expected !== parts.v1) {
+      console.warn("mercadoPagoWebhook: assinatura inválida");
+      return res.sendStatus(401);
+    }
+  }
+
   const db = admin.firestore();
   const paymentRef = db.collection("payments").doc(paymentId);
   const paymentDoc = await paymentRef.get();
@@ -667,57 +707,66 @@ exports.mercadoPagoWebhook = functions.https.onRequest(async (req, res) => {
 
   // Fila prioritária de verificação — confirma prioridade, não credita saldo
   if (paymentData.purpose === "verification_priority") {
-    const vbatch = db.batch();
-    vbatch.update(paymentRef, {
-      status: "approved",
-      approvedAt: admin.firestore.FieldValue.serverTimestamp(),
+    let processed = false;
+    await db.runTransaction(async (tx) => {
+      const pd = await tx.get(paymentRef);
+      if (pd.data().status === "approved") return; // idempotente
+      tx.update(paymentRef, {
+        status: "approved",
+        approvedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      tx.set(
+          db.collection("verificationRequests").doc(paymentData.userId), {
+            priority: true,
+            paidAt: new Date().toISOString(),
+            paymentId: String(paymentId),
+            updatedAt: new Date().toISOString(),
+          }, {merge: true});
+      processed = true;
     });
-    vbatch.set(
-        db.collection("verificationRequests").doc(paymentData.userId), {
-          priority: true,
-          paidAt: new Date().toISOString(),
-          paymentId: String(paymentId),
-          updatedAt: new Date().toISOString(),
-        }, {merge: true});
-    await vbatch.commit();
-    await _sendNotification(
-        db, paymentData.userId,
-        "⭐ Fila prioritária confirmada!",
-        "Seu pedido de verificação entrou na fila prioritária.",
-        {type: "verification_priority"},
-    );
+    if (processed) {
+      await _sendNotification(
+          db, paymentData.userId,
+          "⭐ Fila prioritária confirmada!",
+          "Seu pedido de verificação entrou na fila prioritária.",
+          {type: "verification_priority"},
+      );
+    }
     res.sendStatus(200);
     return;
   }
 
-  // Credit user balance atomically
-  const batch = db.batch();
-
-  batch.update(paymentRef, {
-    status: "approved",
-    approvedAt: admin.firestore.FieldValue.serverTimestamp(),
+  // Crédito de saldo — transação idempotente (evita crédito em dobro caso
+  // o Mercado Pago reenvie a mesma notificação).
+  let credited = false;
+  await db.runTransaction(async (tx) => {
+    const pd = await tx.get(paymentRef);
+    if (pd.data().status === "approved") return; // idempotente
+    tx.update(paymentRef, {
+      status: "approved",
+      approvedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    tx.update(db.collection("users").doc(paymentData.userId), {
+      balance: admin.firestore.FieldValue.increment(paymentData.amount),
+    });
+    tx.set(db.collection("transactions").doc(), {
+      userId: paymentData.userId,
+      amount: paymentData.amount,
+      type: "deposit",
+      description: "Recarga via Pix",
+      createdAt: new Date().toISOString(),
+    });
+    credited = true;
   });
 
-  batch.update(db.collection("users").doc(paymentData.userId), {
-    balance: admin.firestore.FieldValue.increment(paymentData.amount),
-  });
-
-  batch.set(db.collection("transactions").doc(), {
-    userId: paymentData.userId,
-    amount: paymentData.amount,
-    type: "deposit",
-    description: "Recarga via Pix",
-    createdAt: new Date().toISOString(),
-  });
-
-  await batch.commit();
-
-  await _sendNotification(
-      db, paymentData.userId,
-      "💰 Recarga confirmada!",
-      `R$${paymentData.amount.toFixed(2)} adicionados aos seus créditos.`,
-      {type: "deposit"},
-  );
+  if (credited) {
+    await _sendNotification(
+        db, paymentData.userId,
+        "💰 Recarga confirmada!",
+        `R$${paymentData.amount.toFixed(2)} adicionados aos seus créditos.`,
+        {type: "deposit"},
+    );
+  }
 
   res.sendStatus(200);
 });
