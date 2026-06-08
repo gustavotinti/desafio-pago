@@ -5,7 +5,7 @@ class DefaultFirebaseOptions {
         apiKey: "AIzaSyCvskRmYksqfQT1LThpZuVG3jxVk6z2Ct0",
         authDomain: "desafio-app-b8665.firebaseapp.com",
         projectId: "desafio-app-b8665",
-        storageBucket: "desafio-app-b8665.appspot.com",
+        storageBucket: "desafio-app-b8665.firebasestorage.app",
         messagingSenderId: "770550529401",
         appId: "1:770550529401:web:92b0537803ecc4850503a8",
       );

@@ -2151,7 +2151,8 @@ exports.adminUpdateVirtualUser =
       // Foto: upload base64 (Admin SDK) tem prioridade; senão usa URL pronta.
       if (typeof data.photoBase64 === "string" && data.photoBase64.length > 0) {
         const {randomUUID} = require("crypto");
-        const bucket = admin.storage().bucket();
+        const bucket =
+            admin.storage().bucket("desafio-app-b8665.firebasestorage.app");
         const path = `virtual/${userId}.jpg`;
         const token = randomUUID();
         const buffer = Buffer.from(data.photoBase64, "base64");
