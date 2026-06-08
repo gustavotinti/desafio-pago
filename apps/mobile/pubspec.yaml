@@ -46,6 +46,9 @@ dependencies:
   # 🌍 INTERNACIONALIZAÇÃO (datas em pt_BR)
   intl: ^0.20.2
 
+  # 🌐 WEB INTEROP (download de arquivos no navegador)
+  web: ^1.1.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
