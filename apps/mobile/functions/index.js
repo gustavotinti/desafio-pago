@@ -3359,6 +3359,48 @@ exports.setTypedChallengeValues = functions.runWith({timeoutSeconds: 540})
       return res.json({success: true, counts});
     });
 
+// ─── RESET DOS PRAZOS DOS DESAFIOS VIRTUAIS ───────────────────────────────────
+// Reativa todos os desafios virtuais e sorteia um novo término entre 20 e 30
+// dias à frente. One-shot, protegido por secret. NÃO toca em desafios reais.
+exports.resetVirtualChallengeDeadlines =
+  functions.runWith({timeoutSeconds: 540})
+      .https.onRequest(async (req, res) => {
+        if (req.method !== "POST") {
+          return res.status(405).json({error: "Method Not Allowed"});
+        }
+        if (!req.body || req.body.secret !== "SEED_2026_DP") {
+          return res.status(403).json({error: "Forbidden"});
+        }
+        const db = admin.firestore();
+        const DAY = 24 * 60 * 60 * 1000;
+
+        const cs = await db.collection("challenges")
+            .where("isVirtual", "==", true).get();
+
+        let batch = db.batch();
+        let ops = 0;
+        let count = 0;
+        for (const doc of cs.docs) {
+          const days = 20 + Math.random() * 10; // 20..30 dias
+          const expiresAt = new Date(Date.now() + days * DAY).toISOString();
+          batch.update(doc.ref, {
+            status: "active",
+            expiresAt,
+            winnerIds: [],
+            finishedAt: admin.firestore.FieldValue.delete(),
+          });
+          ops++;
+          count++;
+          if (ops >= 440) {
+            await batch.commit();
+            batch = db.batch();
+            ops = 0;
+          }
+        }
+        if (ops > 0) await batch.commit();
+        return res.json({success: true, updated: count});
+      });
+
 // ─── PRÉVIA DE LINK (Open Graph) PARA COMPARTILHAMENTO ────────────────────────
 
 let _indexCache = null;

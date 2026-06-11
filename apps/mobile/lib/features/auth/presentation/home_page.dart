@@ -23,14 +23,8 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-  ChallengeSortBy _activeSort   = ChallengeSortBy.amount;
-  ChallengeSortBy _finishedSort = ChallengeSortBy.amount;
-
+class _HomePageState extends State<HomePage> {
   late Future<List<Challenge>> _activeFuture;
-  late Future<List<Challenge>> _finishedFuture;
 
   final String? _currentUserId =
       FirebaseAuth.instance.currentUser?.uid;
@@ -40,9 +34,7 @@ class _HomePageState extends State<HomePage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
     _loadActive();
-    _loadFinished();
     _loadAdminStatus();
     Future.delayed(const Duration(milliseconds: 9600), () {
       if (mounted) setState(() => _logoSettled = true);
@@ -59,31 +51,13 @@ class _HomePageState extends State<HomePage>
     if (mounted) setState(() => _isAdmin = doc.exists);
   }
 
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
-
+  // Feed único: todos os desafios ativos, ordenados por maior prêmio.
   void _loadActive() {
-    _activeFuture = GetChallenges()(
-      status: ChallengeStatus.active,
-      sortBy: _activeSort,
-    );
-  }
-
-  void _loadFinished() {
-    _finishedFuture = GetChallenges()(
-      status: ChallengeStatus.finished,
-      sortBy: _finishedSort,
-    );
+    _activeFuture = GetChallenges()(status: ChallengeStatus.active);
   }
 
   void _reload() {
-    setState(() {
-      _loadActive();
-      _loadFinished();
-    });
+    setState(_loadActive);
   }
 
   @override
@@ -104,13 +78,6 @@ class _HomePageState extends State<HomePage>
             ),
           ),
         ),
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [
-            Tab(text: 'Ativos'),
-            Tab(text: 'Encerrados'),
-          ],
-        ),
         actions: [
           if (_isAdmin)
             IconButton(
@@ -123,28 +90,11 @@ class _HomePageState extends State<HomePage>
             ),
         ],
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _FeedTab(
-            future: _activeFuture,
-            sortBy: _activeSort,
-            onSortChanged: (s) =>
-                setState(() { _activeSort = s; _loadActive(); }),
-            onRefresh: () async { setState(_loadActive); },
-            currentUserId: _currentUserId,
-            onNavigated: _reload,
-          ),
-          _FeedTab(
-            future: _finishedFuture,
-            sortBy: _finishedSort,
-            onSortChanged: (s) =>
-                setState(() { _finishedSort = s; _loadFinished(); }),
-            onRefresh: () async { setState(_loadFinished); },
-            currentUserId: _currentUserId,
-            onNavigated: _reload,
-          ),
-        ],
+      body: _FeedTab(
+        future: _activeFuture,
+        onRefresh: () async { setState(_loadActive); },
+        currentUserId: _currentUserId,
+        onNavigated: _reload,
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
@@ -238,16 +188,12 @@ Future<void> _showAddAmountDialog(
 
 class _FeedTab extends StatelessWidget {
   final Future<List<Challenge>> future;
-  final ChallengeSortBy sortBy;
-  final ValueChanged<ChallengeSortBy> onSortChanged;
   final Future<void> Function() onRefresh;
   final String? currentUserId;
   final VoidCallback onNavigated;
 
   const _FeedTab({
     required this.future,
-    required this.sortBy,
-    required this.onSortChanged,
     required this.onRefresh,
     required this.currentUserId,
     required this.onNavigated,
@@ -257,102 +203,46 @@ class _FeedTab extends StatelessWidget {
   Widget build(BuildContext context) {
     return WebFrame(
       maxWidth: 600,
-      child: Column(
-      children: [
-        _SortBar(sortBy: sortBy, onChanged: onSortChanged),
-        Expanded(
-          child: FutureBuilder<List<Challenge>>(
-            future: future,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
+      child: FutureBuilder<List<Challenge>>(
+        future: future,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-              if (snapshot.hasError) {
-                return Center(
-                    child: Text('Erro: ${snapshot.error}'));
-              }
+          if (snapshot.hasError) {
+            return Center(child: Text('Erro: ${snapshot.error}'));
+          }
 
-              final challenges = snapshot.data ?? [];
+          final challenges = snapshot.data ?? [];
 
-              if (challenges.isEmpty) {
-                return const Center(
-                  child: Text(
-                    'Nenhum desafio aqui ainda.',
-                    style: TextStyle(color: Colors.black54),
-                  ),
-                );
-              }
-
-              return RefreshIndicator(
-                onRefresh: onRefresh,
-                child: ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 80),
-                  itemCount: challenges.length,
-                  itemBuilder: (context, i) => _ChallengeCard(
-                    challenge: challenges[i],
-                    currentUserId: currentUserId,
-                    onNavigated: onNavigated,
-                    onAddAmount: () => _showAddAmountDialog(
-                      context,
-                      challenges[i],
-                      onNavigated,
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
-    ),
-    );
-  }
-}
-
-// ─── Sort bar — chip row ──────────────────────────────────────────────────────
-
-class _SortBar extends StatelessWidget {
-  final ChallengeSortBy sortBy;
-  final ValueChanged<ChallengeSortBy> onChanged;
-
-  const _SortBar({required this.sortBy, required this.onChanged});
-
-  @override
-  Widget build(BuildContext context) {
-    const labels = {
-      ChallengeSortBy.amount:     'Maior prêmio',
-      ChallengeSortBy.voteCount:  'Mais votados',
-      ChallengeSortBy.newest:     'Mais recentes',
-    };
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-      child: Row(
-        children: ChallengeSortBy.values.map((s) {
-          final selected = sortBy == s;
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: ChoiceChip(
-              label: Text(labels[s]!),
-              selected: selected,
-              onSelected: (_) => onChanged(s),
-              selectedColor: const Color(0xFF003b8a),
-              backgroundColor: const Color(0xFFF0F1F8),
-              labelStyle: TextStyle(
-                fontFamily: 'Garet',
-                fontSize: 13,
-                fontWeight:
-                    selected ? FontWeight.w600 : FontWeight.normal,
-                color: selected ? Colors.white : Colors.black54,
+          if (challenges.isEmpty) {
+            return const Center(
+              child: Text(
+                'Nenhum desafio aqui ainda.',
+                style: TextStyle(color: Colors.black54),
               ),
-              side: BorderSide.none,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-              showCheckmark: false,
+            );
+          }
+
+          return RefreshIndicator(
+            onRefresh: onRefresh,
+            child: ListView.builder(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 80),
+              itemCount: challenges.length,
+              itemBuilder: (context, i) => _ChallengeCard(
+                challenge: challenges[i],
+                currentUserId: currentUserId,
+                onNavigated: onNavigated,
+                onAddAmount: () => _showAddAmountDialog(
+                  context,
+                  challenges[i],
+                  onNavigated,
+                ),
+              ),
             ),
           );
-        }).toList(),
+        },
       ),
     );
   }
