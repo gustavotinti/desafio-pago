@@ -2132,10 +2132,8 @@ exports.adminUpdateVirtualUser =
         throw new functions.https.HttpsError(
             "not-found", "Usuário não encontrado");
       }
-      if (userDoc.data().isVirtual !== true) {
-        throw new functions.https.HttpsError(
-            "failed-precondition", "Só é permitido editar perfis virtuais.");
-      }
+      // Admin pode editar qualquer perfil (virtual ou real). Só mexe em
+      // campos públicos (nome/@/bio/selo/foto) — nunca em saldo/PII/banimento.
 
       const updates = {};
       if (typeof data.name === "string" && data.name.trim().length > 0) {
@@ -2201,6 +2199,66 @@ exports.adminUpdateVirtualUser =
         await userRef.update(updates);
       }
       return {success: true, photoUrl: updates.photoUrl || null};
+    });
+
+// ─── ADMIN: EDITAR DESAFIO (título, descrição, prêmio, prazo) ─────────────────
+// Edita qualquer desafio. NÃO movimenta saldo: alterar o prêmio muda apenas o
+// valor exibido/distribuído no encerramento, não debita/credita ninguém.
+exports.adminUpdateChallenge =
+    functions.https.onCall(async (data, context) => {
+      if (!context.auth) {
+        throw new functions.https.HttpsError(
+            "unauthenticated", "Não autenticado");
+      }
+      const db = admin.firestore();
+      const adminDoc =
+          await db.collection("admins").doc(context.auth.uid).get();
+      if (!adminDoc.exists) {
+        throw new functions.https.HttpsError(
+            "permission-denied", "Apenas administradores.");
+      }
+
+      const challengeId = data.challengeId;
+      if (!challengeId) {
+        throw new functions.https.HttpsError(
+            "invalid-argument", "challengeId obrigatório");
+      }
+      const ref = db.collection("challenges").doc(challengeId);
+      const doc = await ref.get();
+      if (!doc.exists) {
+        throw new functions.https.HttpsError(
+            "not-found", "Desafio não encontrado");
+      }
+
+      const updates = {};
+      if (typeof data.title === "string" && data.title.trim().length > 0) {
+        updates.title = data.title.trim();
+      }
+      if (typeof data.description === "string") {
+        updates.description = data.description.trim();
+      }
+      if (data.amount != null) {
+        const amount = Number(data.amount);
+        if (!isFinite(amount) || amount < 0) {
+          throw new functions.https.HttpsError(
+              "invalid-argument", "Prêmio inválido.");
+        }
+        updates.amount = Math.round(amount * 100) / 100;
+      }
+      if (typeof data.expiresAt === "string" && data.expiresAt.length > 0) {
+        const t = Date.parse(data.expiresAt);
+        if (isNaN(t)) {
+          throw new functions.https.HttpsError(
+              "invalid-argument", "Data inválida.");
+        }
+        updates.expiresAt = new Date(t).toISOString();
+      }
+
+      if (Object.keys(updates).length === 0) {
+        return {success: true, updated: 0};
+      }
+      await ref.update(updates);
+      return {success: true, updated: Object.keys(updates).length};
     });
 
 // ─── REGISTRAR INSTALAÇÃO DO APP ──────────────────────────────────────────────

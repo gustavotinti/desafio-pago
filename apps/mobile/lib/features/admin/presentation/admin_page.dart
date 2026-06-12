@@ -34,7 +34,7 @@ class AdminPage extends StatelessWidget {
           _AdminCard(
             icon: Icons.flag,
             title: 'Desafios',
-            subtitle: 'Criar, estender prazo e encerrar desafios',
+            subtitle: 'Criar, editar, estender prazo e encerrar desafios',
             color: Colors.blue,
             onTap: () => Navigator.push(
               context,
@@ -64,9 +64,9 @@ class AdminPage extends StatelessWidget {
             ),
           ),
           _AdminCard(
-            icon: Icons.smart_toy_outlined,
-            title: 'Perfis virtuais',
-            subtitle: 'Editar nome, @username, bio e foto dos perfis virtuais',
+            icon: Icons.manage_accounts_outlined,
+            title: 'Editar perfis',
+            subtitle: 'Nome, @username, bio, foto e selo — virtuais ou reais',
             color: Colors.teal,
             onTap: () => Navigator.push(
               context,

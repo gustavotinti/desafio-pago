@@ -33,22 +33,27 @@ class _AdminVirtualUsersPageState extends State<AdminVirtualUsersPage> {
       _searched = true;
     });
     try {
-      // Busca por prefixo de username (índice automático de campo único).
+      final users = FirebaseFirestore.instance.collection('users');
+      // Busca por prefixo de username (qualquer perfil — virtual ou real).
       // Usernames só têm [a-z0-9._] (todos < '~'), então '~' é o limite alto.
       final upper = '$q~';
-      final snap = await FirebaseFirestore.instance
-          .collection('users')
+      final snap = await users
           .where('username', isGreaterThanOrEqualTo: q)
           .where('username', isLessThan: upper)
           .orderBy('username')
           .limit(30)
           .get();
 
-      final virtual = snap.docs
-          .where((d) => d.data()['isVirtual'] == true)
-          .toList();
+      var results = snap.docs.toList();
 
-      if (mounted) setState(() => _results = virtual);
+      // Sem resultado por username e parece e-mail? tenta por e-mail exato.
+      if (results.isEmpty && raw.contains('@') && raw.contains('.')) {
+        final byEmail =
+            await users.where('email', isEqualTo: raw).limit(5).get();
+        results = byEmail.docs.toList();
+      }
+
+      if (mounted) setState(() => _results = results);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -62,7 +67,7 @@ class _AdminVirtualUsersPageState extends State<AdminVirtualUsersPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Editar perfis virtuais')),
+      appBar: AppBar(title: const Text('Editar perfis')),
       body: WebFrame(
         maxWidth: 900,
         child: Column(
@@ -75,8 +80,8 @@ class _AdminVirtualUsersPageState extends State<AdminVirtualUsersPage> {
                   TextField(
                     controller: _searchCtrl,
                     decoration: const InputDecoration(
-                      labelText: 'Buscar por @username (início)',
-                      hintText: 'ex: caio, neymar, biel...',
+                      labelText: 'Buscar por @username ou e-mail',
+                      hintText: 'ex: caio, neymar, fulano@gmail.com...',
                       border: OutlineInputBorder(),
                       prefixIcon: Icon(Icons.search),
                     ),
@@ -101,10 +106,10 @@ class _AdminVirtualUsersPageState extends State<AdminVirtualUsersPage> {
             Expanded(
               child: !_searched
                   ? const Center(
-                      child: Text('Busque um perfil virtual para editar'))
+                      child: Text('Busque um perfil para editar'))
                   : _results.isEmpty
                       ? const Center(
-                          child: Text('Nenhum perfil virtual encontrado'))
+                          child: Text('Nenhum perfil encontrado'))
                       : ListView.builder(
                           itemCount: _results.length,
                           itemBuilder: (_, i) {
@@ -133,7 +138,11 @@ class _AdminVirtualUsersPageState extends State<AdminVirtualUsersPage> {
                                   ],
                                 ],
                               ),
-                              subtitle: Text('@$username'),
+                              subtitle: Text(
+                                d['isVirtual'] == true
+                                    ? '@$username · virtual'
+                                    : '@$username',
+                              ),
                               trailing: const Icon(Icons.edit_outlined),
                               onTap: () async {
                                 final changed = await Navigator.push<bool>(

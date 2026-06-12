@@ -3,7 +3,24 @@ import 'package:cloud_functions/cloud_functions.dart';
 class AdminRepository {
   final _functions = FirebaseFunctions.instanceFor(region: 'us-central1');
 
-  /// Edita um perfil virtual. Campos nulos não são alterados.
+  /// Edita um desafio (título, descrição, prêmio, prazo) — qualquer desafio.
+  /// Campos nulos são ignorados. NÃO movimenta saldo (só muda o valor exibido).
+  Future<void> updateChallenge({
+    required String challengeId,
+    String? title,
+    String? description,
+    double? amount,
+    String? expiresAtIso,
+  }) async {
+    final payload = <String, dynamic>{'challengeId': challengeId};
+    if (title != null) payload['title'] = title;
+    if (description != null) payload['description'] = description;
+    if (amount != null) payload['amount'] = amount;
+    if (expiresAtIso != null) payload['expiresAt'] = expiresAtIso;
+    await _functions.httpsCallable('adminUpdateChallenge').call(payload);
+  }
+
+  /// Edita um perfil (virtual ou real). Campos nulos não são alterados.
   /// Para foto: passe [photoUrl] (biblioteca/retrato) OU [photoBase64] (upload).
   /// Retorna a nova photoUrl quando houve upload.
   Future<String?> updateVirtualUser({

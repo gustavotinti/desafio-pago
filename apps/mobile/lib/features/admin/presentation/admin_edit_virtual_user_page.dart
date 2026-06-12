@@ -150,7 +150,7 @@ class _AdminEditVirtualUserPageState extends State<AdminEditVirtualUserPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Editar perfil virtual'),
+        title: const Text('Editar perfil'),
         actions: [
           TextButton(
             onPressed: _saving ? null : _save,
