@@ -6,6 +6,12 @@
       "runtimeExecutable": "npx",
       "runtimeArgs": ["serve", "-s", "apps/mobile/build/web", "-l", "8080", "--no-clipboard"],
       "port": 8080
+    },
+    {
+      "name": "isa-lash-web",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "-s", "C:/Users/Jessica/isa_lash/build/web", "-l", "8765", "--no-clipboard"],
+      "port": 8765
     }
   ]
 }
