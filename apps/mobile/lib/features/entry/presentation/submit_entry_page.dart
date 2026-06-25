@@ -1,4 +1,3 @@
-import 'dart:ui' as ui;
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -8,10 +7,9 @@ import '../../../core/widgets/web_frame.dart';
 import '../application/submit_entry.dart';
 import '../domain/entities/content_type.dart';
 import '../infrastructure/entry_repository.dart';
+import 'image_crop_page.dart';
 
-// Aspect ratios aceitos: 9:16, 4:5, 1:1 (vertical/quadrado — sem 16:9)
-const _allowedRatios = [9 / 16, 4 / 5, 1.0];
-const _ratioTolerance = 0.08; // 8% de margem
+// Formatos aceitos: 9:16, 4:5, 1:1 — garantidos pelo editor de recorte.
 const _maxTextLength = 5000;
 const _maxVideoSeconds = 15;
 
@@ -41,50 +39,28 @@ class _SubmitEntryPageState extends State<SubmitEntryPage> {
     super.dispose();
   }
 
-  // ── Valida aspect ratio de uma imagem ────────────────────────────────────
-  Future<bool> _isValidAspectRatio(XFile file) async {
-    try {
-      final bytes = await file.readAsBytes();
-      final codec = await ui.instantiateImageCodec(bytes);
-      final frame = await codec.getNextFrame();
-      final img = frame.image;
-      final w = img.width.toDouble();
-      final h = img.height.toDouble();
-      img.dispose();
-      if (h == 0) return false;
-      final ratio = w / h;
-      return _allowedRatios.any(
-        (a) => (ratio - a).abs() <= a * _ratioTolerance,
-      );
-    } catch (_) {
-      return true; // Se não conseguir ler, deixa passar
-    }
-  }
-
-  // ── Pegar imagem ─────────────────────────────────────────────────────────
+  // ── Pegar imagem + recortar no formato certo ──────────────────────────────
   Future<void> _pickImage() async {
     final picker = ImagePicker();
     final picked = await picker.pickImage(source: ImageSource.gallery);
     if (picked == null) return;
+    final bytes = await picked.readAsBytes();
+    if (!mounted) return;
 
-    final valid = await _isValidAspectRatio(picked);
-    if (!valid) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Proporção inválida. Use 9:16 (1080×1920), 4:5 (1080×1350) '
-              'ou 1:1 (1080×1080).\n'
-              'Recorte a imagem antes de selecioná-la.',
-            ),
-            duration: Duration(seconds: 4),
-          ),
-        );
-      }
-      return;
-    }
+    // Abre o editor de recorte — qualquer imagem vira 9:16, 4:5 ou 1:1.
+    final cropped = await Navigator.push<Uint8List>(
+      context,
+      MaterialPageRoute(builder: (_) => ImageCropPage(imageBytes: bytes)),
+    );
+    if (cropped == null || !mounted) return; // usuário cancelou
 
-    setState(() => _selectedFile = picked);
+    setState(() {
+      _selectedFile = XFile.fromData(
+        cropped,
+        mimeType: 'image/jpeg',
+        name: 'participacao.jpg',
+      );
+    });
   }
 
   // ── Pegar vídeo ──────────────────────────────────────────────────────────
