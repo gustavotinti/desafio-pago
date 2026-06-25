@@ -4,12 +4,20 @@ import 'package:video_player/video_player.dart';
 /// Player de vídeo leve para participações.
 /// - [hoverToPlay] true: toca ao passar o mouse (preview), mudo + loop.
 /// - [hoverToPlay] false: toca ao tocar/clicar (com som), play/pause.
-/// O vídeo preenche o espaço (cover), cortando o excedente.
+/// - [autoInit] true (padrão): já inicializa para mostrar o 1º frame (pôster),
+///   com indicador de carregando e estado de erro — o vídeo "aparece" antes de
+///   qualquer interação. O vídeo preenche o espaço (cover), cortando o excedente.
 class AutoVideo extends StatefulWidget {
   final String url;
   final bool hoverToPlay;
+  final bool autoInit;
 
-  const AutoVideo({super.key, required this.url, this.hoverToPlay = false});
+  const AutoVideo({
+    super.key,
+    required this.url,
+    this.hoverToPlay = false,
+    this.autoInit = true,
+  });
 
   @override
   State<AutoVideo> createState() => _AutoVideoState();
@@ -17,11 +25,20 @@ class AutoVideo extends StatefulWidget {
 
 class _AutoVideoState extends State<AutoVideo> {
   VideoPlayerController? _c;
-  bool _init = false;
+  bool _ready = false;
+  bool _loading = false;
+  bool _error = false;
   bool _hovering = false;
 
+  @override
+  void initState() {
+    super.initState();
+    if (widget.autoInit) _ensure();
+  }
+
   Future<void> _ensure() async {
-    if (_c != null) return;
+    if (_c != null || _error) return;
+    if (mounted) setState(() => _loading = true);
     final c = VideoPlayerController.networkUrl(Uri.parse(widget.url));
     _c = c;
     try {
@@ -29,6 +46,14 @@ class _AutoVideoState extends State<AutoVideo> {
       await c.setLooping(true);
       await c.setVolume(0);
     } catch (_) {
+      c.dispose();
+      _c = null;
+      if (mounted) {
+        setState(() {
+          _error = true;
+          _loading = false;
+        });
+      }
       return;
     }
     if (!mounted) {
@@ -37,7 +62,10 @@ class _AutoVideoState extends State<AutoVideo> {
       return;
     }
     c.addListener(_tick);
-    setState(() => _init = true);
+    setState(() {
+      _ready = true;
+      _loading = false;
+    });
   }
 
   void _tick() {
@@ -81,7 +109,7 @@ class _AutoVideoState extends State<AutoVideo> {
   Widget build(BuildContext context) {
     final c = _c;
     final playing = c?.value.isPlaying ?? false;
-    final ready = _init && c != null && c.value.isInitialized;
+    final ready = _ready && c != null && c.value.isInitialized;
 
     final stack = Stack(
       fit: StackFit.expand,
@@ -97,11 +125,36 @@ class _AutoVideoState extends State<AutoVideo> {
               child: VideoPlayer(c),
             ),
           ),
-        if (!playing)
+
+        // Overlay de estado: erro > carregando > play.
+        if (_error)
+          const Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.videocam_off_outlined,
+                    color: Colors.white38, size: 26),
+                SizedBox(height: 4),
+                Text('Vídeo indisponível',
+                    style: TextStyle(color: Colors.white38, fontSize: 10)),
+              ],
+            ),
+          )
+        else if (!ready && _loading)
+          const Center(
+            child: SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2, color: Colors.white54),
+            ),
+          )
+        else if (ready && !playing)
           const Center(
             child: Icon(Icons.play_circle_fill,
                 color: Colors.white70, size: 30),
           ),
+
         const Positioned(
           right: 4,
           top: 4,

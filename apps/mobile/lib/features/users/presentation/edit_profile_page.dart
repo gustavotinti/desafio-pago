@@ -188,7 +188,12 @@ class _EditProfilePageState extends State<EditProfilePage> {
         photo: _newPhoto,
         libraryPhotoUrl: _selectedLibraryUrl,
       );
-      if (mounted) Navigator.pop(context, true);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Perfil atualizado ✅')),
+        );
+        Navigator.pop(context, true);
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -372,6 +377,25 @@ class _EditProfilePageState extends State<EditProfilePage> {
                       ? 'Não pode alterar com saque pendente'
                       : null,
                   helperStyle: const TextStyle(color: Colors.orange),
+                ),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _isLoading ? null : _save,
+                  icon: _isLoading
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white))
+                      : const Icon(Icons.save_outlined),
+                  label:
+                      Text(_isLoading ? 'Salvando...' : 'Salvar alterações'),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
                 ),
               ),
             ],

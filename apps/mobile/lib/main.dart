@@ -36,6 +36,10 @@ class MyApp extends StatelessWidget {
       title: 'Desafio Pago',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.theme,
+      // Texto selecionável em todo o app (Flutter Web/CanvasKit não seleciona
+      // por padrão). Imagens/vídeos não entram na seleção.
+      builder: (context, child) =>
+          SelectionArea(child: child ?? const SizedBox.shrink()),
       home: const _SplashScreen(),
     );
   }

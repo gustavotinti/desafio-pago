@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
 import '../../../core/utils/format.dart';
+import '../../../core/widgets/safe_image.dart';
 import '../../../core/widgets/web_frame.dart';
 import '../../auth/presentation/auth_guard.dart';
 import '../../challenge/domain/entities/challenge.dart';
@@ -644,16 +645,10 @@ class _EntryCard extends StatelessWidget {
           constraints: const BoxConstraints(maxHeight: 460),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(8),
-            child: Image.network(
-              entry.contentUrl!,
+            child: SafeImage(
+              url: entry.contentUrl!,
               width: double.infinity,
               fit: BoxFit.contain,
-              loadingBuilder: (_, child, progress) => progress == null
-                  ? child
-                  : const SizedBox(
-                      height: 200,
-                      child: Center(child: CircularProgressIndicator()),
-                    ),
             ),
           ),
         );

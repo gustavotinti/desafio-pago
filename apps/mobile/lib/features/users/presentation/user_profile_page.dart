@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../core/utils/format.dart';
 import '../../../core/widgets/web_frame.dart';
+import '../../admin/presentation/admin_edit_virtual_user_page.dart';
 import '../../auth/presentation/auth_guard.dart';
 import '../infrastructure/follow_repository.dart';
 import 'followers_page.dart';
@@ -22,6 +23,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
   bool _actionLoading = false;
   Map<String, dynamic> _userData = {};
   bool _dataLoaded = false;
+  bool _isAdmin = false;
 
   @override
   void initState() {
@@ -30,7 +32,8 @@ class _UserProfilePageState extends State<UserProfilePage> {
   }
 
   Future<void> _load() async {
-    final isGuest = FirebaseAuth.instance.currentUser == null;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final isGuest = uid == null;
     final results = await Future.wait([
       // Lê do espelho público (sem PII) — funciona para visitantes também.
       FirebaseFirestore.instance
@@ -38,11 +41,19 @@ class _UserProfilePageState extends State<UserProfilePage> {
           .doc(widget.userId)
           .get(),
       isGuest ? Future.value(false) : _repo.isFollowing(widget.userId),
+      isGuest
+          ? Future.value(false)
+          : FirebaseFirestore.instance
+              .collection('admins')
+              .doc(uid)
+              .get()
+              .then((d) => d.exists),
     ]);
     if (!mounted) return;
     setState(() {
       _userData = (results[0] as DocumentSnapshot).data() as Map<String, dynamic>? ?? {};
       _isFollowing = results[1] as bool;
+      _isAdmin = results[2] as bool;
       _dataLoaded = true;
     });
   }
@@ -111,6 +122,26 @@ class _UserProfilePageState extends State<UserProfilePage> {
             ],
           ],
         ),
+        actions: [
+          // Lápis de edição direto no perfil (fora do dashboard) — só admin.
+          if (_isAdmin)
+            IconButton(
+              icon: const Icon(Icons.edit_outlined),
+              tooltip: 'Editar perfil (admin)',
+              onPressed: () async {
+                final changed = await Navigator.push<bool>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => AdminEditVirtualUserPage(
+                      userId: widget.userId,
+                      data: _userData,
+                    ),
+                  ),
+                );
+                if (changed == true) _load();
+              },
+            ),
+        ],
       ),
       body: !_dataLoaded
           ? const Center(child: CircularProgressIndicator())

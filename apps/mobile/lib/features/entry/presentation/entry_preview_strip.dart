@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/widgets/safe_image.dart';
 import 'auto_video.dart';
 
 /// Faixa com as 3 participações mais votadas de um desafio, em 4:5.
@@ -100,7 +101,7 @@ class _Tile extends StatelessWidget {
 
     Widget child;
     if (type == 'image' && url != null && url.isNotEmpty) {
-      child = Image.network(url, fit: BoxFit.cover);
+      child = SafeImage(url: url);
     } else if (type == 'video' && url != null && url.isNotEmpty) {
       child = AutoVideo(url: url, hoverToPlay: true);
     } else {
