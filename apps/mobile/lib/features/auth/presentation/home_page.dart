@@ -11,6 +11,7 @@ import '../../challenge/presentation/create_challenge_page.dart';
 import '../../entry/presentation/challenge_entries_page.dart';
 import '../../entry/presentation/entry_preview_strip.dart';
 import '../../entry/presentation/submit_entry_page.dart';
+import '../../admin/presentation/admin_challenges_page.dart';
 import '../../admin/presentation/admin_page.dart';
 import '../../../core/utils/format.dart';
 import '../../../core/widgets/web_frame.dart';
@@ -94,6 +95,7 @@ class _HomePageState extends State<HomePage> {
         future: _activeFuture,
         onRefresh: () async { setState(_loadActive); },
         currentUserId: _currentUserId,
+        isAdmin: _isAdmin,
         onNavigated: _reload,
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -190,12 +192,14 @@ class _FeedTab extends StatelessWidget {
   final Future<List<Challenge>> future;
   final Future<void> Function() onRefresh;
   final String? currentUserId;
+  final bool isAdmin;
   final VoidCallback onNavigated;
 
   const _FeedTab({
     required this.future,
     required this.onRefresh,
     required this.currentUserId,
+    required this.isAdmin,
     required this.onNavigated,
   });
 
@@ -233,6 +237,7 @@ class _FeedTab extends StatelessWidget {
               itemBuilder: (context, i) => _ChallengeCard(
                 challenge: challenges[i],
                 currentUserId: currentUserId,
+                isAdmin: isAdmin,
                 onNavigated: onNavigated,
                 onAddAmount: () => _showAddAmountDialog(
                   context,
@@ -253,12 +258,14 @@ class _FeedTab extends StatelessWidget {
 class _ChallengeCard extends StatelessWidget {
   final Challenge challenge;
   final String? currentUserId;
+  final bool isAdmin;
   final VoidCallback onNavigated;
   final VoidCallback onAddAmount;
 
   const _ChallengeCard({
     required this.challenge,
     required this.currentUserId,
+    required this.isAdmin,
     required this.onNavigated,
     required this.onAddAmount,
   });
@@ -540,6 +547,40 @@ class _ChallengeCard extends StatelessWidget {
                         );
                       },
                     ),
+                    // ── Editar (admin) — lápis direto no feed ─────────
+                    if (isAdmin)
+                      IconButton(
+                        tooltip: 'Editar desafio (admin)',
+                        icon: const Icon(Icons.edit_outlined, size: 20),
+                        style: IconButton.styleFrom(
+                          padding: const EdgeInsets.all(8),
+                          minimumSize: const Size(36, 36),
+                          side: BorderSide(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .outlineVariant),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8)),
+                        ),
+                        onPressed: () async {
+                          await showDialog(
+                            context: context,
+                            builder: (_) => EditChallengeDialog(
+                              id: challenge.id,
+                              data: {
+                                'title': challenge.title,
+                                'description': challenge.description,
+                                'amount': challenge.amount,
+                                'expiresAt':
+                                    challenge.expiresAt.toIso8601String(),
+                                'status':
+                                    _isFinished ? 'finished' : 'active',
+                              },
+                            ),
+                          );
+                          onNavigated();
+                        },
+                      ),
                   ],
                 ),
               ],

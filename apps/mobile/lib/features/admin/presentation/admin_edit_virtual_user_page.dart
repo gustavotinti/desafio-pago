@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../core/avatars.dart';
 import '../../../core/portraits.dart';
+import '../../../core/widgets/image_crop_page.dart';
 import '../../../core/widgets/web_frame.dart';
 import '../infrastructure/admin_repository.dart';
 
@@ -63,16 +64,23 @@ class _AdminEditVirtualUserPageState extends State<AdminEditVirtualUserPage> {
   }
 
   Future<void> _pickUpload() async {
-    final picked = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 512,
-      maxHeight: 512,
-      imageQuality: 85,
-    );
+    final picked =
+        await ImagePicker().pickImage(source: ImageSource.gallery);
     if (picked == null) return;
     final bytes = await picked.readAsBytes();
     if (!mounted) return;
-    setState(() => _photoBytes = bytes);
+    // Recorta em 1:1 (avatar) antes de salvar.
+    final cropped = await Navigator.push<Uint8List>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ImageCropPage(
+          imageBytes: bytes,
+          ratios: ImageCropPage.squareOnly,
+        ),
+      ),
+    );
+    if (cropped == null || !mounted) return;
+    setState(() => _photoBytes = cropped);
   }
 
   Future<void> _pickFromGrid(List<String> urls, String title) async {

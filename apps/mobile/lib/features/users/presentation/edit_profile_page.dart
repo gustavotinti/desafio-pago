@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../core/avatars.dart';
+import '../../../core/widgets/image_crop_page.dart';
 import '../../../core/widgets/web_frame.dart';
 import '../infrastructure/update_profile_repository.dart';
 
@@ -119,18 +120,26 @@ class _EditProfilePageState extends State<EditProfilePage> {
   }
 
   Future<void> _pickPhoto() async {
-    final picked = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 512,
-      maxHeight: 512,
-      imageQuality: 85,
-    );
+    final picked =
+        await ImagePicker().pickImage(source: ImageSource.gallery);
     if (picked == null) return;
     final bytes = await picked.readAsBytes();
     if (!mounted) return;
+    // Recorta em 1:1 (avatar) antes de usar.
+    final cropped = await Navigator.push<Uint8List>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ImageCropPage(
+          imageBytes: bytes,
+          ratios: ImageCropPage.squareOnly,
+        ),
+      ),
+    );
+    if (cropped == null || !mounted) return;
     setState(() {
-      _newPhoto = picked;
-      _newPhotoBytes = bytes;
+      _newPhoto =
+          XFile.fromData(cropped, mimeType: 'image/jpeg', name: 'foto.jpg');
+      _newPhotoBytes = cropped;
       _selectedLibraryUrl = null; // upload vence biblioteca
     });
   }

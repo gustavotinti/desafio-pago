@@ -7,7 +7,7 @@ import '../../../core/widgets/web_frame.dart';
 import '../application/submit_entry.dart';
 import '../domain/entities/content_type.dart';
 import '../infrastructure/entry_repository.dart';
-import 'image_crop_page.dart';
+import '../../../core/widgets/image_crop_page.dart';
 
 // Formatos aceitos: 9:16, 4:5, 1:1 — garantidos pelo editor de recorte.
 const _maxTextLength = 5000;

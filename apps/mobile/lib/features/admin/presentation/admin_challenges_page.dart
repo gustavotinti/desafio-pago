@@ -354,7 +354,7 @@ class _AdminChallengeCard extends StatelessWidget {
                   onPressed: () => showDialog(
                     context: context,
                     builder: (_) =>
-                        _EditChallengeDialog(id: id, data: data),
+                        EditChallengeDialog(id: id, data: data),
                   ),
                   icon: const Icon(Icons.edit_outlined, size: 16),
                   label: const Text('Editar'),
@@ -421,16 +421,16 @@ class _AdminChallengeCard extends StatelessWidget {
 
 // ─── Edit challenge dialog ────────────────────────────────────────────────────
 
-class _EditChallengeDialog extends StatefulWidget {
+class EditChallengeDialog extends StatefulWidget {
   final String id;
   final Map<String, dynamic> data;
-  const _EditChallengeDialog({required this.id, required this.data});
+  const EditChallengeDialog({super.key, required this.id, required this.data});
 
   @override
-  State<_EditChallengeDialog> createState() => _EditChallengeDialogState();
+  State<EditChallengeDialog> createState() => EditChallengeDialogState();
 }
 
-class _EditChallengeDialogState extends State<_EditChallengeDialog> {
+class EditChallengeDialogState extends State<EditChallengeDialog> {
   late final TextEditingController _titleCtrl;
   late final TextEditingController _descCtrl;
   late final TextEditingController _amountCtrl;
