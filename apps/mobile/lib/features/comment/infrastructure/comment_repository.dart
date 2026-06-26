@@ -80,4 +80,31 @@ class CommentRepository {
       throw Exception(e.message ?? 'Erro ao gerar comentário');
     }
   }
+
+  /// Admin: edita texto e/ou curtidas de um comentário (campos nulos ignorados).
+  Future<void> adminUpdateComment({
+    required String commentId,
+    String? text,
+    int? likeCount,
+  }) async {
+    final payload = <String, dynamic>{'commentId': commentId};
+    if (text != null) payload['text'] = text;
+    if (likeCount != null) payload['likeCount'] = likeCount;
+    try {
+      await _functions.httpsCallable('adminUpdateComment').call(payload);
+    } on FirebaseFunctionsException catch (e) {
+      throw Exception(e.message ?? 'Erro ao editar comentário');
+    }
+  }
+
+  /// Admin: exclui um comentário (e suas respostas, se for raiz).
+  Future<void> adminDeleteComment(String commentId) async {
+    try {
+      await _functions
+          .httpsCallable('adminDeleteComment')
+          .call({'commentId': commentId});
+    } on FirebaseFunctionsException catch (e) {
+      throw Exception(e.message ?? 'Erro ao excluir comentário');
+    }
+  }
 }

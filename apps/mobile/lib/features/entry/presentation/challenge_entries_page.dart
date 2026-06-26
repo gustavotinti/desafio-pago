@@ -210,6 +210,42 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
     }
   }
 
+  Future<void> _deleteEntry(Entry entry) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Excluir participação?'),
+        content: const Text(
+            'A participação, seus votos e comentários serão removidos. '
+            'Não pode ser desfeito.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Excluir'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await _functions
+          .httpsCallable('adminDeleteEntry')
+          .call({'entryId': entry.id});
+      _reload();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Participação excluída')));
+    } on FirebaseFunctionsException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message ?? 'Erro')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isFinished = widget.challenge.status == ChallengeStatus.finished;
@@ -291,6 +327,7 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
                       onShare: () => _shareEntry(entry),
                       onComments: () => _showEntryComments(entry),
                       onEditVotes: _isAdmin ? () => _editVotes(entry) : null,
+                      onDelete: _isAdmin ? () => _deleteEntry(entry) : null,
                     );
                   },
                 );
@@ -510,6 +547,7 @@ class _EntryCard extends StatelessWidget {
   final VoidCallback onShare;
   final VoidCallback onComments;
   final VoidCallback? onEditVotes;
+  final VoidCallback? onDelete;
 
   const _EntryCard({
     required this.entry,
@@ -523,6 +561,7 @@ class _EntryCard extends StatelessWidget {
     required this.onShare,
     required this.onComments,
     this.onEditVotes,
+    this.onDelete,
   });
 
   @override
@@ -588,6 +627,28 @@ class _EntryCard extends StatelessWidget {
                     visualDensity: VisualDensity.compact,
                     color: Colors.grey,
                     onPressed: onReport,
+                  ),
+                // ── Menu admin: editar votos / excluir ────────────────
+                if (onDelete != null)
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert,
+                        size: 18, color: Colors.grey),
+                    tooltip: 'Admin',
+                    padding: EdgeInsets.zero,
+                    onSelected: (v) {
+                      if (v == 'votes') onEditVotes?.call();
+                      if (v == 'delete') onDelete!.call();
+                    },
+                    itemBuilder: (_) => [
+                      if (onEditVotes != null)
+                        const PopupMenuItem(
+                            value: 'votes', child: Text('Editar votos')),
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: Text('Excluir participação',
+                            style: TextStyle(color: Colors.red)),
+                      ),
+                    ],
                   ),
               ],
             ),

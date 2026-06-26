@@ -153,6 +153,94 @@ class _CommentSectionState extends State<CommentSection> {
     }
   }
 
+  // ── Admin: editar comentário (texto + curtidas) ─────────────────────────────
+  Future<void> _adminEditComment(Comment c) async {
+    final textCtrl = TextEditingController(text: c.text);
+    final likesCtrl = TextEditingController(text: '${c.likeCount}');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Editar comentário'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: textCtrl,
+              maxLines: 3,
+              maxLength: 500,
+              decoration: const InputDecoration(
+                  labelText: 'Texto', border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: likesCtrl,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                  labelText: 'Curtidas', border: OutlineInputBorder()),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Salvar')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await _repo.adminUpdateComment(
+        commentId: c.id,
+        text: textCtrl.text.trim().isEmpty ? null : textCtrl.text.trim(),
+        likeCount: int.tryParse(likesCtrl.text.trim()),
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Comentário atualizado ✅')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    }
+  }
+
+  // ── Admin: excluir comentário ───────────────────────────────────────────────
+  Future<void> _adminDeleteComment(Comment c) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Excluir comentário?'),
+        content: const Text(
+            'O comentário (e respostas, se houver) será removido. '
+            'Não pode ser desfeito.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Excluir'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await _repo.adminDeleteComment(c.id);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -214,6 +302,9 @@ class _CommentSectionState extends State<CommentSection> {
                 isLiked: _liked.contains(top.id),
                 onLike: () => _toggleLike(top),
                 onReply: () => _startReply(top),
+                isAdmin: widget.isAdmin,
+                onAdminEdit: () => _adminEditComment(top),
+                onAdminDelete: () => _adminDeleteComment(top),
               ));
               for (final reply in (repliesByParent[top.id] ?? [])) {
                 widgets.add(Padding(
@@ -222,6 +313,9 @@ class _CommentSectionState extends State<CommentSection> {
                     comment: reply,
                     isLiked: _liked.contains(reply.id),
                     onLike: () => _toggleLike(reply),
+                    isAdmin: widget.isAdmin,
+                    onAdminEdit: () => _adminEditComment(reply),
+                    onAdminDelete: () => _adminDeleteComment(reply),
                   ),
                 ));
               }
@@ -311,12 +405,18 @@ class _CommentTile extends StatelessWidget {
   final bool isLiked;
   final VoidCallback onLike;
   final VoidCallback? onReply;
+  final bool isAdmin;
+  final VoidCallback? onAdminEdit;
+  final VoidCallback? onAdminDelete;
 
   const _CommentTile({
     required this.comment,
     required this.isLiked,
     required this.onLike,
     this.onReply,
+    this.isAdmin = false,
+    this.onAdminEdit,
+    this.onAdminDelete,
   });
 
   String _formatDate(DateTime dt) {
@@ -420,6 +520,29 @@ class _CommentTile extends StatelessWidget {
               ],
             ),
           ),
+          if (isAdmin)
+            SizedBox(
+              width: 26,
+              child: PopupMenuButton<String>(
+                padding: EdgeInsets.zero,
+                iconSize: 16,
+                tooltip: 'Admin',
+                icon: const Icon(Icons.more_vert,
+                    size: 16, color: Colors.black38),
+                onSelected: (v) {
+                  if (v == 'edit') onAdminEdit?.call();
+                  if (v == 'delete') onAdminDelete?.call();
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'edit', child: Text('Editar')),
+                  PopupMenuItem(
+                    value: 'delete',
+                    child:
+                        Text('Excluir', style: TextStyle(color: Colors.red)),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );

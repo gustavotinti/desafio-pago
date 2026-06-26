@@ -1301,6 +1301,166 @@ exports.adminGenerateComment = functions.https.onCall(async (data, context) => {
   return {success: true};
 });
 
+// ─── ADMIN: EXCLUIR PARTICIPAÇÃO ─────────────────────────────────────────────
+// Remove a participação + seus votos e comentários, e reverte os contadores.
+exports.adminDeleteEntry = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Usuário não logado");
+  }
+  const db = admin.firestore();
+  const adminDoc = await db.collection("admins").doc(context.auth.uid).get();
+  if (!adminDoc.exists) {
+    throw new functions.https.HttpsError("permission-denied", "Acesso negado");
+  }
+
+  const {entryId} = data;
+  if (!entryId) {
+    throw new functions.https.HttpsError("invalid-argument", "entryId obrigatório");
+  }
+
+  const entryRef = db.collection("entries").doc(entryId);
+  const entryDoc = await entryRef.get();
+  if (!entryDoc.exists) {
+    throw new functions.https.HttpsError("not-found", "Participação não encontrada");
+  }
+  const entry = entryDoc.data();
+  const challengeId = entry.challengeId;
+  const ownerId = entry.userId;
+  const entryVotes = entry.voteCount || 0;
+
+  const votesSnap = await db.collection("votes")
+      .where("entryId", "==", entryId).get();
+  let nonAdminVotes = 0;
+  votesSnap.forEach((d) => {
+    if (d.data().isAdminVote !== true) nonAdminVotes++;
+  });
+  const commentsSnap = await db.collection("comments")
+      .where("entryId", "==", entryId).get();
+
+  let batch = db.batch();
+  let ops = 0;
+  const maybeFlush = async () => {
+    if (ops >= 450) {
+      await batch.commit();
+      batch = db.batch();
+      ops = 0;
+    }
+  };
+  for (const d of votesSnap.docs) {
+    batch.delete(d.ref);
+    ops++;
+    await maybeFlush();
+  }
+  for (const d of commentsSnap.docs) {
+    batch.delete(d.ref);
+    ops++;
+    await maybeFlush();
+  }
+  batch.delete(entryRef);
+  ops++;
+  if (challengeId) {
+    batch.update(db.collection("challenges").doc(challengeId), {
+      entryCount: admin.firestore.FieldValue.increment(-1),
+      voteCount: admin.firestore.FieldValue.increment(-entryVotes),
+    });
+  }
+  if (ownerId && nonAdminVotes > 0) {
+    batch.update(db.collection("users").doc(ownerId), {
+      totalVotesReceived: admin.firestore.FieldValue.increment(-nonAdminVotes),
+    });
+  }
+  await batch.commit();
+
+  await db.collection("audit_logs").add({
+    type: "admin_entry_delete",
+    entryId,
+    challengeId,
+    adminId: context.auth.uid,
+    deletedVotes: votesSnap.size,
+    deletedComments: commentsSnap.size,
+    createdAt: new Date().toISOString(),
+  });
+
+  return {success: true};
+});
+
+// ─── ADMIN: EDITAR COMENTÁRIO (texto e/ou curtidas) ──────────────────────────
+exports.adminUpdateComment = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Usuário não logado");
+  }
+  const db = admin.firestore();
+  const adminDoc = await db.collection("admins").doc(context.auth.uid).get();
+  if (!adminDoc.exists) {
+    throw new functions.https.HttpsError("permission-denied", "Acesso negado");
+  }
+  const {commentId} = data;
+  if (!commentId) {
+    throw new functions.https.HttpsError("invalid-argument", "commentId obrigatório");
+  }
+  const ref = db.collection("comments").doc(commentId);
+  const doc = await ref.get();
+  if (!doc.exists) {
+    throw new functions.https.HttpsError("not-found", "Comentário não encontrado");
+  }
+  const updates = {};
+  if (typeof data.text === "string" && data.text.trim().length > 0) {
+    if (data.text.trim().length > 500) {
+      throw new functions.https.HttpsError(
+          "invalid-argument", "Comentário muito longo (máx 500)");
+    }
+    updates.text = data.text.trim();
+  }
+  if (data.likeCount !== undefined && data.likeCount !== null) {
+    const lc = Number(data.likeCount);
+    if (!Number.isFinite(lc) || lc < 0) {
+      throw new functions.https.HttpsError(
+          "invalid-argument", "Curtidas inválidas");
+    }
+    updates.likeCount = Math.round(lc);
+  }
+  if (Object.keys(updates).length === 0) return {success: true, updated: 0};
+  await ref.update(updates);
+  return {success: true, updated: Object.keys(updates).length};
+});
+
+// ─── ADMIN: EXCLUIR COMENTÁRIO (+ respostas) ─────────────────────────────────
+exports.adminDeleteComment = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Usuário não logado");
+  }
+  const db = admin.firestore();
+  const adminDoc = await db.collection("admins").doc(context.auth.uid).get();
+  if (!adminDoc.exists) {
+    throw new functions.https.HttpsError("permission-denied", "Acesso negado");
+  }
+  const {commentId} = data;
+  if (!commentId) {
+    throw new functions.https.HttpsError("invalid-argument", "commentId obrigatório");
+  }
+  const ref = db.collection("comments").doc(commentId);
+  const doc = await ref.get();
+  if (!doc.exists) return {success: true};
+
+  const batch = db.batch();
+  batch.delete(ref);
+  // Comentário-raiz: remove também as respostas.
+  if (!doc.data().parentId) {
+    const replies = await db.collection("comments")
+        .where("parentId", "==", commentId).get();
+    replies.forEach((r) => batch.delete(r.ref));
+  }
+  await batch.commit();
+
+  await db.collection("audit_logs").add({
+    type: "admin_comment_delete",
+    commentId,
+    adminId: context.auth.uid,
+    createdAt: new Date().toISOString(),
+  });
+  return {success: true};
+});
+
 // ─── ADMIN: SUBMIT DEMO ENTRY ────────────────────────────────────────────────
 // Creates a fake participant entry on behalf of a demo user.
 // Bypasses creator restriction, duplicate check, and ban check.

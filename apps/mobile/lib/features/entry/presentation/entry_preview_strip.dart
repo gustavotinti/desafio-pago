@@ -59,7 +59,7 @@ class _EntryPreviewStripState extends State<EntryPreviewStrip> {
             child: Padding(
               padding: EdgeInsets.only(right: i < 2 ? 6 : 0),
               child: i < items.length
-                  ? _Tile(data: items[i])
+                  ? _Tile(data: items[i], rank: i)
                   : const SizedBox.shrink(),
             ),
           ));
@@ -91,7 +91,8 @@ class _EntryPreviewStripState extends State<EntryPreviewStrip> {
 
 class _Tile extends StatelessWidget {
   final Map<String, dynamic> data;
-  const _Tile({required this.data});
+  final int rank; // 0 = 1º (ouro), 1 = 2º (prata), 2 = 3º (bronze)
+  const _Tile({required this.data, required this.rank});
 
   @override
   Widget build(BuildContext context) {
@@ -121,7 +122,57 @@ class _Tile extends StatelessWidget {
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(10),
-      child: AspectRatio(aspectRatio: 4 / 5, child: child),
+      child: AspectRatio(
+        aspectRatio: 4 / 5,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            child,
+            Positioned(top: 6, left: 6, child: _RankBadge(rank: rank)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Medalha de posição (ouro / prata / bronze) ──────────────────────────────
+
+class _RankBadge extends StatelessWidget {
+  final int rank;
+  const _RankBadge({required this.rank});
+
+  @override
+  Widget build(BuildContext context) {
+    const medals = [Color(0xFFF5B301), Color(0xFF9AA7B4), Color(0xFFC07A33)];
+    const labels = ['Vencendo', '2º', '3º'];
+    if (rank < 0 || rank > 2) return const SizedBox.shrink();
+    final color = medals[rank];
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.18),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.emoji_events, size: 12, color: color),
+          const SizedBox(width: 3),
+          Text(
+            labels[rank],
+            style: TextStyle(
+                fontSize: 10, fontWeight: FontWeight.bold, color: color),
+          ),
+        ],
+      ),
     );
   }
 }
