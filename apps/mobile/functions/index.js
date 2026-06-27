@@ -3730,6 +3730,46 @@ exports.backfillTopEntries = functions.runWith({timeoutSeconds: 540})
       return res.json({success: true, updated});
     });
 
+// ─── LIMPAR ÓRFÃOS (entries/comments sem desafio) ────────────────────────────
+exports.cleanOrphans = functions.runWith({timeoutSeconds: 540})
+    .https.onRequest(async (req, res) => {
+      if (req.method !== "POST") {
+        return res.status(405).json({error: "Method Not Allowed"});
+      }
+      if (!req.body || req.body.secret !== "SEED_2026_DP") {
+        return res.status(403).json({error: "Forbidden"});
+      }
+      const db = admin.firestore();
+      const cs = await db.collection("challenges").get();
+      const valid = new Set(cs.docs.map((d) => d.id));
+
+      const sweep = async (col) => {
+        const snap = await db.collection(col).get();
+        let batch = db.batch();
+        let ops = 0;
+        let n = 0;
+        for (const d of snap.docs) {
+          const cid = d.data().challengeId;
+          if (cid && !valid.has(cid)) {
+            batch.delete(d.ref);
+            ops++;
+            n++;
+            if (ops >= 450) {
+              await batch.commit();
+              batch = db.batch();
+              ops = 0;
+            }
+          }
+        }
+        if (ops > 0) await batch.commit();
+        return n;
+      };
+
+      const entriesDeleted = await sweep("entries");
+      const commentsDeleted = await sweep("comments");
+      return res.json({success: true, entriesDeleted, commentsDeleted});
+    });
+
 // ─── DIAGNÓSTICO: CONTAGENS (read-only) ──────────────────────────────────────
 exports.diagCounts = functions.https.onRequest(async (req, res) => {
   if (req.method !== "POST") {
