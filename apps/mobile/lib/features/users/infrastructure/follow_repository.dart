@@ -1,52 +1,25 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class FollowRepository {
+  final _functions = FirebaseFunctions.instanceFor(region: 'us-central1');
   final _firestore = FirebaseFirestore.instance;
 
-  Future<void> follow(String targetUserId) async {
-    final currentUid = FirebaseAuth.instance.currentUser?.uid;
-    if (currentUid == null) throw Exception('Usuário não logado');
-    if (currentUid == targetUserId) throw Exception('Você não pode seguir a si mesmo');
+  Future<void> follow(String targetUserId) => _toggle(targetUserId, true);
+  Future<void> unfollow(String targetUserId) => _toggle(targetUserId, false);
 
-    final followId = '${currentUid}_$targetUserId';
-    final followRef = _firestore.collection('follows').doc(followId);
-    final existing = await followRef.get();
-    if (existing.exists) return;
-
-    await _firestore.runTransaction((tx) async {
-      tx.set(followRef, {
-        'followerId': currentUid,
-        'followedId': targetUserId,
-        'createdAt': DateTime.now().toIso8601String(),
+  // Seguir/deixar de seguir passa por Cloud Function (Admin SDK) — os
+  // contadores de seguidores ficam protegidos contra manipulação no cliente.
+  Future<void> _toggle(String targetUserId, bool follow) async {
+    try {
+      await _functions.httpsCallable('toggleFollow').call({
+        'targetUserId': targetUserId,
+        'follow': follow,
       });
-      tx.update(_firestore.collection('users').doc(targetUserId), {
-        'followersCount': FieldValue.increment(1),
-      });
-      tx.update(_firestore.collection('users').doc(currentUid), {
-        'followingCount': FieldValue.increment(1),
-      });
-    });
-  }
-
-  Future<void> unfollow(String targetUserId) async {
-    final currentUid = FirebaseAuth.instance.currentUser?.uid;
-    if (currentUid == null) throw Exception('Usuário não logado');
-
-    final followId = '${currentUid}_$targetUserId';
-    final followRef = _firestore.collection('follows').doc(followId);
-    final existing = await followRef.get();
-    if (!existing.exists) return;
-
-    await _firestore.runTransaction((tx) async {
-      tx.delete(followRef);
-      tx.update(_firestore.collection('users').doc(targetUserId), {
-        'followersCount': FieldValue.increment(-1),
-      });
-      tx.update(_firestore.collection('users').doc(currentUid), {
-        'followingCount': FieldValue.increment(-1),
-      });
-    });
+    } on FirebaseFunctionsException catch (e) {
+      throw Exception(e.message ?? 'Erro ao seguir');
+    }
   }
 
   Future<bool> isFollowing(String targetUserId) async {

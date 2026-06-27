@@ -8,13 +8,22 @@ service cloud.firestore {
       return signedIn() &&
         exists(/databases/$(database)/documents/admins/$(uid()));
     }
+    // Admin pleno = está em /admins e NÃO é moderador
+    // (super admin não tem campo 'role' → conta como pleno).
+    function isFullAdmin() {
+      return isAdmin() &&
+        get(/databases/$(database)/documents/admins/$(uid()))
+            .data.get('role', 'super') != 'moderator';
+    }
     function changed() {
       return request.resource.data.diff(resource.data).affectedKeys();
     }
 
     // ── USERS ────────────────────────────────────────────────────────────────
     match /users/{userId} {
-      allow read: if signedIn();
+      // PII (e-mail, telefone, saldo, Pix): só o dono e admins leem.
+      // O público lê o espelho /publicProfiles (sem PII).
+      allow read: if signedIn() && (uid() == userId || isAdmin());
 
       // First login: client may create own doc only with zero balances
       allow create: if signedIn() && uid() == userId
@@ -23,16 +32,10 @@ service cloud.firestore {
         && request.resource.data.lockedBalance == 0
         && request.resource.data.totalEarned == 0;
 
-      // Owner: profile fields only
+      // Owner: profile fields only. Os contadores de follow agora são movidos
+      // exclusivamente pela função toggleFollow (Admin SDK) — sem escrita direta.
       allow update: if signedIn() && uid() == userId
           && changed().hasOnly(['name', 'bio', 'photoUrl', 'pixKey', 'fcmToken', 'termsAccepted'])
-
-        // Owner: followingCount (follow/unfollow)
-        || (signedIn() && uid() == userId
-            && changed().hasOnly(['followingCount']))
-
-        // Any auth user: target's followersCount (follow/unfollow)
-        || (signedIn() && changed().hasOnly(['followersCount']))
 
         // Admin (approve/reject withdrawals updates lockedBalance/balance)
         || isAdmin();
@@ -105,13 +108,9 @@ service cloud.firestore {
 
     // ── FOLLOWS ──────────────────────────────────────────────────────────────
     match /follows/{followId} {
+      // Leitura p/ checar "estou seguindo?"; escrita só via toggleFollow (Admin SDK).
       allow read: if signedIn();
-
-      allow create: if signedIn()
-        && request.resource.data.followerId == uid()
-        && followId == uid() + '_' + request.resource.data.followedId;
-
-      allow delete: if signedIn() && resource.data.followerId == uid();
+      allow write: if false;
     }
 
     // ── PAYMENTS ─────────────────────────────────────────────────────────────
@@ -132,7 +131,8 @@ service cloud.firestore {
     // ── ADMINS ───────────────────────────────────────────────────────────────
     match /admins/{userId} {
       allow read: if signedIn();
-      allow write: if isAdmin();
+      // Só admin pleno gerencia o roster (moderador não escala privilégio).
+      allow write: if isFullAdmin();
     }
 
     // ── COMMENTS ─────────────────────────────────────────────────────────────

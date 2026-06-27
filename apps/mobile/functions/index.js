@@ -1210,6 +1210,54 @@ exports.toggleCommentLike = functions.https.onCall(async (data, context) => {
   return {liked};
 });
 
+// ─── SEGUIR / DEIXAR DE SEGUIR ───────────────────────────────────────────────
+// Contadores de seguidores ficam protegidos: só esta função (Admin SDK) os move.
+exports.toggleFollow = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Usuário não logado");
+  }
+  const uid = context.auth.uid;
+  const db = admin.firestore();
+  await _assertNotBanned(db, uid);
+
+  const targetId = data.targetUserId;
+  const follow = data.follow === true;
+  if (!targetId) {
+    throw new functions.https.HttpsError(
+        "invalid-argument", "targetUserId obrigatório");
+  }
+  if (targetId === uid) {
+    throw new functions.https.HttpsError(
+        "failed-precondition", "Você não pode seguir a si mesmo");
+  }
+
+  const followRef = db.collection("follows").doc(`${uid}_${targetId}`);
+  const targetRef = db.collection("users").doc(targetId);
+  const meRef = db.collection("users").doc(uid);
+  const inc = admin.firestore.FieldValue.increment;
+
+  await db.runTransaction(async (tx) => {
+    const existing = await tx.get(followRef);
+    if (follow) {
+      if (existing.exists) return;
+      tx.set(followRef, {
+        followerId: uid,
+        followedId: targetId,
+        createdAt: new Date().toISOString(),
+      });
+      tx.update(targetRef, {followersCount: inc(1)});
+      tx.update(meRef, {followingCount: inc(1)});
+    } else {
+      if (!existing.exists) return;
+      tx.delete(followRef);
+      tx.update(targetRef, {followersCount: inc(-1)});
+      tx.update(meRef, {followingCount: inc(-1)});
+    }
+  });
+
+  return {following: follow};
+});
+
 // ─── ADMIN: MODIFY VOTE COUNT ────────────────────────────────────────────────
 
 exports.adminModifyVoteCount = functions.https.onCall(async (data, context) => {
@@ -1239,6 +1287,7 @@ exports.adminModifyVoteCount = functions.https.onCall(async (data, context) => {
   const oldVoteCount = entryDoc.data().voteCount || 0;
   const diff = voteCount - oldVoteCount;
   const challengeId = entryDoc.data().challengeId;
+  const ownerId = entryDoc.data().userId;
 
   const batch = db.batch();
   batch.update(entryRef, {voteCount});
@@ -1246,6 +1295,12 @@ exports.adminModifyVoteCount = functions.https.onCall(async (data, context) => {
     batch.update(db.collection("challenges").doc(challengeId), {
       voteCount: admin.firestore.FieldValue.increment(diff),
     });
+    // Mantém o ranking de votos consistente com o total exibido.
+    if (ownerId) {
+      batch.update(db.collection("users").doc(ownerId), {
+        totalVotesReceived: admin.firestore.FieldValue.increment(diff),
+      });
+    }
   }
   await batch.commit();
 
@@ -1797,7 +1852,7 @@ exports.seedVirtualUsers = functions.runWith({timeoutSeconds: 540}).https.onRequ
       name: `${fn} ${ln}`,
       username,
       email: `${username}.demo@gmail.com`,
-      photoUrl: `https://randomuser.me/api/portraits/${i % 2 === 0 ? "men" : "women"}/${Math.floor(i / 2) % 100}.jpg`,
+      photoUrl: `https://desafiopago.web.app/portraits/${i % 2 === 0 ? "men" : "women"}/${Math.floor(i / 2) % 100}.jpg`,
       createdAt: now,
       balance: 0.0,
       pendingBalance: 0.0,
@@ -3699,43 +3754,5 @@ exports.entryPreview = functions.https.onRequest(async (req, res) => {
   }
 });
 
-// ─── UPDATE VIRTUAL AVATARS ───────────────────────────────────────────────────
-// One-shot migration: replaces pravatar.cc URLs with randomuser.me portraits.
-
-exports.updateVirtualAvatars = functions.runWith({timeoutSeconds: 540}).https.onRequest(async (req, res) => {
-  if (req.method !== "POST") return res.status(405).json({error: "Method Not Allowed"});
-  if (!req.body || req.body.secret !== "SEED_2026_DP") {
-    return res.status(403).json({error: "Forbidden"});
-  }
-
-  const db = admin.firestore();
-  const snap = await db.collection("users").where("isVirtual", "==", true).get();
-  const docs = snap.docs;
-
-  const CHUNK = 490;
-  let updated = 0;
-  let idx = 0;
-
-  for (let i = 0; i < docs.length; i += CHUNK) {
-    const batch = db.batch();
-    const chunk = docs.slice(i, i + CHUNK);
-    for (const doc of chunk) {
-      const d = doc.data();
-      const username = d.username || "";
-      // Keep special accounts' avatars as-is
-      if (username === "neymarjr" || username === "whinderssonnunes") {
-        idx++;
-        continue;
-      }
-      const gender = idx % 2 === 0 ? "men" : "women";
-      const num = Math.floor(idx / 2) % 100;
-      batch.update(doc.ref, {photoUrl: `https://randomuser.me/api/portraits/${gender}/${num}.jpg`});
-      idx++;
-      updated++;
-    }
-    await batch.commit();
-    console.log(`updateVirtualAvatars: ${updated} updated so far`);
-  }
-
-  return res.json({success: true, updated});
-});
+// (Removido: updateVirtualAvatars — migração obsoleta que setava URLs sem CORS.
+//  Os retratos virtuais são auto-hospedados em /portraits/{men|women}/N.jpg.)

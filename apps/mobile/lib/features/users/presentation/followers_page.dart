@@ -57,8 +57,9 @@ class FollowersPage extends StatelessWidget {
               final uid = data[returnField] as String;
 
               return FutureBuilder<DocumentSnapshot>(
+                // Lê do espelho público (sem PII) — funciona p/ qualquer usuário.
                 future: FirebaseFirestore.instance
-                    .collection('users')
+                    .collection('publicProfiles')
                     .doc(uid)
                     .get(),
                 builder: (context, userSnap) {
