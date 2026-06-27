@@ -3674,6 +3674,62 @@ exports.resetVirtualChallengeDeadlines =
         return res.json({success: true, updated: count});
       });
 
+// ─── DESNORMALIZA TOP-3 DO DESAFIO (evita N+1 no feed) ───────────────────────
+// A cada mudança numa participação (criar/votar/excluir) recalcula as 3 mais
+// votadas e grava em challenges/{id}.topEntries. O feed lê isso direto.
+async function _recomputeTopEntries(db, challengeId) {
+  if (!challengeId) return;
+  const snap = await db.collection("entries")
+      .where("challengeId", "==", challengeId)
+      .where("isActive", "==", true)
+      .orderBy("voteCount", "desc")
+      .limit(3)
+      .get();
+  const top = snap.docs.map((d) => {
+    const x = d.data();
+    return {
+      entryId: d.id,
+      userId: x.userId || "",
+      contentType: x.contentType || "text",
+      contentUrl: x.contentUrl || null,
+      contentText: x.contentText || null,
+      voteCount: x.voteCount || 0,
+    };
+  });
+  await db.collection("challenges").doc(challengeId)
+      .update({topEntries: top}).catch(() => {});
+}
+
+exports.syncChallengeTopEntries = functions.firestore
+    .document("entries/{entryId}")
+    .onWrite(async (change) => {
+      const after = change.after.exists ? change.after.data() : null;
+      const before = change.before.exists ? change.before.data() : null;
+      const challengeId =
+        (after && after.challengeId) || (before && before.challengeId);
+      await _recomputeTopEntries(admin.firestore(), challengeId);
+      return null;
+    });
+
+// ─── BACKFILL TOP-3 (one-shot) ───────────────────────────────────────────────
+exports.backfillTopEntries = functions.runWith({timeoutSeconds: 540})
+    .https.onRequest(async (req, res) => {
+      if (req.method !== "POST") {
+        return res.status(405).json({error: "Method Not Allowed"});
+      }
+      if (!req.body || req.body.secret !== "SEED_2026_DP") {
+        return res.status(403).json({error: "Forbidden"});
+      }
+      const db = admin.firestore();
+      const cs = await db.collection("challenges").get();
+      let updated = 0;
+      for (const c of cs.docs) {
+        await _recomputeTopEntries(db, c.id);
+        updated++;
+      }
+      return res.json({success: true, updated});
+    });
+
 // ─── PRÉVIA DE LINK (Open Graph) PARA COMPARTILHAMENTO ────────────────────────
 
 let _indexCache = null;

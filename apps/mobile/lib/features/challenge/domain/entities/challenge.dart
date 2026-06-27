@@ -12,6 +12,9 @@ class Challenge {
   final List<String> winnerIds;
   final DateTime createdAt;
   final DateTime expiresAt;
+  // Top-3 participações mais votadas, desnormalizadas no doc (evita N+1 no feed).
+  // Cada item: {entryId, userId, contentType, contentUrl, contentText, voteCount}.
+  final List<Map<String, dynamic>> topEntries;
 
   Challenge({
     required this.id,
@@ -25,5 +28,6 @@ class Challenge {
     required this.createdAt,
     required this.expiresAt,
     this.winnerIds = const [],
+    this.topEntries = const [],
   });
 }

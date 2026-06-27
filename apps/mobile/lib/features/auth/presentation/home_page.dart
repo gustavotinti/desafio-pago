@@ -25,7 +25,7 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  late Future<List<Challenge>> _activeFuture;
+  int _reloadTick = 0;
 
   final String? _currentUserId =
       FirebaseAuth.instance.currentUser?.uid;
@@ -35,7 +35,6 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    _loadActive();
     _loadAdminStatus();
     Future.delayed(const Duration(milliseconds: 9600), () {
       if (mounted) setState(() => _logoSettled = true);
@@ -52,13 +51,9 @@ class _HomePageState extends State<HomePage> {
     if (mounted) setState(() => _isAdmin = doc.exists);
   }
 
-  // Feed único: todos os desafios ativos, ordenados por maior prêmio.
-  void _loadActive() {
-    _activeFuture = GetChallenges()(status: ChallengeStatus.active);
-  }
-
+  // Recarrega o feed do início (recria o _FeedTab pela key).
   void _reload() {
-    setState(_loadActive);
+    setState(() => _reloadTick++);
   }
 
   @override
@@ -92,8 +87,7 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
       body: _FeedTab(
-        future: _activeFuture,
-        onRefresh: () async { setState(_loadActive); },
+        key: ValueKey(_reloadTick),
         currentUserId: _currentUserId,
         isAdmin: _isAdmin,
         onNavigated: _reload,
@@ -188,64 +182,153 @@ Future<void> _showAddAmountDialog(
 
 // ─── Feed tab ────────────────────────────────────────────────────────────────
 
-class _FeedTab extends StatelessWidget {
-  final Future<List<Challenge>> future;
-  final Future<void> Function() onRefresh;
+class _FeedTab extends StatefulWidget {
   final String? currentUserId;
   final bool isAdmin;
   final VoidCallback onNavigated;
 
   const _FeedTab({
-    required this.future,
-    required this.onRefresh,
+    super.key,
     required this.currentUserId,
     required this.isAdmin,
     required this.onNavigated,
   });
 
   @override
+  State<_FeedTab> createState() => _FeedTabState();
+}
+
+class _FeedTabState extends State<_FeedTab> {
+  static const _pageSize = 12;
+  final _scroll = ScrollController();
+  final List<Challenge> _items = [];
+  DocumentSnapshot<Map<String, dynamic>>? _cursor;
+  bool _initialLoading = true;
+  bool _loadingMore = false;
+  bool _hasMore = true;
+  Object? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_onScroll);
+    _loadFirst();
+  }
+
+  @override
+  void dispose() {
+    _scroll.removeListener(_onScroll);
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scroll.position.pixels >=
+        _scroll.position.maxScrollExtent - 400) {
+      _loadMore();
+    }
+  }
+
+  Future<void> _loadFirst() async {
+    setState(() {
+      _initialLoading = true;
+      _error = null;
+    });
+    try {
+      final (items, cursor) = await GetChallenges()
+          .page(status: ChallengeStatus.active, limit: _pageSize);
+      if (!mounted) return;
+      setState(() {
+        _items
+          ..clear()
+          ..addAll(items);
+        _cursor = cursor;
+        _hasMore = items.length == _pageSize;
+        _initialLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e;
+        _initialLoading = false;
+      });
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_loadingMore || !_hasMore || _cursor == null) return;
+    setState(() => _loadingMore = true);
+    try {
+      final (items, cursor) = await GetChallenges().page(
+        status: ChallengeStatus.active,
+        startAfter: _cursor,
+        limit: _pageSize,
+      );
+      if (!mounted) return;
+      setState(() {
+        _items.addAll(items);
+        _cursor = cursor ?? _cursor;
+        _hasMore = items.length == _pageSize;
+        _loadingMore = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingMore = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return WebFrame(
       maxWidth: 600,
-      child: FutureBuilder<List<Challenge>>(
-        future: future,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+      child: _buildBody(),
+    );
+  }
 
-          if (snapshot.hasError) {
-            return Center(child: Text('Erro: ${snapshot.error}'));
-          }
-
-          final challenges = snapshot.data ?? [];
-
-          if (challenges.isEmpty) {
-            return const Center(
-              child: Text(
-                'Nenhum desafio aqui ainda.',
-                style: TextStyle(color: Colors.black54),
-              ),
+  Widget _buildBody() {
+    if (_initialLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_error != null) {
+      return Center(child: Text('Erro: $_error'));
+    }
+    if (_items.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: _loadFirst,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: const [
+            SizedBox(height: 140),
+            Center(
+              child: Text('Nenhum desafio aqui ainda.',
+                  style: TextStyle(color: Colors.black54)),
+            ),
+          ],
+        ),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _loadFirst,
+      child: ListView.builder(
+        controller: _scroll,
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(12, 4, 12, 80),
+        itemCount: _items.length + (_hasMore ? 1 : 0),
+        itemBuilder: (context, i) {
+          if (i >= _items.length) {
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Center(child: CircularProgressIndicator()),
             );
           }
-
-          return RefreshIndicator(
-            onRefresh: onRefresh,
-            child: ListView.builder(
-              padding: const EdgeInsets.fromLTRB(12, 4, 12, 80),
-              itemCount: challenges.length,
-              itemBuilder: (context, i) => _ChallengeCard(
-                challenge: challenges[i],
-                currentUserId: currentUserId,
-                isAdmin: isAdmin,
-                onNavigated: onNavigated,
-                onAddAmount: () => _showAddAmountDialog(
-                  context,
-                  challenges[i],
-                  onNavigated,
-                ),
-              ),
-            ),
+          final c = _items[i];
+          return _ChallengeCard(
+            challenge: c,
+            currentUserId: widget.currentUserId,
+            isAdmin: widget.isAdmin,
+            onNavigated: widget.onNavigated,
+            onAddAmount: () =>
+                _showAddAmountDialog(context, c, widget.onNavigated),
           );
         },
       ),
@@ -439,7 +522,7 @@ class _ChallengeCard extends StatelessWidget {
                 // ── Prévia: 3 participações mais votadas (4:5) ─────
                 const SizedBox(height: 12),
                 EntryPreviewStrip(
-                  challengeId: challenge.id,
+                  entries: challenge.topEntries,
                   onOpen: () async {
                     await Navigator.push(
                       context,

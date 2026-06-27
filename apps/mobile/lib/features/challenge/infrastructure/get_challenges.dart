@@ -33,6 +33,24 @@ class GetChallenges {
     return snapshot.docs.map((doc) => _map(doc.id, doc.data())).toList();
   }
 
+  /// Página do feed (ordenado por maior prêmio). Retorna os itens e o cursor
+  /// (último doc) para a próxima página.
+  Future<(List<Challenge>, DocumentSnapshot<Map<String, dynamic>>?)> page({
+    required ChallengeStatus status,
+    DocumentSnapshot<Map<String, dynamic>>? startAfter,
+    int limit = 12,
+  }) async {
+    Query<Map<String, dynamic>> query = _firestore
+        .collection('challenges')
+        .where('status', isEqualTo: status.name)
+        .orderBy('amount', descending: true)
+        .limit(limit);
+    if (startAfter != null) query = query.startAfterDocument(startAfter);
+    final snap = await query.get();
+    final items = snap.docs.map((d) => _map(d.id, d.data())).toList();
+    return (items, snap.docs.isEmpty ? null : snap.docs.last);
+  }
+
   /// Carrega um desafio pelo id (usado pelo deep link de compartilhamento).
   Future<Challenge?> getById(String id) async {
     final doc = await _firestore.collection('challenges').doc(id).get();
@@ -67,6 +85,9 @@ class GetChallenges {
       winnerIds: List<String>.from(data['winnerIds'] ?? []),
       createdAt: DateTime.parse(data['createdAt']),
       expiresAt: DateTime.parse(data['expiresAt']),
+      topEntries: ((data['topEntries'] as List?) ?? const [])
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList(),
     );
   }
 }
