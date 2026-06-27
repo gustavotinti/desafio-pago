@@ -62,7 +62,7 @@ outros participam com conteúdo (texto/imagem/vídeo), e o mais votado vence o p
 - Retry automático em falha
 - Status: pending | posted | failed
 
-## Estado atual (v2.3.0 — junho/2026)
+## Estado atual (v2.4.0 — junho/2026)
 No ar: https://desafiopago.com.br (e https://desafiopago.web.app)
 Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
 
@@ -87,7 +87,10 @@ Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
 - Encerramento automático (cron 5min) + divisão de prêmio (centavo
   indivisível fica na plataforma)
 - Texto selecionável (`SelectionArea`); imagens robustas (`SafeImage` —
-  sem spinner infinito)
+  sem spinner infinito); avatares à prova de falha (`SafeAvatar`)
+- Upload de imagem comprime para JPEG (`compressToJpg`, até 1440px/640px)
+- Feed pagina (12 por vez) e lê `topEntries` desnormalizado do desafio
+  (trigger `syncChallengeTopEntries` — mata o N+1 das prévias)
 
 **Conteúdo virtual (seed, para parecer movimentado)**
 - 1002 usuários virtuais (retratos realistas auto-hospedados, usernames
@@ -152,13 +155,14 @@ Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
 - Confirmar o webhook MP em produção ("Simular notificação" = 200)
 - Pagamento automático de saque (precisa de PSP de payout — Asaas/Efí)
 - Moderação com IA; bloqueio de VPN; automação Instagram (Fase 16)
-- Atualizar dependências (opcional)
+- Ampliar testes (hoje: lógica de dinheiro + utils; falta integração c/ emulador)
 
 ## Checkpoints (git tags)
-v2.0.1 · v2.1.0 · v2.2.0 · v2.2.1 · v2.2.2 · v2.3.0 — restaurar: `git checkout vX.Y.Z`
+v2.0.1 · v2.1.0 · v2.2.0 · v2.2.1 · v2.2.2 · v2.3.0 · v2.4.0 — restaurar: `git checkout vX.Y.Z`
 
 ## Comandos úteis (em apps/mobile)
 - Build web: `flutter build web --release`
 - Deploy hosting: `firebase deploy --only hosting --project desafio-app-b8665`
 - Deploy função: `firebase deploy --only functions:NOME --project desafio-app-b8665`
 - Lint functions: `npm --prefix functions run lint`
+- Testes: `flutter test` (Dart) · `npm --prefix functions test` (dinheiro)

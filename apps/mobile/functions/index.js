@@ -3163,7 +3163,7 @@ exports.seedVirtualCommentInteractions = functions.runWith({timeoutSeconds: 540}
       const db = admin.firestore();
 
       const sentinel = db.collection("_seedMeta").doc("commentInteractions");
-      if ((await sentinel.get()).exists) {
+      if (req.body.force !== true && (await sentinel.get()).exists) {
         return res.status(409).json({error: "Interações já foram criadas."});
       }
 
