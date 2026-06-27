@@ -14,22 +14,35 @@ class GetEntries {
         .orderBy('voteCount', descending: true)
         .get();
 
-    return snapshot.docs.map((doc) {
-      final data = doc.data();
-      return Entry(
-        id: doc.id,
-        challengeId: data['challengeId'] ?? '',
-        userId: data['userId'] ?? '',
-        contentType: ContentType.values.firstWhere(
-          (t) => t.name == (data['contentType'] ?? ''),
-          orElse: () => ContentType.text,
-        ),
-        contentText: data['contentText'] as String?,
-        contentUrl: data['contentUrl'] as String?,
-        voteCount: data['voteCount'] ?? 0,
-        isActive: data['isActive'] ?? true,
-        createdAt: DateTime.parse(data['createdAt']),
-      );
-    }).toList();
+    return snapshot.docs.map(_map).toList();
+  }
+
+  /// Participações de um usuário (mais recentes primeiro), em todos os desafios.
+  Future<List<Entry>> byUser(String uid) async {
+    final snapshot = await _firestore
+        .collection('entries')
+        .where('userId', isEqualTo: uid)
+        .get();
+    final list = snapshot.docs.map(_map).toList();
+    list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return list;
+  }
+
+  Entry _map(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data();
+    return Entry(
+      id: doc.id,
+      challengeId: data['challengeId'] ?? '',
+      userId: data['userId'] ?? '',
+      contentType: ContentType.values.firstWhere(
+        (t) => t.name == (data['contentType'] ?? ''),
+        orElse: () => ContentType.text,
+      ),
+      contentText: data['contentText'] as String?,
+      contentUrl: data['contentUrl'] as String?,
+      voteCount: data['voteCount'] ?? 0,
+      isActive: data['isActive'] ?? true,
+      createdAt: DateTime.parse(data['createdAt']),
+    );
   }
 }

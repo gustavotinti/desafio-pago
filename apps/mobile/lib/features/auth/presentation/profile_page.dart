@@ -9,6 +9,7 @@ import '../../withdrawals/infrastructure/withdraw_repository.dart';
 import '../../finance/infrastructure/get_transactions.dart';
 import '../../users/presentation/edit_profile_page.dart';
 import '../../users/presentation/followers_page.dart';
+import '../../users/presentation/my_activity_page.dart';
 import '../../payments/presentation/topup_page.dart';
 import '../../payments/infrastructure/payment_repository.dart';
 import '../../payments/presentation/payment_page.dart';
@@ -295,6 +296,23 @@ class _ProfilePageState extends State<ProfilePage> {
               _Stat(label: 'Votos', value: Fmt.number(totalVotes)),
               _Stat(label: 'Ganhos', value: Fmt.brlCompact(totalEarned)),
             ],
+          ),
+          const SizedBox(height: 14),
+          // — Minha atividade (meus desafios + participações) —
+          Card(
+            margin: EdgeInsets.zero,
+            child: ListTile(
+              leading: const Icon(Icons.dashboard_customize_outlined,
+                  color: Color(0xFF003b8a)),
+              title: const Text('Minha atividade'),
+              subtitle: const Text('Meus desafios e participações',
+                  style: TextStyle(fontSize: 12)),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const MyActivityPage()),
+              ),
+            ),
           ),
           const Divider(height: 32),
 

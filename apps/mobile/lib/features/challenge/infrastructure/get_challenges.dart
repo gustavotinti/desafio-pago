@@ -40,6 +40,17 @@ class GetChallenges {
     return _map(doc.id, doc.data()!);
   }
 
+  /// Desafios criados por um usuário (mais recentes primeiro). Inclui encerrados.
+  Future<List<Challenge>> byCreator(String uid) async {
+    final snap = await _firestore
+        .collection('challenges')
+        .where('createdBy', isEqualTo: uid)
+        .get();
+    final list = snap.docs.map((d) => _map(d.id, d.data())).toList();
+    list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return list;
+  }
+
   Challenge _map(String id, Map<String, dynamic> data) {
     return Challenge(
       id: id,
