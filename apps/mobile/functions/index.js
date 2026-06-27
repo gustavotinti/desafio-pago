@@ -1,6 +1,7 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const {MercadoPagoConfig, Payment} = require("mercadopago");
+const {splitPrizeCents, withdrawalFee, withdrawalNet} = require("./money");
 
 admin.initializeApp();
 
@@ -248,8 +249,8 @@ exports.requestWithdraw = functions.https.onCall(async (data, context) => {
   const db = admin.firestore();
   const userRef = db.collection("users").doc(userId);
   const withdrawalRef = db.collection("withdrawals").doc();
-  const fee = Math.round(amount * 0.10 * 100) / 100;
-  const netAmount = Math.round((amount - fee) * 100) / 100;
+  const fee = withdrawalFee(amount);
+  const netAmount = withdrawalNet(amount);
   const now = new Date().toISOString();
 
   // Transação: lê o saldo e debita atomicamente (evita saldo negativo).
@@ -530,7 +531,7 @@ async function finalizeChallenge(db, challengeDoc) {
     const winners = entries.filter((e) => e.voteCount === maxVotes);
     const winnerIds = winners.map((e) => e.userId);
     const prizeCents = Math.round(prizeAmount * 100);
-    const perWinnerCents = Math.floor(prizeCents / winnerIds.length);
+    const {perWinnerCents} = splitPrizeCents(prizeCents, winnerIds.length);
     prizePerWinner = perWinnerCents / 100;
 
     tx.update(challengeRef, {
