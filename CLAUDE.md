@@ -62,7 +62,7 @@ outros participam com conteúdo (texto/imagem/vídeo), e o mais votado vence o p
 - Retry automático em falha
 - Status: pending | posted | failed
 
-## Estado atual (v2.2.2 — junho/2026)
+## Estado atual (v2.3.0 — junho/2026)
 No ar: https://desafiopago.com.br (e https://desafiopago.web.app)
 Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
 
@@ -78,11 +78,16 @@ Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
 **Desafios & participações**
 - Criar (debita saldo), participar (texto/imagem/vídeo em 9:16, 4:5 ou
   1:1 — sem 16:9), votar, aumentar prêmio (aporte)
-- Feed ordenado por maior prêmio (ativos e encerrados); prévia das 3
-  participações mais votadas em 4:5 (vídeo toca ao passar o mouse)
-- Card de prêmio em destaque; prêmio mostrado ao lado de "Vencedor definido"
+- **Editor de recorte (cropper)** no envio de imagem — qualquer imagem vira
+  9:16/4:5/1:1 (não barra mais por formato). Mesmo cropper na foto de perfil (1:1)
+- Feed único de **ativos** (encerrados não aparecem no feed — ficam em
+  "Minha atividade"); ordenado por maior prêmio. Prévia das 3 mais votadas em
+  4:5 (vídeo carrega o pôster + toca no hover) com **taça ouro/prata/bronze**
+  ("Vencendo" no 1º)
 - Encerramento automático (cron 5min) + divisão de prêmio (centavo
   indivisível fica na plataforma)
+- Texto selecionável (`SelectionArea`); imagens robustas (`SafeImage` —
+  sem spinner infinito)
 
 **Conteúdo virtual (seed, para parecer movimentado)**
 - 1002 usuários virtuais (retratos realistas auto-hospedados, usernames
@@ -91,16 +96,21 @@ Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
   valores quebrados/orgânicos) + participações + comentários
 - Comentários virtuais com curtidas e respostas
 
-**Social**
+**Social & perfil**
 - Comentários com curtidas + respostas (thread)
-- Seguidores; rankings (faturamento e votos) lendo do espelho público
+- Seguidores via função `toggleFollow` (contadores protegidos); rankings
+  (faturamento e votos) lendo do espelho público
+- **"Minha atividade"** no perfil: meus desafios criados + minhas participações
 - Compartilhar participação: deep link abre direto na arte (destacada,
   pronta pra votar) + prévia rica (Open Graph) no WhatsApp
 
-**Admin (painel)**
-- Saques (aprovar/rejeitar/marcar pago), desafios, usuários/moderadores,
-  verificação, perfis virtuais (editar nome/@/bio/selo/foto), exportar
-  público para campanhas (Google Customer Match / Meta Custom Audiences)
+**Admin / super admin**
+- Saques (aprovar/rejeitar/marcar pago), usuários/moderadores, verificação,
+  exportar público p/ campanhas (Google Customer Match / Meta Custom Audiences)
+- **Editar qualquer desafio** (título/descrição/prêmio/prazo) e **qualquer
+  perfil** (virtual ou real); lápis de edição inline no feed e no perfil público
+- **Excluir participação** (reverte contadores) + **editar/excluir comentários**;
+  editar votos (ajusta `totalVotesReceived`)
 
 **Verificação**
 - Pedido de selo (nome/sobrenome/telefone/CPF) + fila prioritária paga
@@ -114,9 +124,11 @@ Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
   negativo, sem crédito/prêmio em dobro)
 
 **Privacidade & segurança**
-- `/users` (e-mail, telefone, saldo, Pix) só para logado; espelho
+- `/users` (e-mail, telefone, saldo, Pix) só o **dono + admin** lê; espelho
   `/publicProfiles` (sem PII) é público para o visitante
-- `functions/.env` fora do git (token MP, etc.)
+- Contadores de follow só via Cloud Function; `isFullAdmin()` nas regras
+  (moderador não mexe no roster de admins); `/follows` write travado
+- `functions/.env` fora do git (token MP, MP_WEBHOOK_SECRET, OpenAI)
 
 ### ⚙️ Infra / pontos técnicos importantes
 - **Storage bucket REAL: `desafio-app-b8665.firebasestorage.app`**
@@ -143,7 +155,7 @@ Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
 - Atualizar dependências (opcional)
 
 ## Checkpoints (git tags)
-v2.0.1 · v2.1.0 · v2.2.0 · v2.2.1 · v2.2.2 — restaurar: `git checkout vX.Y.Z`
+v2.0.1 · v2.1.0 · v2.2.0 · v2.2.1 · v2.2.2 · v2.3.0 — restaurar: `git checkout vX.Y.Z`
 
 ## Comandos úteis (em apps/mobile)
 - Build web: `flutter build web --release`
