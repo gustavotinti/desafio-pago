@@ -40,6 +40,9 @@ dependencies:
   # ✂️ RECORTE DE IMAGEM (cropper — Flutter puro, funciona na web)
   crop_your_image: ^2.0.0
 
+  # 🗜️ COMPRESSÃO/REDIMENSIONAMENTO (re-encode JPEG no upload — Dart puro)
+  image: ^4.9.0
+
   # 🔥 VÍDEO (preview que toca no hover)
   video_player: ^2.9.2
 

@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
 import '../../../core/utils/format.dart';
+import '../../../core/widgets/safe_avatar.dart';
 import '../../../core/widgets/web_frame.dart';
 import '../../withdrawals/infrastructure/withdraw_repository.dart';
 import '../../finance/infrastructure/get_transactions.dart';
@@ -208,15 +209,7 @@ class _ProfilePageState extends State<ProfilePage> {
           Center(
             child: Column(
               children: [
-                CircleAvatar(
-                  radius: 40,
-                  backgroundImage: photoUrl.isNotEmpty
-                      ? NetworkImage(photoUrl)
-                      : null,
-                  child: photoUrl.isEmpty
-                      ? const Icon(Icons.person, size: 40)
-                      : null,
-                ),
+                SafeAvatar(photoUrl: photoUrl, radius: 40),
                 const SizedBox(height: 8),
                 Row(
                   mainAxisSize: MainAxisSize.min,

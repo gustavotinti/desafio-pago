@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../core/utils/format.dart';
+import '../../../core/widgets/safe_avatar.dart';
 import '../../../core/widgets/web_frame.dart';
 import '../../admin/presentation/admin_edit_virtual_user_page.dart';
 import '../../auth/presentation/auth_guard.dart';
@@ -153,15 +154,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                 Center(
                   child: Column(
                     children: [
-                      CircleAvatar(
-                        radius: 44,
-                        backgroundImage: photoUrl.isNotEmpty
-                            ? NetworkImage(photoUrl)
-                            : null,
-                        child: photoUrl.isEmpty
-                            ? const Icon(Icons.person, size: 44)
-                            : null,
-                      ),
+                      SafeAvatar(photoUrl: photoUrl, radius: 44),
                       const SizedBox(height: 8),
                       Row(
                         mainAxisSize: MainAxisSize.min,

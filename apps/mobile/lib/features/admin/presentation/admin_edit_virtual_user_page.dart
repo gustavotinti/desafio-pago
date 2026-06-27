@@ -76,6 +76,7 @@ class _AdminEditVirtualUserPageState extends State<AdminEditVirtualUserPage> {
         builder: (_) => ImageCropPage(
           imageBytes: bytes,
           ratios: ImageCropPage.squareOnly,
+          outputMaxDim: 640,
         ),
       ),
     );

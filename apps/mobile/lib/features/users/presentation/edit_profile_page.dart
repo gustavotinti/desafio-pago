@@ -132,6 +132,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         builder: (_) => ImageCropPage(
           imageBytes: bytes,
           ratios: ImageCropPage.squareOnly,
+          outputMaxDim: 640,
         ),
       ),
     );

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../../core/widgets/safe_avatar.dart';
 import '../../../core/widgets/web_frame.dart';
 import 'user_profile_page.dart';
 
@@ -77,14 +78,7 @@ class FollowersPage extends StatelessWidget {
                   final totalVotes = userData['totalVotesReceived'] ?? 0;
 
                   return ListTile(
-                    leading: CircleAvatar(
-                      backgroundImage: photoUrl.isNotEmpty
-                          ? NetworkImage(photoUrl)
-                          : null,
-                      child: photoUrl.isEmpty
-                          ? const Icon(Icons.person)
-                          : null,
-                    ),
+                    leading: SafeAvatar(photoUrl: photoUrl, radius: 20),
                     title: Text(name),
                     subtitle: Text('$totalVotes votos'),
                     onTap: () => Navigator.push(

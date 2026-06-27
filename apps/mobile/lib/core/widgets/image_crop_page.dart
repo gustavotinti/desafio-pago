@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:crop_your_image/crop_your_image.dart';
 import 'package:flutter/material.dart';
 
+import '../utils/image_utils.dart';
+
 /// Editor de recorte de imagem compartilhado.
 ///
 /// Recebe os bytes originais e devolve (via `Navigator.pop`) os bytes já
@@ -15,12 +17,14 @@ class ImageCropPage extends StatefulWidget {
   final Uint8List imageBytes;
   final Map<String, double>? ratios;
   final String? initialRatio;
+  final int outputMaxDim;
 
   const ImageCropPage({
     super.key,
     required this.imageBytes,
     this.ratios,
     this.initialRatio,
+    this.outputMaxDim = 1440,
   });
 
   /// Atalho para foto de perfil/avatar (quadrado 1:1).
@@ -85,7 +89,12 @@ class _ImageCropPageState extends State<ImageCropPage> {
               onCropped: (result) {
                 if (!mounted) return;
                 if (result is CropSuccess) {
-                  Navigator.pop(context, result.croppedImage);
+                  // Comprime (JPEG) + redimensiona antes de devolver.
+                  Navigator.pop(
+                    context,
+                    compressToJpg(result.croppedImage,
+                        maxDim: widget.outputMaxDim),
+                  );
                 } else if (result is CropFailure) {
                   setState(() => _cropping = false);
                   ScaffoldMessenger.of(context).showSnackBar(
