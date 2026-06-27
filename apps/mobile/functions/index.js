@@ -3730,6 +3730,32 @@ exports.backfillTopEntries = functions.runWith({timeoutSeconds: 540})
       return res.json({success: true, updated});
     });
 
+// ─── DIAGNÓSTICO: CONTAGENS (read-only) ──────────────────────────────────────
+exports.diagCounts = functions.https.onRequest(async (req, res) => {
+  if (req.method !== "POST") {
+    return res.status(405).json({error: "Method Not Allowed"});
+  }
+  if (!req.body || req.body.secret !== "SEED_2026_DP") {
+    return res.status(403).json({error: "Forbidden"});
+  }
+  const db = admin.firestore();
+  const count = async (col, field, val) => {
+    let q = db.collection(col);
+    if (field) q = q.where(field, "==", val);
+    const agg = await q.count().get();
+    return agg.data().count;
+  };
+  return res.json({
+    challenges_total: await count("challenges"),
+    challenges_virtual: await count("challenges", "isVirtual", true),
+    challenges_active: await count("challenges", "status", "active"),
+    challenges_finished: await count("challenges", "status", "finished"),
+    users_total: await count("users"),
+    users_virtual: await count("users", "isVirtual", true),
+    entries_total: await count("entries"),
+  });
+});
+
 // ─── PRÉVIA DE LINK (Open Graph) PARA COMPARTILHAMENTO ────────────────────────
 
 let _indexCache = null;
