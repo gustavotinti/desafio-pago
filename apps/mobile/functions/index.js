@@ -242,8 +242,12 @@ exports.requestWithdraw = functions.https.onCall(async (data, context) => {
   const userId = context.auth.uid;
   const {amount} = data;
 
-  if (!amount || amount < 100) {
-    throw new functions.https.HttpsError("invalid-argument", "Valor mínimo para saque é R$100");
+  // Mínimo de saque configurável via env (default R$100). Para reduzir/zerar,
+  // defina MIN_WITHDRAWAL em functions/.env (ex.: MIN_WITHDRAWAL=1).
+  const minWithdrawal = Number(process.env.MIN_WITHDRAWAL || 100);
+  if (!amount || amount < minWithdrawal) {
+    throw new functions.https.HttpsError(
+        "invalid-argument", `Valor mínimo para saque é R$${minWithdrawal}`);
   }
 
   const db = admin.firestore();
