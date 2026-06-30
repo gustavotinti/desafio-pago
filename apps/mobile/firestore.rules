@@ -106,6 +106,15 @@ service cloud.firestore {
       // All transactions created by Cloud Functions (Admin SDK)
     }
 
+    // ── NOTIFICATIONS (subcoleção do usuário) ─────────────────────────────────
+    match /users/{userId}/notifications/{nid} {
+      allow read: if signedIn() && uid() == userId;
+      // O dono só pode marcar como lida; criação via Cloud Function (Admin SDK).
+      allow update: if signedIn() && uid() == userId
+        && changed().hasOnly(['read']);
+      allow create, delete: if false;
+    }
+
     // ── FOLLOWS ──────────────────────────────────────────────────────────────
     match /follows/{followId} {
       // Leitura p/ checar "estou seguindo?"; escrita só via toggleFollow (Admin SDK).

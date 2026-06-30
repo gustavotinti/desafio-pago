@@ -20,6 +20,23 @@ async function _assertNotBanned(db, userId) {
 }
 
 async function _sendNotification(db, userId, title, body, data = {}) {
+  // Histórico in-app (funciona mesmo sem push autorizado — sininho no app).
+  // Subcoleção users/{uid}/notifications → sem índice composto.
+  try {
+    await db.collection("users").doc(userId)
+        .collection("notifications").add({
+          title,
+          body,
+          type: String(data.type || ""),
+          challengeId: data.challengeId ? String(data.challengeId) : null,
+          entryId: data.entryId ? String(data.entryId) : null,
+          read: false,
+          createdAt: new Date().toISOString(),
+        });
+  } catch (e) {
+    console.error("Erro ao persistir notificação:", e.message);
+  }
+  // Push (se o usuário tiver autorizado e salvo o token).
   try {
     const userDoc = await db.collection("users").doc(userId).get();
     const token = userDoc.data()?.fcmToken;
@@ -27,7 +44,8 @@ async function _sendNotification(db, userId, title, body, data = {}) {
     await admin.messaging().send({
       token,
       notification: {title, body},
-      data: Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])),
+      data: Object.fromEntries(
+          Object.entries(data).map(([k, v]) => [k, String(v)])),
       android: {priority: "high"},
       apns: {payload: {aps: {sound: "default"}}},
     });
@@ -1169,6 +1187,27 @@ exports.addComment = functions.https.onCall(async (data, context) => {
     createdAt: new Date().toISOString(),
   });
 
+  // Notifica o dono da participação (ou o criador do desafio).
+  try {
+    let notifyId = null;
+    if (entryId) {
+      const e = await db.collection("entries").doc(entryId).get();
+      notifyId = e.exists ? e.data().userId : null;
+    } else {
+      const c = await db.collection("challenges").doc(challengeId).get();
+      notifyId = c.exists ? c.data().createdBy : null;
+    }
+    if (notifyId && notifyId !== userId) {
+      await _sendNotification(
+          db, notifyId, "Novo comentário",
+          `${userName} comentou ${entryId ?
+            "na sua participação" : "no seu desafio"}`,
+          {type: "comment", challengeId, entryId: entryId || ""});
+    }
+  } catch (e) {
+    console.error("notif comentário:", e.message);
+  }
+
   return {success: true};
 });
 
@@ -1246,6 +1285,7 @@ exports.toggleFollow = functions.https.onCall(async (data, context) => {
   const meRef = db.collection("users").doc(uid);
   const inc = admin.firestore.FieldValue.increment;
 
+  let created = false;
   await db.runTransaction(async (tx) => {
     const existing = await tx.get(followRef);
     if (follow) {
@@ -1257,6 +1297,7 @@ exports.toggleFollow = functions.https.onCall(async (data, context) => {
       });
       tx.update(targetRef, {followersCount: inc(1)});
       tx.update(meRef, {followingCount: inc(1)});
+      created = true;
     } else {
       if (!existing.exists) return;
       tx.delete(followRef);
@@ -1264,6 +1305,13 @@ exports.toggleFollow = functions.https.onCall(async (data, context) => {
       tx.update(meRef, {followingCount: inc(-1)});
     }
   });
+
+  if (created) {
+    const me = (await db.collection("users").doc(uid).get()).data() || {};
+    await _sendNotification(
+        db, targetId, "Novo seguidor",
+        `${me.name || "Alguém"} começou a te seguir`, {type: "follow"});
+  }
 
   return {following: follow};
 });

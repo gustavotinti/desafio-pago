@@ -9,6 +9,7 @@ import '../../challenge/infrastructure/add_amount_repository.dart';
 import '../../challenge/infrastructure/get_challenges.dart';
 import '../../challenge/presentation/create_challenge_page.dart';
 import '../../challenge/presentation/platform_pulse.dart';
+import '../../notifications/presentation/notification_bell.dart';
 import '../../entry/presentation/challenge_entries_page.dart';
 import '../../entry/presentation/entry_preview_strip.dart';
 import '../../entry/presentation/submit_entry_page.dart';
@@ -76,6 +77,7 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
         actions: [
+          if (_currentUserId != null) const NotificationBell(),
           if (_isAdmin)
             IconButton(
               icon: const Icon(Icons.admin_panel_settings),
