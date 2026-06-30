@@ -33,8 +33,8 @@ class ChallengeEntriesPage extends StatefulWidget {
 }
 
 class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
-  late Future<List<Entry>> _entriesFuture;
-  late Future<bool> _hasVotedFuture;
+  late final Stream<List<Entry>> _entriesStream;
+  bool _hasVoted = false;
   bool _isAdmin = false;
 
   final _voteRepo = VoteRepository();
@@ -44,7 +44,8 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
   @override
   void initState() {
     super.initState();
-    _load();
+    _entriesStream = GetEntries().watch(widget.challenge.id);
+    _loadHasVoted();
     _loadAdmin();
   }
 
@@ -58,15 +59,12 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
     if (mounted) setState(() => _isAdmin = doc.exists);
   }
 
-  void _load() {
-    _entriesFuture = GetEntries()(widget.challenge.id);
+  Future<void> _loadHasVoted() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    _hasVotedFuture = uid == null
-        ? Future.value(false)
-        : _voteRepo.hasVoted(widget.challenge.id);
+    if (uid == null) return;
+    final v = await _voteRepo.hasVoted(widget.challenge.id);
+    if (mounted) setState(() => _hasVoted = v);
   }
-
-  void _reload() => setState(() => _load());
 
   bool get _isCreator {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -80,7 +78,8 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Voto registrado!')));
-      _reload();
+      // Stream atualiza os votos ao vivo; bloqueia novo voto (exceto admin).
+      if (!_isAdmin) setState(() => _hasVoted = true);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
@@ -199,7 +198,6 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
         'entryId': entry.id,
         'voteCount': newCount,
       });
-      _reload();
       if (!mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Votos atualizados')));
@@ -235,7 +233,6 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
       await _functions
           .httpsCallable('adminDeleteEntry')
           .call({'entryId': entry.id});
-      _reload();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Participação excluída')));
@@ -262,14 +259,14 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
             _SharedEntryBanner(canVote: !isFinished),
           if (isFinished) _FinishedBanner(challenge: widget.challenge),
           Expanded(
-            child: FutureBuilder<List<dynamic>>(
-              future: Future.wait([_entriesFuture, _hasVotedFuture]),
+            child: StreamBuilder<List<Entry>>(
+              stream: _entriesStream,
               builder: (context, snapshot) {
                 if (!snapshot.hasData) {
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                final entries = snapshot.data![0] as List<Entry>;
+                final entries = List<Entry>.from(snapshot.data!);
 
                 // Posição do usuário (por votos, antes do reorder do destaque).
                 final myUid = FirebaseAuth.instance.currentUser?.uid;
@@ -297,9 +294,9 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
                     entries.insert(0, e);
                   }
                 }
-                final hasVoted = snapshot.data![1] as bool;
                 // Admins bypass the creator restriction for demo voting
-                final canVote = !hasVoted && (!_isCreator || _isAdmin) && !isFinished;
+                final canVote =
+                    !_hasVoted && (!_isCreator || _isAdmin) && !isFinished;
 
                 final uid = FirebaseAuth.instance.currentUser?.uid;
 

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../../core/utils/format.dart';
+import '../../../core/widgets/safe_avatar.dart';
 import '../../../core/widgets/web_frame.dart';
 import 'user_profile_page.dart';
 
@@ -58,6 +60,15 @@ class _RankingTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return Column(
+      children: [
+        _MyRankBanner(field: orderBy, isEarnings: isEarnings),
+        Expanded(child: _buildList(context)),
+      ],
+    );
+  }
+
+  Widget _buildList(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('publicProfiles')
@@ -367,6 +378,120 @@ class _RegularTile extends StatelessWidget {
         style: const TextStyle(
             fontWeight: FontWeight.bold, fontSize: 13,
             color: Color(0xFF1A1A2E)),
+      ),
+    );
+  }
+}
+
+// ── "Você está em #N" — ranking pessoal ───────────────────────────────────────
+
+class _MyRankBanner extends StatefulWidget {
+  final String field;
+  final bool isEarnings;
+  const _MyRankBanner({required this.field, required this.isEarnings});
+
+  @override
+  State<_MyRankBanner> createState() => _MyRankBannerState();
+}
+
+class _MyRankBannerState extends State<_MyRankBanner> {
+  int? _rank;
+  num _value = 0;
+  bool _hidden = false;
+  String _photoUrl = '';
+  String? _uid;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      setState(() => _hidden = true);
+      return;
+    }
+    _uid = uid;
+    try {
+      final db = FirebaseFirestore.instance;
+      final me = await db.collection('publicProfiles').doc(uid).get();
+      if (!me.exists) {
+        if (mounted) setState(() => _hidden = true);
+        return;
+      }
+      final data = me.data() ?? {};
+      final myVal = (data[widget.field] as num?) ?? 0;
+      final higher = await db
+          .collection('publicProfiles')
+          .where(widget.field, isGreaterThan: myVal)
+          .count()
+          .get();
+      if (!mounted) return;
+      setState(() {
+        _value = myVal;
+        _photoUrl = data['photoUrl'] as String? ?? '';
+        _rank = (higher.count ?? 0) + 1;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _hidden = true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_hidden) return const SizedBox.shrink();
+    final valueStr =
+        widget.isEarnings ? Fmt.brl(_value) : '${Fmt.number(_value)} votos';
+    return InkWell(
+      onTap: _uid == null
+          ? null
+          : () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => UserProfilePage(userId: _uid!)),
+              ),
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF003b8a), Color(0xFF0cc0df)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          children: [
+            SafeAvatar(photoUrl: _photoUrl, radius: 18),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _rank == null ? 'Sua posição…' : 'Você está em $_rankº',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15),
+                  ),
+                  Text(
+                    widget.isEarnings
+                        ? 'em ganhos · $valueStr'
+                        : 'em votos · $valueStr',
+                    style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.9),
+                        fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: Colors.white70),
+          ],
+        ),
       ),
     );
   }

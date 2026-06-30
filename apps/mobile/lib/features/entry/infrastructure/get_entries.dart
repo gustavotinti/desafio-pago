@@ -17,6 +17,18 @@ class GetEntries {
     return snapshot.docs.map(_map).toList();
   }
 
+  /// Stream em tempo real das participações de um desafio (mais votadas
+  /// primeiro). Os votos aparecem na hora conforme as pessoas votam.
+  Stream<List<Entry>> watch(String challengeId) {
+    return _firestore
+        .collection('entries')
+        .where('challengeId', isEqualTo: challengeId)
+        .where('isActive', isEqualTo: true)
+        .orderBy('voteCount', descending: true)
+        .snapshots()
+        .map((s) => s.docs.map(_map).toList());
+  }
+
   /// Participações de um usuário (mais recentes primeiro), em todos os desafios.
   Future<List<Entry>> byUser(String uid) async {
     final snapshot = await _firestore
