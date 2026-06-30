@@ -270,6 +270,24 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
                 }
 
                 final entries = snapshot.data![0] as List<Entry>;
+
+                // Posição do usuário (por votos, antes do reorder do destaque).
+                final myUid = FirebaseAuth.instance.currentUser?.uid;
+                _MyPosition? myPos;
+                Entry? myEntry;
+                if (myUid != null && entries.isNotEmpty) {
+                  final idx = entries.indexWhere((e) => e.userId == myUid);
+                  if (idx >= 0) {
+                    myEntry = entries[idx];
+                    final lead = entries.first.voteCount;
+                    myPos = _MyPosition(
+                      rank: idx + 1,
+                      total: entries.length,
+                      gapToLead: (lead - myEntry.voteCount).clamp(0, 1 << 30),
+                    );
+                  }
+                }
+
                 // Arte compartilhada (link) vai para o topo.
                 if (widget.highlightEntryId != null) {
                   final hi = entries
@@ -285,8 +303,11 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
 
                 final uid = FirebaseAuth.instance.currentUser?.uid;
 
-                // entries + challenge-level comment section at bottom
-                final itemCount = entries.isEmpty ? 1 : entries.length + 1;
+                // entries + comentários no fim + (cabeçalho "sua posição")
+                final hasHeader = myPos != null && !isFinished;
+                final itemCount = entries.isEmpty
+                    ? 1
+                    : entries.length + 1 + (hasHeader ? 1 : 0);
 
                 if (entries.isEmpty) {
                   return ListView(
@@ -306,13 +327,21 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
                   padding: const EdgeInsets.all(12),
                   itemCount: itemCount,
                   itemBuilder: (context, index) {
-                    if (index == entries.length) {
+                    if (hasHeader && index == 0) {
+                      final me = myEntry;
+                      return _MyPositionCard(
+                        pos: myPos!,
+                        onShare: me == null ? null : () => _shareEntry(me),
+                      );
+                    }
+                    final i = hasHeader ? index - 1 : index;
+                    if (i == entries.length) {
                       return _ChallengeComments(
                         challengeId: widget.challenge.id,
                         isAdmin: _isAdmin,
                       );
                     }
-                    final entry = entries[index];
+                    final entry = entries[i];
                     final isWinner = isFinished &&
                         widget.challenge.winnerIds.contains(entry.userId);
                     return _EntryCard(
@@ -729,5 +758,97 @@ class _EntryCard extends StatelessWidget {
           ),
         );
     }
+  }
+}
+
+// ─── "Sua posição" (empoderamento + CTA de divulgação) ───────────────────────
+
+class _MyPosition {
+  final int rank;
+  final int total;
+  final int gapToLead;
+  const _MyPosition({
+    required this.rank,
+    required this.total,
+    required this.gapToLead,
+  });
+
+  bool get isLeading => gapToLead == 0;
+}
+
+class _MyPositionCard extends StatelessWidget {
+  final _MyPosition pos;
+  final VoidCallback? onShare;
+
+  const _MyPositionCard({required this.pos, this.onShare});
+
+  @override
+  Widget build(BuildContext context) {
+    final leading = pos.isLeading;
+    final accent = leading ? const Color(0xFF00A86B) : const Color(0xFF003b8a);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: leading
+              ? const [Color(0xFF00B09B), Color(0xFF0cc0df)]
+              : const [Color(0xFF003b8a), Color(0xFF5B7CFA)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Icon(leading ? Icons.emoji_events : Icons.trending_up,
+              color: Colors.white, size: 26),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  leading
+                      ? 'Você está liderando! 🏆'
+                      : 'Você está em ${pos.rank}º de ${pos.total}',
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  leading
+                      ? 'Continue divulgando pra manter a ponta.'
+                      : 'Faltam ${pos.gapToLead} voto'
+                          '${pos.gapToLead == 1 ? '' : 's'} pra liderar. '
+                          'Chame a galera!',
+                  style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.92),
+                      fontSize: 12.5),
+                ),
+              ],
+            ),
+          ),
+          if (onShare != null) ...[
+            const SizedBox(width: 8),
+            ElevatedButton.icon(
+              onPressed: onShare,
+              icon: const Icon(Icons.share, size: 16),
+              label: const Text('Divulgar'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: accent,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                textStyle: const TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 }

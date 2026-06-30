@@ -8,6 +8,7 @@ import '../../challenge/domain/entities/challenge_status.dart';
 import '../../challenge/infrastructure/add_amount_repository.dart';
 import '../../challenge/infrastructure/get_challenges.dart';
 import '../../challenge/presentation/create_challenge_page.dart';
+import '../../challenge/presentation/platform_pulse.dart';
 import '../../entry/presentation/challenge_entries_page.dart';
 import '../../entry/presentation/entry_preview_strip.dart';
 import '../../entry/presentation/submit_entry_page.dart';
@@ -86,11 +87,18 @@ class _HomePageState extends State<HomePage> {
             ),
         ],
       ),
-      body: _FeedTab(
-        key: ValueKey(_reloadTick),
-        currentUserId: _currentUserId,
-        isAdmin: _isAdmin,
-        onNavigated: _reload,
+      body: Column(
+        children: [
+          const PlatformPulse(),
+          Expanded(
+            child: _FeedTab(
+              key: ValueKey(_reloadTick),
+              currentUserId: _currentUserId,
+              isAdmin: _isAdmin,
+              onNavigated: _reload,
+            ),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
