@@ -8,6 +8,7 @@ import '../../../core/widgets/web_frame.dart';
 import '../../admin/presentation/admin_edit_virtual_user_page.dart';
 import '../../auth/presentation/auth_guard.dart';
 import '../infrastructure/follow_repository.dart';
+import 'achievements.dart';
 import 'followers_page.dart';
 
 class UserProfilePage extends StatefulWidget {
@@ -227,6 +228,8 @@ class _UserProfilePageState extends State<UserProfilePage> {
                         label: 'Ganhos', value: Fmt.brlCompact(totalEarned)),
                   ],
                 ),
+                const SizedBox(height: 24),
+                AchievementsSection(userId: widget.userId),
               ],
               ),
             ),

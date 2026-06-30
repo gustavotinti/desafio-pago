@@ -10,6 +10,7 @@ import '../../withdrawals/infrastructure/withdraw_repository.dart';
 import '../../finance/infrastructure/get_transactions.dart';
 import '../../users/presentation/edit_profile_page.dart';
 import '../../users/presentation/followers_page.dart';
+import '../../users/presentation/achievements.dart';
 import '../../users/presentation/my_activity_page.dart';
 import '../../payments/presentation/topup_page.dart';
 import '../../payments/infrastructure/payment_repository.dart';
@@ -307,6 +308,9 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
             ),
           ),
+          const SizedBox(height: 16),
+          if (authUser != null)
+            AchievementsSection(userId: authUser.uid, isOwn: true),
           const Divider(height: 32),
 
           // — Saldo (styled card) ——————————————————————————————————————
