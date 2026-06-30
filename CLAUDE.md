@@ -62,7 +62,7 @@ outros participam com conteúdo (texto/imagem/vídeo), e o mais votado vence o p
 - Retry automático em falha
 - Status: pending | posted | failed
 
-## Estado atual (v2.4.0 — junho/2026)
+## Estado atual (v2.5.0 — junho/2026)
 No ar: https://desafiopago.com.br (e https://desafiopago.web.app)
 Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
 
@@ -106,6 +106,16 @@ Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
 - **"Minha atividade"** no perfil: meus desafios criados + minhas participações
 - Compartilhar participação: deep link abre direto na arte (destacada,
   pronta pra votar) + prévia rica (Open Graph) no WhatsApp
+
+**Engajamento (plataforma viva + sensação de poder)**
+- **Pulso da plataforma** no topo do feed: selo "AO VIVO" + desafios ativos,
+  prêmios em jogo (agregação count/sum) e participantes
+- **"Sua posição"** na arte: rank do usuário + votos pra liderar + CTA Divulgar
+- **Votos ao vivo**: página da arte em `StreamBuilder` (votos/posição em tempo real)
+- **Notificações in-app** persistidas (`users/{uid}/notifications`, sininho com
+  badge) — voto, vitória, novo seguidor, novo comentário; funciona sem push
+- **Ranking pessoal** em destaque ("Você está em #N") e **conquistas/badges**
+  no perfil (calculadas dos dados reais)
 
 **Admin / super admin**
 - Saques (aprovar/rejeitar/marcar pago), usuários/moderadores, verificação,
@@ -158,7 +168,7 @@ Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
 - Ampliar testes (hoje: lógica de dinheiro + utils; falta integração c/ emulador)
 
 ## Checkpoints (git tags)
-v2.0.1 · v2.1.0 · v2.2.0 · v2.2.1 · v2.2.2 · v2.3.0 · v2.4.0 — restaurar: `git checkout vX.Y.Z`
+v2.0.1 · v2.1.0 · v2.2.0 · v2.2.1 · v2.2.2 · v2.3.0 · v2.4.0 · v2.5.0 — restaurar: `git checkout vX.Y.Z`
 
 ## Comandos úteis (em apps/mobile)
 - Build web: `flutter build web --release`
