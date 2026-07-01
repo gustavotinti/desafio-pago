@@ -91,7 +91,7 @@ class _HomePageState extends State<HomePage> {
       ),
       body: Column(
         children: [
-          const PlatformPulse(),
+          PlatformPulse(isAdmin: _isAdmin),
           Expanded(
             child: _FeedTab(
               key: ValueKey(_reloadTick),

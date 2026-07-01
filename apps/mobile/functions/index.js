@@ -260,9 +260,9 @@ exports.requestWithdraw = functions.https.onCall(async (data, context) => {
   const userId = context.auth.uid;
   const {amount} = data;
 
-  // Mínimo de saque configurável via env (default R$100). Para reduzir/zerar,
-  // defina MIN_WITHDRAWAL em functions/.env (ex.: MIN_WITHDRAWAL=1).
-  const minWithdrawal = Number(process.env.MIN_WITHDRAWAL || 100);
+  // Mínimo de saque configurável via env. TEMPORÁRIO PARA TESTE: default R$1
+  // (reverter para 100 após validar o ciclo de saque).
+  const minWithdrawal = Number(process.env.MIN_WITHDRAWAL || 1);
   if (!amount || amount < minWithdrawal) {
     throw new functions.https.HttpsError(
         "invalid-argument", `Valor mínimo para saque é R$${minWithdrawal}`);
@@ -1590,6 +1590,7 @@ exports.adminSubmitDemoEntry = functions.https.onCall(async (data, context) => {
   }
 
   const {challengeId, contentType, contentText, contentUrl, demoName} = data;
+  const asUserId = data.userId; // usuário virtual escolhido (opcional)
 
   if (!challengeId || !contentType) {
     throw new functions.https.HttpsError(
@@ -1615,17 +1616,33 @@ exports.adminSubmitDemoEntry = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError("failed-precondition", "Desafio não está ativo");
   }
 
-  // Each demo entry gets a unique synthetic userId so they never conflict
-  const demoUserId = `demo_${Date.now()}`;
+  // Se um usuário virtual for escolhido, a participação é atribuída a ele
+  // (nome/foto reais). Senão, cria um participante demo sintético.
+  let entryUserId;
+  let extra = {};
+  if (asUserId) {
+    const u = await db.collection("users").doc(asUserId).get();
+    if (!u.exists || u.data().isVirtual !== true) {
+      throw new functions.https.HttpsError(
+          "invalid-argument", "Escolha um usuário virtual válido.");
+    }
+    entryUserId = asUserId;
+  } else {
+    entryUserId = `demo_${Date.now()}`;
+    extra = {
+      demoName: (demoName || "").trim() || "Participante Demo",
+      isDemo: true,
+    };
+  }
+
   const entryRef = db.collection("entries").doc();
   const challengeRef = db.collection("challenges").doc(challengeId);
 
   await db.runTransaction(async (tx) => {
     tx.set(entryRef, {
       challengeId,
-      userId: demoUserId,
-      demoName: (demoName || "").trim() || "Participante Demo",
-      isDemo: true,
+      userId: entryUserId,
+      ...extra,
       contentType,
       contentText: contentText || null,
       contentUrl: contentUrl || null,
@@ -1641,7 +1658,7 @@ exports.adminSubmitDemoEntry = functions.https.onCall(async (data, context) => {
     entryId: entryRef.id,
     challengeId,
     adminId: context.auth.uid,
-    demoUserId,
+    asUserId: entryUserId,
     createdAt: new Date().toISOString(),
   });
 

@@ -8,6 +8,7 @@ import '../application/submit_entry.dart';
 import '../domain/entities/content_type.dart';
 import '../infrastructure/entry_repository.dart';
 import '../../../core/widgets/image_crop_page.dart';
+import 'auto_video.dart';
 
 // Formatos aceitos: 9:16, 4:5, 1:1 — garantidos pelo editor de recorte.
 const _maxTextLength = 5000;
@@ -218,14 +219,17 @@ class _SubmitEntryPageState extends State<SubmitEntryPage> {
                   '  9:16 (1080 × 1920)  ·  4:5 (1080 × 1350)',
                   '  1:1 (1080 × 1080)',
                   'Tamanho máximo: 10 MB',
-                  'Se necessário, recorte a imagem no seu dispositivo antes de selecionar.',
+                  'Você recorta a imagem aqui no app — é só escolher.',
                 ],
               ),
               const SizedBox(height: 12),
               ElevatedButton.icon(
                 onPressed: _pickImage,
-                icon: const Icon(Icons.photo_library),
-                label: const Text('Escolher imagem'),
+                icon: Icon(_selectedFile == null
+                    ? Icons.photo_library
+                    : Icons.crop_rotate),
+                label: Text(
+                    _selectedFile == null ? 'Escolher imagem' : 'Trocar imagem'),
               ),
               _buildImagePreview(),
               if (_selectedFile != null) ...[
@@ -249,10 +253,28 @@ class _SubmitEntryPageState extends State<SubmitEntryPage> {
               const SizedBox(height: 12),
               ElevatedButton.icon(
                 onPressed: _pickVideo,
-                icon: const Icon(Icons.video_library),
-                label: const Text('Escolher vídeo'),
+                icon: Icon(_selectedFile == null
+                    ? Icons.video_library
+                    : Icons.change_circle_outlined),
+                label: Text(
+                    _selectedFile == null ? 'Escolher vídeo' : 'Trocar vídeo'),
               ),
               if (_selectedFile != null) ...[
+                const SizedBox(height: 12),
+                // Prévia do vídeo (na web toca o blob; toque para reproduzir).
+                if (kIsWeb)
+                  Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 280),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: AspectRatio(
+                          aspectRatio: 4 / 5,
+                          child: AutoVideo(url: _selectedFile!.path),
+                        ),
+                      ),
+                    ),
+                  ),
                 const SizedBox(height: 8),
                 _SelectedFileTile(name: _selectedFile!.name),
               ],

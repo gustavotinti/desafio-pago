@@ -65,6 +65,12 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // ── CONFIG (ex.: overrides do "ao vivo") ──────────────────────────────────
+    match /config/{doc} {
+      allow read: if true;          // público lê (feed mostra o pulso)
+      allow write: if isAdmin();    // só admin edita
+    }
+
     // ── CHALLENGES ───────────────────────────────────────────────────────────
     match /challenges/{challengeId} {
       // Conteúdo público: qualquer visitante pode ver os desafios.

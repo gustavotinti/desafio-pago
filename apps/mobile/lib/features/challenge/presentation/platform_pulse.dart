@@ -8,7 +8,8 @@ import '../../../core/widgets/web_frame.dart';
 /// participantes, com um selo "ao vivo". Passa a sensação de plataforma ativa
 /// e movimentada. Lê agregações leves (count/sum) do Firestore.
 class PlatformPulse extends StatefulWidget {
-  const PlatformPulse({super.key});
+  final bool isAdmin;
+  const PlatformPulse({super.key, this.isAdmin = false});
 
   @override
   State<PlatformPulse> createState() => _PlatformPulseState();
@@ -32,16 +33,103 @@ class _PlatformPulseState extends State<PlatformPulse> {
           .collection('challenges')
           .where('status', isEqualTo: 'active');
       final agg = await active.aggregate(count(), sum('amount')).get();
-      final people =
-          await db.collection('publicProfiles').count().get();
+      final people = await db.collection('publicProfiles').count().get();
+      var a = agg.count ?? 0;
+      var p = agg.getSum('amount') ?? 0;
+      var part = people.count ?? 0;
+      // Overrides do admin (config/platformPulse) — por campo.
+      final c = (await db.collection('config').doc('platformPulse').get())
+          .data();
+      if (c != null) {
+        if (c['activeChallenges'] != null) {
+          a = (c['activeChallenges'] as num).toInt();
+        }
+        if (c['prizePool'] != null) p = (c['prizePool'] as num).toDouble();
+        if (c['participants'] != null) {
+          part = (c['participants'] as num).toInt();
+        }
+      }
       if (!mounted) return;
       setState(() {
-        _activeChallenges = agg.count;
-        _prizePool = agg.getSum('amount') ?? 0;
-        _participants = people.count;
+        _activeChallenges = a;
+        _prizePool = p;
+        _participants = part;
       });
     } catch (_) {
       // silencioso — a faixa só não mostra números se a leitura falhar
+    }
+  }
+
+  Future<void> _editDialog() async {
+    final aCtrl = TextEditingController(text: '${_activeChallenges ?? ''}');
+    final pCtrl = TextEditingController(
+        text: _prizePool == null ? '' : _prizePool!.toStringAsFixed(2));
+    final partCtrl = TextEditingController(text: '${_participants ?? ''}');
+    final action = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Editar "Ao vivo"'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: aCtrl,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Desafios ativos'),
+            ),
+            TextField(
+              controller: pCtrl,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration:
+                  const InputDecoration(labelText: 'Prêmios em jogo (R\$)'),
+            ),
+            TextField(
+              controller: partCtrl,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Participantes'),
+            ),
+            const SizedBox(height: 6),
+            const Text('Deixe um campo vazio para voltar ao automático.',
+                style: TextStyle(fontSize: 11, color: Colors.black45)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'auto'),
+            child: const Text('Tudo automático'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, 'cancel'),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, 'save'),
+            child: const Text('Salvar'),
+          ),
+        ],
+      ),
+    );
+    if (action == null || action == 'cancel') return;
+    final ref =
+        FirebaseFirestore.instance.collection('config').doc('platformPulse');
+    try {
+      if (action == 'auto') {
+        await ref.delete();
+      } else {
+        await ref.set({
+          'activeChallenges': int.tryParse(aCtrl.text.trim()),
+          'prizePool': double.tryParse(pCtrl.text.trim().replaceAll(',', '.')),
+          'participants': int.tryParse(partCtrl.text.trim()),
+          'updatedAt': DateTime.now().toIso8601String(),
+        });
+      }
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
+      }
     }
   }
 
@@ -70,7 +158,21 @@ class _PlatformPulseState extends State<PlatformPulse> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const _LiveTag(),
+            Row(
+              children: [
+                const _LiveTag(),
+                const Spacer(),
+                if (widget.isAdmin)
+                  InkWell(
+                    onTap: _editDialog,
+                    child: const Padding(
+                      padding: EdgeInsets.all(2),
+                      child:
+                          Icon(Icons.edit, size: 15, color: Colors.white70),
+                    ),
+                  ),
+              ],
+            ),
             const SizedBox(height: 10),
             Row(
               children: [
