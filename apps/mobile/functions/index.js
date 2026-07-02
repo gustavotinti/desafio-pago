@@ -697,14 +697,10 @@ exports.mercadoPagoWebhook = functions.https.onRequest(async (req, res) => {
         .createHmac("sha256", webhookSecret)
         .update(manifest)
         .digest("hex");
-    // Modo observação: registra se a assinatura confere, mas NÃO rejeita.
-    // O crédito só ocorre após re-consultar o status real no MP (abaixo),
-    // então isso é seguro para validar o formato sem bloquear depósitos.
+    // Modo estrito: rejeita quem não tiver assinatura válida do Mercado Pago.
     if (expected !== parts.v1) {
-      console.warn("mercadoPagoWebhook: assinatura NÃO confere " +
-          "(seguindo via re-consulta MP)");
-    } else {
-      console.log("mercadoPagoWebhook: assinatura OK");
+      console.warn("mercadoPagoWebhook: assinatura inválida");
+      return res.sendStatus(401);
     }
   }
 
