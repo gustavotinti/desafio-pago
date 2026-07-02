@@ -187,25 +187,22 @@ class _PlatformPulseState extends State<PlatformPulse> {
               children: [
                 _Stat(
                   icon: Icons.local_fire_department,
-                  value: _activeChallenges == null
-                      ? '—'
-                      : Fmt.number(_activeChallenges!),
+                  value: _activeChallenges?.toDouble(),
+                  format: (v) => Fmt.number(v.round()),
                   label: 'desafios ativos',
                 ),
                 _divider(),
                 _Stat(
                   icon: Icons.emoji_events,
-                  value: _prizePool == null
-                      ? '—'
-                      : Fmt.brlCompact(_prizePool!),
+                  value: _prizePool,
+                  format: (v) => Fmt.brlCompact(v),
                   label: 'em prêmios',
                 ),
                 _divider(),
                 _Stat(
                   icon: Icons.groups,
-                  value: _participants == null
-                      ? '—'
-                      : Fmt.number(_participants!),
+                  value: _participants?.toDouble(),
+                  format: (v) => Fmt.number(v.round()),
                   label: 'participantes',
                 ),
               ],
@@ -282,13 +279,27 @@ class _LiveTagState extends State<_LiveTag>
 
 class _Stat extends StatelessWidget {
   final IconData icon;
-  final String value;
+  // Valor numérico (null = ainda carregando). Anima contando de 0 até o valor.
+  final double? value;
+  final String Function(double) format;
   final String label;
 
-  const _Stat({required this.icon, required this.value, required this.label});
+  const _Stat({
+    required this.icon,
+    required this.value,
+    required this.format,
+    required this.label,
+  });
+
+  static const _numStyle = TextStyle(
+    color: Colors.white,
+    fontSize: 17,
+    fontWeight: FontWeight.bold,
+  );
 
   @override
   Widget build(BuildContext context) {
+    final v = value;
     return Expanded(
       child: Column(
         children: [
@@ -296,14 +307,15 @@ class _Stat extends StatelessWidget {
           const SizedBox(height: 4),
           FittedBox(
             fit: BoxFit.scaleDown,
-            child: Text(
-              value,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 17,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            child: v == null
+                ? const Text('—', style: _numStyle)
+                : TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0, end: v),
+                    duration: const Duration(milliseconds: 900),
+                    curve: Curves.easeOut,
+                    builder: (context, animated, _) =>
+                        Text(format(animated), style: _numStyle),
+                  ),
           ),
           Text(
             label,

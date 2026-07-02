@@ -2577,6 +2577,41 @@ exports.adminUpdateChallenge =
       return {success: true, updated: Object.keys(updates).length};
     });
 
+// ─── SUPER ADMIN: FIXAR DESAFIO COMO "NOVO" (topo do feed) ────────────────────
+// Recurso MANUAL e EXCLUSIVO do super admin. Nunca é acionado sozinho: não há
+// trigger nem cron que fixe/desfixe — o desafio só sobe pro topo quando o super
+// admin marca, e só sai quando ele desmarca. Grava `pinned` + `pinnedAt`.
+exports.adminSetChallengePinned =
+    functions.https.onCall(async (data, context) => {
+      if (!context.auth) {
+        throw new functions.https.HttpsError(
+            "unauthenticated", "Não autenticado");
+      }
+      const SUPER_ADMIN_EMAIL = "gustavo.a.tinti3@gmail.com";
+      if (context.auth.token.email !== SUPER_ADMIN_EMAIL) {
+        throw new functions.https.HttpsError(
+            "permission-denied", "Apenas o super admin.");
+      }
+      const db = admin.firestore();
+      const challengeId = data.challengeId;
+      if (!challengeId) {
+        throw new functions.https.HttpsError(
+            "invalid-argument", "challengeId obrigatório");
+      }
+      const pinned = data.pinned === true;
+      const ref = db.collection("challenges").doc(challengeId);
+      const doc = await ref.get();
+      if (!doc.exists) {
+        throw new functions.https.HttpsError(
+            "not-found", "Desafio não encontrado");
+      }
+      await ref.update({
+        pinned: pinned,
+        pinnedAt: pinned ? new Date().toISOString() : null,
+      });
+      return {success: true, pinned: pinned};
+    });
+
 // ─── REGISTRAR INSTALAÇÃO DO APP ──────────────────────────────────────────────
 
 exports.registerAppInstall =

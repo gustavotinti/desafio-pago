@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import '../../../core/widgets/web_frame.dart';
 import '../infrastructure/admin_repository.dart';
 import 'admin_add_entry_page.dart';
 
 final _functions = FirebaseFunctions.instanceFor(region: 'us-central1');
+
+// "Fixar como novo" é exclusivo do super admin (o backend também valida).
+const _superAdminEmail = 'gustavo.a.tinti3@gmail.com';
 
 class AdminChallengesPage extends StatelessWidget {
   const AdminChallengesPage({super.key});
@@ -207,6 +211,28 @@ class _AdminChallengeCard extends StatelessWidget {
 
   String get _status => data['status'] ?? 'active';
   bool get _isActive => _status == 'active';
+  bool get _pinned => data['pinned'] == true;
+
+  Future<void> _togglePinned(BuildContext context) async {
+    final next = !_pinned;
+    try {
+      await AdminRepository().setChallengePinned(id, next);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(next
+                ? 'Fixado como novo no topo ✅'
+                : 'Removido do topo'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    }
+  }
 
   Future<void> _extendDeadline(BuildContext context) async {
     final picked = await showDatePicker(
@@ -288,6 +314,8 @@ class _AdminChallengeCard extends StatelessWidget {
     final entryCount = data['entryCount'] ?? 0;
     final expiresAt = data['expiresAt'] as String?;
     final winnerIds = List<String>.from(data['winnerIds'] ?? []);
+    final isSuper =
+        FirebaseAuth.instance.currentUser?.email == _superAdminEmail;
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 6),
@@ -303,6 +331,24 @@ class _AdminChallengeCard extends StatelessWidget {
                       style: const TextStyle(
                           fontWeight: FontWeight.bold, fontSize: 14)),
                 ),
+                if (_pinned) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF3D6),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Text(
+                      'NOVO',
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF9A6B00)),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                ],
                 Container(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 8, vertical: 2),
@@ -364,6 +410,23 @@ class _AdminChallengeCard extends StatelessWidget {
                           horizontal: 10, vertical: 6),
                       textStyle: const TextStyle(fontSize: 12)),
                 ),
+                if (_isActive && isSuper)
+                  OutlinedButton.icon(
+                    onPressed: () => _togglePinned(context),
+                    icon: Icon(
+                        _pinned
+                            ? Icons.push_pin
+                            : Icons.push_pin_outlined,
+                        size: 16,
+                        color: const Color(0xFFB8860B)),
+                    label: Text(_pinned ? 'Desafixar' : 'Fixar (novo)',
+                        style: const TextStyle(color: Color(0xFFB8860B))),
+                    style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 6),
+                        textStyle: const TextStyle(fontSize: 12),
+                        side: const BorderSide(color: Color(0xFFE0B84D))),
+                  ),
                 if (_isActive) ...[
                   OutlinedButton.icon(
                     onPressed: () => _extendDeadline(context),

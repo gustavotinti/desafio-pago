@@ -15,9 +15,13 @@ import '../../entry/presentation/entry_preview_strip.dart';
 import '../../entry/presentation/submit_entry_page.dart';
 import '../../admin/presentation/admin_challenges_page.dart';
 import '../../admin/presentation/admin_page.dart';
+import '../../admin/infrastructure/admin_repository.dart';
 import '../../../core/utils/format.dart';
 import '../../../core/widgets/web_frame.dart';
 import 'auth_guard.dart';
+
+// Recurso "fixar como novo" é exclusivo do super admin (o backend também valida).
+const _superAdminEmail = 'gustavo.a.tinti3@gmail.com';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -31,6 +35,8 @@ class _HomePageState extends State<HomePage> {
 
   final String? _currentUserId =
       FirebaseAuth.instance.currentUser?.uid;
+  final bool _isSuperAdmin =
+      FirebaseAuth.instance.currentUser?.email == _superAdminEmail;
   bool _isAdmin    = false;
   bool _logoSettled = false;
 
@@ -97,6 +103,7 @@ class _HomePageState extends State<HomePage> {
               key: ValueKey(_reloadTick),
               currentUserId: _currentUserId,
               isAdmin: _isAdmin,
+              isSuperAdmin: _isSuperAdmin,
               onNavigated: _reload,
             ),
           ),
@@ -195,12 +202,14 @@ Future<void> _showAddAmountDialog(
 class _FeedTab extends StatefulWidget {
   final String? currentUserId;
   final bool isAdmin;
+  final bool isSuperAdmin;
   final VoidCallback onNavigated;
 
   const _FeedTab({
     super.key,
     required this.currentUserId,
     required this.isAdmin,
+    required this.isSuperAdmin,
     required this.onNavigated,
   });
 
@@ -212,6 +221,8 @@ class _FeedTabState extends State<_FeedTab> {
   static const _pageSize = 12;
   final _scroll = ScrollController();
   final List<Challenge> _items = [];
+  // Ids fixados como "novo" — filtrados das páginas normais pra não duplicar.
+  Set<String> _pinnedIds = {};
   DocumentSnapshot<Map<String, dynamic>>? _cursor;
   bool _initialLoading = true;
   bool _loadingMore = false;
@@ -245,13 +256,21 @@ class _FeedTabState extends State<_FeedTab> {
       _error = null;
     });
     try {
-      final (items, cursor) = await GetChallenges()
+      // Fixados ("novo") + 1ª página normal em paralelo.
+      final pinnedFuture = GetChallenges().pinnedActive();
+      final pageFuture = GetChallenges()
           .page(status: ChallengeStatus.active, limit: _pageSize);
+      final pinned = await pinnedFuture;
+      final (items, cursor) = await pageFuture;
       if (!mounted) return;
+      _pinnedIds = pinned.map((c) => c.id).toSet();
+      final rest =
+          items.where((c) => !_pinnedIds.contains(c.id)).toList();
       setState(() {
         _items
           ..clear()
-          ..addAll(items);
+          ..addAll(pinned) // fixados sempre no topo
+          ..addAll(rest);
         _cursor = cursor;
         _hasMore = items.length == _pageSize;
         _initialLoading = false;
@@ -275,8 +294,10 @@ class _FeedTabState extends State<_FeedTab> {
         limit: _pageSize,
       );
       if (!mounted) return;
+      final rest =
+          items.where((c) => !_pinnedIds.contains(c.id)).toList();
       setState(() {
-        _items.addAll(items);
+        _items.addAll(rest);
         _cursor = cursor ?? _cursor;
         _hasMore = items.length == _pageSize;
         _loadingMore = false;
@@ -323,22 +344,29 @@ class _FeedTabState extends State<_FeedTab> {
         controller: _scroll,
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(12, 4, 12, 80),
-        itemCount: _items.length + (_hasMore ? 1 : 0),
+        // +1 slot final: spinner de paginação (se há mais) ou o rodapé de
+        // "alta demanda" quando o feed chega ao fim.
+        itemCount: _items.length + 1,
         itemBuilder: (context, i) {
           if (i >= _items.length) {
-            return const Padding(
-              padding: EdgeInsets.symmetric(vertical: 20),
-              child: Center(child: CircularProgressIndicator()),
-            );
+            return _hasMore
+                ? const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                : const _HighDemandFooter();
           }
           final c = _items[i];
-          return _ChallengeCard(
-            challenge: c,
-            currentUserId: widget.currentUserId,
-            isAdmin: widget.isAdmin,
-            onNavigated: widget.onNavigated,
-            onAddAmount: () =>
-                _showAddAmountDialog(context, c, widget.onNavigated),
+          return _FeedEntrance(
+            child: _ChallengeCard(
+              challenge: c,
+              currentUserId: widget.currentUserId,
+              isAdmin: widget.isAdmin,
+              isSuperAdmin: widget.isSuperAdmin,
+              onNavigated: widget.onNavigated,
+              onAddAmount: () =>
+                  _showAddAmountDialog(context, c, widget.onNavigated),
+            ),
           );
         },
       ),
@@ -352,6 +380,7 @@ class _ChallengeCard extends StatelessWidget {
   final Challenge challenge;
   final String? currentUserId;
   final bool isAdmin;
+  final bool isSuperAdmin;
   final VoidCallback onNavigated;
   final VoidCallback onAddAmount;
 
@@ -359,9 +388,30 @@ class _ChallengeCard extends StatelessWidget {
     required this.challenge,
     required this.currentUserId,
     required this.isAdmin,
+    required this.isSuperAdmin,
     required this.onNavigated,
     required this.onAddAmount,
   });
+
+  Future<void> _togglePinned(BuildContext context) async {
+    final next = !challenge.pinned;
+    try {
+      await AdminRepository().setChallengePinned(challenge.id, next);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(next
+              ? 'Fixado como novo no topo ✅'
+              : 'Removido do topo'),
+        ),
+      );
+      onNavigated();
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.toString())));
+    }
+  }
 
   bool get _isFinished => challenge.status == ChallengeStatus.finished;
   bool get _isCreator  => challenge.createdBy == currentUserId;
@@ -386,16 +436,24 @@ class _ChallengeCard extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 6),
       clipBehavior: Clip.antiAlias,
+      shape: challenge.pinned
+          ? RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: const BorderSide(color: Color(0xFFF59E0B), width: 1.4),
+            )
+          : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // ── Gradient accent strip (active only) ──────────────────
           if (!_isFinished)
             Container(
-              height: 3,
-              decoration: const BoxDecoration(
+              height: challenge.pinned ? 4 : 3,
+              decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [Color(0xFF003b8a), Color(0xFF0cc0df)],
+                  colors: challenge.pinned
+                      ? const [Color(0xFFF59E0B), Color(0xFFFFD54F)]
+                      : const [Color(0xFF003b8a), Color(0xFF0cc0df)],
                 ),
               ),
             ),
@@ -405,6 +463,10 @@ class _ChallengeCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (challenge.pinned) ...[
+                  const _NewBadge(),
+                  const SizedBox(height: 8),
+                ],
                 // ── Title + prize badge ────────────────────────────
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -674,6 +736,35 @@ class _ChallengeCard extends StatelessWidget {
                           onNavigated();
                         },
                       ),
+                    // ── Fixar como "novo" (super admin) ───────────────
+                    if (isSuperAdmin && !_isFinished)
+                      IconButton(
+                        tooltip: challenge.pinned
+                            ? 'Remover do topo'
+                            : 'Fixar como novo (topo)',
+                        icon: Icon(
+                          challenge.pinned
+                              ? Icons.push_pin
+                              : Icons.push_pin_outlined,
+                          size: 20,
+                          color: challenge.pinned
+                              ? const Color(0xFFF59E0B)
+                              : null,
+                        ),
+                        style: IconButton.styleFrom(
+                          padding: const EdgeInsets.all(8),
+                          minimumSize: const Size(36, 36),
+                          side: BorderSide(
+                              color: challenge.pinned
+                                  ? const Color(0xFFF59E0B)
+                                  : Theme.of(context)
+                                      .colorScheme
+                                      .outlineVariant),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8)),
+                        ),
+                        onPressed: () => _togglePinned(context),
+                      ),
                   ],
                 ),
               ],
@@ -752,6 +843,216 @@ class _TimePill extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ─── "NOVO" badge (pinned pelo super admin) ──────────────────────────────────
+// Selo pulsante dourado que sinaliza um desafio recém-fixado no topo.
+
+class _NewBadge extends StatefulWidget {
+  const _NewBadge();
+
+  @override
+  State<_NewBadge> createState() => _NewBadgeState();
+}
+
+class _NewBadgeState extends State<_NewBadge>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: Tween(begin: 0.65, end: 1.0).animate(_c),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFFF59E0B), Color(0xFFFFD54F)],
+          ),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFFF59E0B).withValues(alpha: 0.35),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.auto_awesome, size: 13, color: Colors.white),
+            SizedBox(width: 5),
+            Text(
+              'NOVO',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.0,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Entrada animada dos cards do feed ───────────────────────────────────────
+// Fade + leve deslize pra cima quando o card aparece — dá sensação de vida.
+
+class _FeedEntrance extends StatefulWidget {
+  final Widget child;
+  const _FeedEntrance({required this.child});
+
+  @override
+  State<_FeedEntrance> createState() => _FeedEntranceState();
+}
+
+class _FeedEntranceState extends State<_FeedEntrance>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c;
+  late final Animation<double> _fade;
+  late final Animation<Offset> _slide;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 320),
+    );
+    _fade = CurvedAnimation(parent: _c, curve: Curves.easeOut);
+    _slide = Tween(
+      begin: const Offset(0, 0.06),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _c, curve: Curves.easeOut));
+    _c.forward();
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _fade,
+      child: SlideTransition(position: _slide, child: widget.child),
+    );
+  }
+}
+
+// ─── Rodapé "alta demanda" (fim do feed) ─────────────────────────────────────
+// Loader sutil no fim da rolagem: passa a sensação de plataforma movimentada,
+// como se houvesse muito mais conteúdo chegando. Responsivo (texto centraliza
+// e quebra em telas estreitas).
+
+class _HighDemandFooter extends StatelessWidget {
+  const _HighDemandFooter();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 22, 16, 32),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(
+                height: 30,
+                width: 30,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.4,
+                  color: Color(0xFF0cc0df),
+                ),
+              ),
+              const SizedBox(height: 14),
+              const _DotsText(text: 'Carregando mais desafios'),
+              const SizedBox(height: 6),
+              Text(
+                'Estamos com alta demanda de usuários agora — '
+                'o servidor pode levar um instante para carregar mais.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12,
+                  height: 1.4,
+                  color: Colors.black.withValues(alpha: 0.45),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Texto com reticências animadas ("Carregando mais desafios" + . .. ...).
+class _DotsText extends StatefulWidget {
+  final String text;
+  const _DotsText({required this.text});
+
+  @override
+  State<_DotsText> createState() => _DotsTextState();
+}
+
+class _DotsTextState extends State<_DotsText>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (context, _) {
+        final n = (_c.value * 3).floor() % 4; // 0..3 pontos
+        return Text(
+          '${widget.text}${'.' * n}',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: Colors.black.withValues(alpha: 0.6),
+          ),
+        );
+      },
     );
   }
 }

@@ -58,6 +58,27 @@ class GetChallenges {
     return _map(doc.id, doc.data()!);
   }
 
+  /// Desafios ativos fixados como "novo" pelo super admin (topo do feed).
+  /// Consulta por campo único (`pinned`) — usa índice automático; o filtro de
+  /// status é feito no cliente (conjunto pequeno). Ordena por quem foi fixado
+  /// mais recentemente primeiro.
+  Future<List<Challenge>> pinnedActive() async {
+    final snap = await _firestore
+        .collection('challenges')
+        .where('pinned', isEqualTo: true)
+        .get();
+    final list = snap.docs
+        .map((d) => _map(d.id, d.data()))
+        .where((c) => c.status == ChallengeStatus.active)
+        .toList();
+    list.sort((a, b) {
+      final at = a.pinnedAt ?? a.createdAt;
+      final bt = b.pinnedAt ?? b.createdAt;
+      return bt.compareTo(at);
+    });
+    return list;
+  }
+
   /// Desafios criados por um usuário (mais recentes primeiro). Inclui encerrados.
   Future<List<Challenge>> byCreator(String uid) async {
     final snap = await _firestore
@@ -88,6 +109,10 @@ class GetChallenges {
       topEntries: ((data['topEntries'] as List?) ?? const [])
           .map((e) => Map<String, dynamic>.from(e as Map))
           .toList(),
+      pinned: data['pinned'] == true,
+      pinnedAt: data['pinnedAt'] != null
+          ? DateTime.tryParse(data['pinnedAt'].toString())
+          : null,
     );
   }
 }

@@ -62,7 +62,7 @@ outros participam com conteúdo (texto/imagem/vídeo), e o mais votado vence o p
 - Retry automático em falha
 - Status: pending | posted | failed
 
-## Estado atual (v2.5.0 — junho/2026)
+## Estado atual (v2.6.0 — julho/2026)
 No ar: https://desafiopago.com.br (e https://desafiopago.web.app)
 Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
 
@@ -116,8 +116,18 @@ Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
   badge) — voto, vitória, novo seguidor, novo comentário; funciona sem push
 - **Ranking pessoal** em destaque ("Você está em #N") e **conquistas/badges**
   no perfil (calculadas dos dados reais)
+- **Números do pulso animam** (count-up de 0→valor) e **cards do feed entram
+  com fade + slide** — sensação de vida ao carregar
+- **Rodapé de "alta demanda"** no fim da rolagem do feed: loader sutil +
+  mensagem responsiva ("muitos usuários agora, o servidor pode demorar") —
+  reforça a percepção de plataforma movimentada (sempre visível no fim do feed)
 
 **Admin / super admin**
+- **Fixar desafio como "NOVO"** (`adminSetChallengePinned`, EXCLUSIVO do super
+  admin — backend valida o e-mail): sobe pro topo do feed com selo dourado
+  pulsante. Recurso 100% MANUAL — nada fixa/desfixa sozinho (sem trigger/cron).
+  Toggle no lápis do feed e na aba Admin→Desafios. Feed lê `where('pinned',
+  ==true)` (índice automático) e prepend, deduplicando das páginas normais
 - Saques (aprovar/rejeitar/marcar pago), usuários/moderadores, verificação,
   exportar público p/ campanhas (Google Customer Match / Meta Custom Audiences)
 - **Editar qualquer desafio** (título/descrição/prêmio/prazo) e **qualquer

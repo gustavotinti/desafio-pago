@@ -15,6 +15,9 @@ class Challenge {
   // Top-3 participações mais votadas, desnormalizadas no doc (evita N+1 no feed).
   // Cada item: {entryId, userId, contentType, contentUrl, contentText, voteCount}.
   final List<Map<String, dynamic>> topEntries;
+  // "Novo" — fixado no topo do feed pelo super admin (recurso manual exclusivo).
+  final bool pinned;
+  final DateTime? pinnedAt;
 
   Challenge({
     required this.id,
@@ -29,5 +32,7 @@ class Challenge {
     required this.expiresAt,
     this.winnerIds = const [],
     this.topEntries = const [],
+    this.pinned = false,
+    this.pinnedAt,
   });
 }

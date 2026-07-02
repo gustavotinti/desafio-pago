@@ -20,6 +20,15 @@ class AdminRepository {
     await _functions.httpsCallable('adminUpdateChallenge').call(payload);
   }
 
+  /// Fixa/desfixa um desafio como "novo" (topo do feed). Exclusivo do super
+  /// admin — o backend valida o e-mail. Recurso manual: nunca roda sozinho.
+  Future<void> setChallengePinned(String challengeId, bool pinned) async {
+    await _functions.httpsCallable('adminSetChallengePinned').call({
+      'challengeId': challengeId,
+      'pinned': pinned,
+    });
+  }
+
   /// Edita um perfil (virtual ou real). Campos nulos não são alterados.
   /// Para foto: passe [photoUrl] (biblioteca/retrato) OU [photoBase64] (upload).
   /// Retorna a nova photoUrl quando houve upload.
