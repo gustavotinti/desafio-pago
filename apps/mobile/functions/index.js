@@ -260,9 +260,9 @@ exports.requestWithdraw = functions.https.onCall(async (data, context) => {
   const userId = context.auth.uid;
   const {amount} = data;
 
-  // Mínimo de saque configurável via env. TEMPORÁRIO PARA TESTE: default R$1
-  // (reverter para 100 após validar o ciclo de saque).
-  const minWithdrawal = Number(process.env.MIN_WITHDRAWAL || 1);
+  // Mínimo de saque configurável via env (default R$100). Para reduzir,
+  // defina MIN_WITHDRAWAL em functions/.env (ex.: MIN_WITHDRAWAL=1).
+  const minWithdrawal = Number(process.env.MIN_WITHDRAWAL || 100);
   if (!amount || amount < minWithdrawal) {
     throw new functions.https.HttpsError(
         "invalid-argument", `Valor mínimo para saque é R$${minWithdrawal}`);
