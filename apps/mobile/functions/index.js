@@ -1415,6 +1415,35 @@ exports.adminGenerateComment = functions.https.onCall(async (data, context) => {
   return {success: true};
 });
 
+// ─── ADMIN: EDITAR "AO VIVO" (pulso da plataforma) ───────────────────────────
+exports.adminSetPulse = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Não autenticado");
+  }
+  const db = admin.firestore();
+  const adminDoc = await db.collection("admins").doc(context.auth.uid).get();
+  if (!adminDoc.exists) {
+    throw new functions.https.HttpsError(
+        "permission-denied", "Apenas administradores.");
+  }
+  const ref = db.collection("config").doc("platformPulse");
+  if (data.clear === true) {
+    await ref.delete();
+    return {success: true, cleared: true};
+  }
+  const toInt = (v) => (v === undefined || v === null || v === "") ?
+    null : Math.round(Number(v));
+  const toNum = (v) => (v === undefined || v === null || v === "") ?
+    null : Number(v);
+  await ref.set({
+    activeChallenges: toInt(data.activeChallenges),
+    prizePool: toNum(data.prizePool),
+    participants: toInt(data.participants),
+    updatedAt: new Date().toISOString(),
+  });
+  return {success: true};
+});
+
 // ─── ADMIN: EXCLUIR PARTICIPAÇÃO ─────────────────────────────────────────────
 // Remove a participação + seus votos e comentários, e reverte os contadores.
 exports.adminDeleteEntry = functions.https.onCall(async (data, context) => {

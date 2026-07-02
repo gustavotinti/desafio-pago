@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/utils/format.dart';
@@ -111,20 +112,28 @@ class _PlatformPulseState extends State<PlatformPulse> {
       ),
     );
     if (action == null || action == 'cancel') return;
-    final ref =
-        FirebaseFirestore.instance.collection('config').doc('platformPulse');
+    final functions = FirebaseFunctions.instanceFor(region: 'us-central1');
     try {
       if (action == 'auto') {
-        await ref.delete();
+        await functions.httpsCallable('adminSetPulse').call({'clear': true});
       } else {
-        await ref.set({
+        await functions.httpsCallable('adminSetPulse').call({
           'activeChallenges': int.tryParse(aCtrl.text.trim()),
           'prizePool': double.tryParse(pCtrl.text.trim().replaceAll(',', '.')),
           'participants': int.tryParse(partCtrl.text.trim()),
-          'updatedAt': DateTime.now().toIso8601String(),
         });
       }
       await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Ao vivo atualizado ✅')),
+        );
+      }
+    } on FirebaseFunctionsException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(e.message ?? 'Erro ao salvar')));
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
