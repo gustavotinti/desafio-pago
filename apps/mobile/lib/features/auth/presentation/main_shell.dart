@@ -20,7 +20,7 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _index = 0;
 
-  static const _version = 'Desafio Pago v2.6.0';
+  static const _version = 'Desafio Pago v2.7.0';
 
   @override
   void initState() {

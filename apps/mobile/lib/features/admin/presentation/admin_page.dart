@@ -7,6 +7,7 @@ import 'admin_challenges_page.dart';
 import 'admin_verification_page.dart';
 import 'admin_virtual_users_page.dart';
 import 'admin_audience_page.dart';
+import 'admin_platform_page.dart';
 
 class AdminPage extends StatelessWidget {
   const AdminPage({super.key});
@@ -20,6 +21,17 @@ class AdminPage extends StatelessWidget {
         child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          _AdminCard(
+            icon: Icons.sensors,
+            title: 'Plataforma',
+            subtitle: 'Números do "Ao vivo" e rodapé de alta demanda',
+            color: Colors.deepOrange,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => const AdminPlatformPage()),
+            ),
+          ),
           _AdminCard(
             icon: Icons.attach_money,
             title: 'Saques',

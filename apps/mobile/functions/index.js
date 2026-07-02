@@ -1440,6 +1440,26 @@ exports.adminSetPulse = functions.https.onCall(async (data, context) => {
   return {success: true};
 });
 
+// ─── ADMIN: CONFIG DO FEED (rodapé "alta demanda" etc.) ──────────────────────
+// Liga/desliga elementos do feed via config/feed (Admin SDK — ignora rules).
+exports.adminSetFeedConfig = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Não autenticado");
+  }
+  const db = admin.firestore();
+  const adminDoc = await db.collection("admins").doc(context.auth.uid).get();
+  if (!adminDoc.exists) {
+    throw new functions.https.HttpsError(
+        "permission-denied", "Apenas administradores.");
+  }
+  const updates = {updatedAt: new Date().toISOString()};
+  if (typeof data.highDemandFooter === "boolean") {
+    updates.highDemandFooter = data.highDemandFooter;
+  }
+  await db.collection("config").doc("feed").set(updates, {merge: true});
+  return {success: true};
+});
+
 // ─── ADMIN: EXCLUIR PARTICIPAÇÃO ─────────────────────────────────────────────
 // Remove a participação + seus votos e comentários, e reverte os contadores.
 exports.adminDeleteEntry = functions.https.onCall(async (data, context) => {

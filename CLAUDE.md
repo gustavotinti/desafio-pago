@@ -62,7 +62,7 @@ outros participam com conteúdo (texto/imagem/vídeo), e o mais votado vence o p
 - Retry automático em falha
 - Status: pending | posted | failed
 
-## Estado atual (v2.6.0 — julho/2026)
+## Estado atual (v2.7.0 — julho/2026)
 No ar: https://desafiopago.com.br (e https://desafiopago.web.app)
 Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
 
@@ -109,7 +109,15 @@ Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
 
 **Engajamento (plataforma viva + sensação de poder)**
 - **Pulso da plataforma** no topo do feed: selo "AO VIVO" + desafios ativos,
-  prêmios em jogo (agregação count/sum) e participantes
+  prêmios em jogo (agregação count/sum) e participantes. Overrides do admin
+  em `config/platformPulse` aplicados via **stream em tempo real** (edição
+  aparece na hora, sem recarregar)
+- **Ticker de atividade** sob o pulso: participações reais recentes
+  ("@user participou de \"...\" · há N min") alternando a cada 4s
+- **Card da participação mostra o autor** (avatar + nome + @username + selo,
+  toca → perfil), botão "pedir votos" (copia mensagem pronta pedindo voto
+  para aquele perfil, com link da arte) e **botão de votar em destaque**
+  (largura total) embaixo de cada participação
 - **"Sua posição"** na arte: rank do usuário + votos pra liderar + CTA Divulgar
 - **Votos ao vivo**: página da arte em `StreamBuilder` (votos/posição em tempo real)
 - **Notificações in-app** persistidas (`users/{uid}/notifications`, sininho com
@@ -120,9 +128,13 @@ Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
   com fade + slide** — sensação de vida ao carregar
 - **Rodapé de "alta demanda"** no fim da rolagem do feed: loader sutil +
   mensagem responsiva ("muitos usuários agora, o servidor pode demorar") —
-  reforça a percepção de plataforma movimentada (sempre visível no fim do feed)
+  reforça a percepção de plataforma movimentada. Liga/desliga em
+  Admin→Plataforma (`config/feed.highDemandFooter`, stream em tempo real)
 
 **Admin / super admin**
+- **Painel "Plataforma"** (Admin→Plataforma): edita os 3 números do "Ao vivo"
+  (vazio = automático; função `adminSetPulse`) e o toggle do rodapé de alta
+  demanda (função `adminSetFeedConfig`) — tudo reflete na hora via streams
 - **Fixar desafio como "NOVO"** (`adminSetChallengePinned`, EXCLUSIVO do super
   admin — backend valida o e-mail): sobe pro topo do feed com selo dourado
   pulsante. Recurso 100% MANUAL — nada fixa/desfixa sozinho (sem trigger/cron).

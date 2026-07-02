@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
 import '../../../core/utils/format.dart';
+import '../../../core/widgets/safe_avatar.dart';
 import '../../../core/widgets/safe_image.dart';
 import '../../../core/widgets/web_frame.dart';
 import '../../auth/presentation/auth_guard.dart';
@@ -13,6 +14,7 @@ import '../../challenge/domain/entities/challenge_status.dart';
 import '../../challenge/infrastructure/vote_repository.dart';
 import '../../comment/presentation/comment_section.dart';
 import '../../moderation/infrastructure/report_repository.dart';
+import '../../users/presentation/user_profile_page.dart';
 import '../domain/entities/content_type.dart';
 import '../domain/entities/entry.dart';
 import '../infrastructure/get_entries.dart';
@@ -37,6 +39,10 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
   bool _hasVoted = false;
   bool _isAdmin = false;
 
+  // Cache de perfis públicos dos autores (nome/@/foto) — carrega uma vez
+  // por autor; o stream de votos não refaz as leituras.
+  final Map<String, Map<String, dynamic>?> _profiles = {};
+
   final _voteRepo = VoteRepository();
   final _reportRepo = ReportRepository();
   final _functions = FirebaseFunctions.instanceFor(region: 'us-central1');
@@ -47,6 +53,31 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
     _entriesStream = GetEntries().watch(widget.challenge.id);
     _loadHasVoted();
     _loadAdmin();
+  }
+
+  Future<void> _ensureProfiles(List<Entry> entries) async {
+    final missing = entries
+        .map((e) => e.userId)
+        .toSet()
+        .where((id) => id.isNotEmpty && !_profiles.containsKey(id))
+        .toList();
+    if (missing.isEmpty) return;
+    for (final id in missing) {
+      _profiles[id] = null; // marca em andamento (evita busca duplicada)
+    }
+    try {
+      final db = FirebaseFirestore.instance;
+      final docs = await Future.wait(
+          missing.map((id) => db.collection('publicProfiles').doc(id).get()));
+      if (!mounted) return;
+      setState(() {
+        for (final d in docs) {
+          _profiles[d.id] = d.data();
+        }
+      });
+    } catch (_) {
+      // sem perfil, o card mostra só o conteúdo — não bloqueia nada
+    }
   }
 
   Future<void> _loadAdmin() async {
@@ -124,13 +155,34 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
     }
   }
 
+  /// Compartilhar pedindo voto: gera uma mensagem pronta (com o perfil de
+  /// quem fez a participação) pra colar no WhatsApp/redes.
   Future<void> _shareEntry(Entry entry) async {
     final url =
         'https://desafiopago.com.br/challenges/${widget.challenge.id}?entry=${entry.id}';
-    await Clipboard.setData(ClipboardData(text: url));
+    final p = _profiles[entry.userId];
+    final username = p?['username'] as String?;
+    final who = username != null && username.isNotEmpty
+        ? '@$username'
+        : (p?['name'] as String? ?? 'esta participação');
+    final msg = '🗳️ Vote em $who no Desafio Pago!\n'
+        'Desafio: "${widget.challenge.title}" — '
+        '${Fmt.brl(widget.challenge.amount)} em jogo 🏆\n'
+        'Toque no link, veja a participação e vote:\n'
+        '$url';
+    await Clipboard.setData(ClipboardData(text: msg));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Link copiado!')),
+      SnackBar(
+          content: Text(
+              'Mensagem pedindo voto para $who copiada! Cole no WhatsApp 📲')),
+    );
+  }
+
+  void _openProfile(String userId) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => UserProfilePage(userId: userId)),
     );
   }
 
@@ -267,6 +319,7 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
                 }
 
                 final entries = List<Entry>.from(snapshot.data!);
+                _ensureProfiles(entries); // async; atualiza quando chegar
 
                 // Posição do usuário (por votos, antes do reorder do destaque).
                 final myUid = FirebaseAuth.instance.currentUser?.uid;
@@ -343,7 +396,10 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
                         widget.challenge.winnerIds.contains(entry.userId);
                     return _EntryCard(
                       entry: entry,
+                      author: _profiles[entry.userId],
                       canVote: canVote,
+                      hasVoted: _hasVoted,
+                      isFinished: isFinished,
                       isWinner: isWinner,
                       isHighlighted: entry.id == widget.highlightEntryId,
                       isAdmin: _isAdmin,
@@ -352,6 +408,7 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
                       onReport: () => _showReportDialog(entry.id),
                       onShare: () => _shareEntry(entry),
                       onComments: () => _showEntryComments(entry),
+                      onOpenProfile: () => _openProfile(entry.userId),
                       onEditVotes: _isAdmin ? () => _editVotes(entry) : null,
                       onDelete: _isAdmin ? () => _deleteEntry(entry) : null,
                     );
@@ -563,7 +620,11 @@ class _SharedEntryBanner extends StatelessWidget {
 
 class _EntryCard extends StatelessWidget {
   final Entry entry;
+  // Perfil público do autor (nome/@/foto/selo) — null enquanto carrega.
+  final Map<String, dynamic>? author;
   final bool canVote;
+  final bool hasVoted;
+  final bool isFinished;
   final bool isWinner;
   final bool isHighlighted;
   final bool isAdmin;
@@ -572,12 +633,16 @@ class _EntryCard extends StatelessWidget {
   final VoidCallback onReport;
   final VoidCallback onShare;
   final VoidCallback onComments;
+  final VoidCallback onOpenProfile;
   final VoidCallback? onEditVotes;
   final VoidCallback? onDelete;
 
   const _EntryCard({
     required this.entry,
+    required this.author,
     required this.canVote,
+    required this.hasVoted,
+    required this.isFinished,
     required this.isWinner,
     required this.isAdmin,
     required this.canReport,
@@ -586,12 +651,18 @@ class _EntryCard extends StatelessWidget {
     required this.onReport,
     required this.onShare,
     required this.onComments,
+    required this.onOpenProfile,
     this.onEditVotes,
     this.onDelete,
   });
 
   @override
   Widget build(BuildContext context) {
+    final name = author?['name'] as String? ?? '';
+    final username = author?['username'] as String? ?? '';
+    final photoUrl = author?['photoUrl'] as String?;
+    final verified = author?['isVerified'] == true;
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       shape: (isHighlighted || isWinner)
@@ -610,40 +681,62 @@ class _EntryCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ── Autor (perfil de quem fez a participação) ─────────────
             Row(
               children: [
-                if (isHighlighted) ...[
-                  const Icon(Icons.campaign,
-                      color: Color(0xFF003b8a), size: 18),
-                  const SizedBox(width: 4),
-                  const Text(
-                    'Vote nesta arte',
-                    style: TextStyle(
-                      color: Color(0xFF003b8a),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13,
+                Expanded(
+                  child: InkWell(
+                    onTap: onOpenProfile,
+                    borderRadius: BorderRadius.circular(20),
+                    child: Row(
+                      children: [
+                        SafeAvatar(photoUrl: photoUrl, radius: 16),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      name.isEmpty ? 'Participante' : name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13),
+                                    ),
+                                  ),
+                                  if (verified) ...[
+                                    const SizedBox(width: 3),
+                                    const Icon(Icons.verified,
+                                        size: 14, color: Color(0xFF0cc0df)),
+                                  ],
+                                ],
+                              ),
+                              if (username.isNotEmpty)
+                                Text(
+                                  '@$username',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      fontSize: 11, color: Colors.black45),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 8),
-                ],
-                if (isWinner) ...[
-                  const Icon(Icons.emoji_events, color: Colors.amber, size: 18),
-                  const SizedBox(width: 4),
-                  const Text(
-                    'Vencedor',
-                    style: TextStyle(
-                      color: Colors.amber,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-                const Spacer(),
-                // Share button
+                ),
+                // Compartilhar pedindo voto para este perfil
                 IconButton(
-                  icon: const Icon(Icons.share_outlined, size: 18),
-                  tooltip: 'Compartilhar',
+                  icon: const Icon(Icons.campaign_outlined, size: 20),
+                  tooltip: 'Pedir votos (copia mensagem)',
                   visualDensity: VisualDensity.compact,
-                  color: Colors.grey,
+                  color: const Color(0xFF003b8a),
                   onPressed: onShare,
                 ),
                 if (canReport)
@@ -678,6 +771,40 @@ class _EntryCard extends StatelessWidget {
                   ),
               ],
             ),
+            if (isHighlighted || isWinner) ...[
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  if (isHighlighted) ...[
+                    const Icon(Icons.campaign,
+                        color: Color(0xFF003b8a), size: 18),
+                    const SizedBox(width: 4),
+                    const Text(
+                      'Vote nesta arte',
+                      style: TextStyle(
+                        color: Color(0xFF003b8a),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  if (isWinner) ...[
+                    const Icon(Icons.emoji_events,
+                        color: Colors.amber, size: 18),
+                    const SizedBox(width: 4),
+                    const Text(
+                      'Vencedor',
+                      style: TextStyle(
+                        color: Colors.amber,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+            const SizedBox(height: 8),
             _buildContent(),
             const SizedBox(height: 8),
             Row(
@@ -708,13 +835,35 @@ class _EntryCard extends StatelessWidget {
                     textStyle: const TextStyle(fontSize: 13),
                   ),
                 ),
-                const SizedBox(width: 4),
-                ElevatedButton(
-                  onPressed: canVote ? onVote : null,
-                  child: const Text('Votar'),
-                ),
               ],
             ),
+            // ── Botão de voto em destaque (embaixo da participação) ──
+            if (!isFinished) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: canVote ? onVote : null,
+                  icon: Icon(
+                      hasVoted && !canVote
+                          ? Icons.check_circle
+                          : Icons.how_to_vote,
+                      size: 18),
+                  label: Text(
+                    canVote
+                        ? 'Votar nesta participação'
+                        : (hasVoted
+                            ? 'Você já votou neste desafio ✓'
+                            : 'Votar'),
+                  ),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    textStyle: const TextStyle(
+                        fontSize: 13.5, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),

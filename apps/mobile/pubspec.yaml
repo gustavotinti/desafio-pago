@@ -3,7 +3,7 @@ description: "Desafio Pago App"
 
 publish_to: 'none'
 
-version: 2.6.0+9
+version: 2.7.0+10
 
 environment:
   sdk: ^3.11.4

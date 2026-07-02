@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -7,6 +9,7 @@ import '../../challenge/domain/entities/challenge.dart';
 import '../../challenge/domain/entities/challenge_status.dart';
 import '../../challenge/infrastructure/add_amount_repository.dart';
 import '../../challenge/infrastructure/get_challenges.dart';
+import '../../challenge/presentation/activity_ticker.dart';
 import '../../challenge/presentation/create_challenge_page.dart';
 import '../../challenge/presentation/platform_pulse.dart';
 import '../../notifications/presentation/notification_bell.dart';
@@ -98,6 +101,7 @@ class _HomePageState extends State<HomePage> {
       body: Column(
         children: [
           PlatformPulse(isAdmin: _isAdmin),
+          const ActivityTicker(),
           Expanded(
             child: _FeedTab(
               key: ValueKey(_reloadTick),
@@ -227,6 +231,9 @@ class _FeedTabState extends State<_FeedTab> {
   bool _initialLoading = true;
   bool _loadingMore = false;
   bool _hasMore = true;
+  // Rodapé "alta demanda" — ligado por padrão; admin controla em config/feed.
+  bool _footerEnabled = true;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _feedCfgSub;
   Object? _error;
 
   @override
@@ -234,10 +241,21 @@ class _FeedTabState extends State<_FeedTab> {
     super.initState();
     _scroll.addListener(_onScroll);
     _loadFirst();
+    _feedCfgSub = FirebaseFirestore.instance
+        .collection('config')
+        .doc('feed')
+        .snapshots()
+        .listen((doc) {
+      final v = doc.data()?['highDemandFooter'] != false;
+      if (mounted && v != _footerEnabled) {
+        setState(() => _footerEnabled = v);
+      }
+    }, onError: (_) {});
   }
 
   @override
   void dispose() {
+    _feedCfgSub?.cancel();
     _scroll.removeListener(_onScroll);
     _scroll.dispose();
     super.dispose();
@@ -349,12 +367,15 @@ class _FeedTabState extends State<_FeedTab> {
         itemCount: _items.length + 1,
         itemBuilder: (context, i) {
           if (i >= _items.length) {
-            return _hasMore
-                ? const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 20),
-                    child: Center(child: CircularProgressIndicator()),
-                  )
-                : const _HighDemandFooter();
+            if (_hasMore) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: Center(child: CircularProgressIndicator()),
+              );
+            }
+            return _footerEnabled
+                ? const _HighDemandFooter()
+                : const SizedBox(height: 40);
           }
           final c = _items[i];
           return _FeedEntrance(

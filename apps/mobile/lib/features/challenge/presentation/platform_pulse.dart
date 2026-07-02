@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
@@ -21,13 +23,37 @@ class _PlatformPulseState extends State<PlatformPulse> {
   double? _prizePool;
   int? _participants;
 
+  // Bases automáticas (agregações) — usadas quando não há override do admin.
+  int? _baseActive;
+  double? _basePrize;
+  int? _basePart;
+  Map<String, dynamic>? _overrides;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _cfgSub;
+
   @override
   void initState() {
     super.initState();
-    _load();
+    _loadBase();
+    // Overrides do admin em TEMPO REAL: qualquer gravação em
+    // config/platformPulse (pelo lápis ou pelo painel admin) atualiza o
+    // banner na hora — antes era uma leitura única e a edição "não aparecia".
+    _cfgSub = FirebaseFirestore.instance
+        .collection('config')
+        .doc('platformPulse')
+        .snapshots()
+        .listen((doc) {
+      _overrides = doc.data();
+      _apply();
+    }, onError: (_) {});
   }
 
-  Future<void> _load() async {
+  @override
+  void dispose() {
+    _cfgSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadBase() async {
     final db = FirebaseFirestore.instance;
     try {
       final active = db
@@ -35,30 +61,36 @@ class _PlatformPulseState extends State<PlatformPulse> {
           .where('status', isEqualTo: 'active');
       final agg = await active.aggregate(count(), sum('amount')).get();
       final people = await db.collection('publicProfiles').count().get();
-      var a = agg.count ?? 0;
-      var p = agg.getSum('amount') ?? 0;
-      var part = people.count ?? 0;
-      // Overrides do admin (config/platformPulse) — por campo.
-      final c = (await db.collection('config').doc('platformPulse').get())
-          .data();
-      if (c != null) {
-        if (c['activeChallenges'] != null) {
-          a = (c['activeChallenges'] as num).toInt();
-        }
-        if (c['prizePool'] != null) p = (c['prizePool'] as num).toDouble();
-        if (c['participants'] != null) {
-          part = (c['participants'] as num).toInt();
-        }
-      }
-      if (!mounted) return;
-      setState(() {
-        _activeChallenges = a;
-        _prizePool = p;
-        _participants = part;
-      });
+      _baseActive = agg.count ?? 0;
+      _basePrize = (agg.getSum('amount') ?? 0).toDouble();
+      _basePart = people.count ?? 0;
+      _apply();
     } catch (_) {
       // silencioso — a faixa só não mostra números se a leitura falhar
     }
+  }
+
+  // Combina bases + overrides (campo a campo) e atualiza a tela.
+  void _apply() {
+    if (!mounted) return;
+    var a = _baseActive;
+    var p = _basePrize;
+    var part = _basePart;
+    final c = _overrides;
+    if (c != null) {
+      if (c['activeChallenges'] != null) {
+        a = (c['activeChallenges'] as num).toInt();
+      }
+      if (c['prizePool'] != null) p = (c['prizePool'] as num).toDouble();
+      if (c['participants'] != null) {
+        part = (c['participants'] as num).toInt();
+      }
+    }
+    setState(() {
+      _activeChallenges = a;
+      _prizePool = p;
+      _participants = part;
+    });
   }
 
   Future<void> _editDialog() async {
@@ -123,7 +155,7 @@ class _PlatformPulseState extends State<PlatformPulse> {
           'participants': int.tryParse(partCtrl.text.trim()),
         });
       }
-      await _load();
+      // O stream de config/platformPulse atualiza o banner sozinho.
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Ao vivo atualizado ✅')),
@@ -131,8 +163,8 @@ class _PlatformPulseState extends State<PlatformPulse> {
       }
     } on FirebaseFunctionsException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(e.message ?? 'Erro ao salvar')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('[${e.code}] ${e.message ?? 'Erro ao salvar'}')));
       }
     } catch (e) {
       if (mounted) {
