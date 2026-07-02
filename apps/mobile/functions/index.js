@@ -637,6 +637,7 @@ exports.createPixPayment = functions.https.onCall(async (data, context) => {
     body: {
       transaction_amount: txAmount,
       description,
+      statement_descriptor: "DESAFIOPAGO",
       payment_method_id: "pix",
       payer: {email: userEmail},
     },
