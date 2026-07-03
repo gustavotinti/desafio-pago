@@ -62,7 +62,7 @@ outros participam com conteúdo (texto/imagem/vídeo), e o mais votado vence o p
 - Retry automático em falha
 - Status: pending | posted | failed
 
-## Estado atual (v2.8.0 — julho/2026)
+## Estado atual (v2.8.1 — julho/2026)
 No ar: https://desafiopago.com.br (e https://desafiopago.web.app)
 Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
 
@@ -147,6 +147,12 @@ Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
   Admin→Plataforma (`config/feed.highDemandFooter`, stream em tempo real)
 
 **Admin / super admin**
+- **Hub do painel redesenhado** (v2.8.1): visão geral ao vivo (desafios
+  ativos, prêmios, saques pendentes, denúncias — com count-up e alerta
+  vermelho de pendências), grid responsivo (2 colunas >620px), cards com
+  ícone gradiente + hover + badges de pendências, seções (Operações /
+  Conteúdo / Pessoas / Marketing), entrada escalonada e pull-to-refresh;
+  contadores recarregam ao voltar de uma subpágina
 - **Painel "Plataforma"** (Admin→Plataforma): edita os 3 números do "Ao vivo"
   (vazio = automático; função `adminSetPulse`) e o toggle do rodapé de alta
   demanda (função `adminSetFeedConfig`) — tudo reflete na hora via streams
