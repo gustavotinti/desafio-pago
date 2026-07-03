@@ -3,7 +3,7 @@ description: "Desafio Pago App"
 
 publish_to: 'none'
 
-version: 2.7.0+10
+version: 2.7.1+11
 
 environment:
   sdk: ^3.11.4
@@ -54,6 +54,9 @@ dependencies:
 
   # 🌐 WEB INTEROP (download de arquivos no navegador)
   web: ^1.1.0
+
+  # 📤 COMPARTILHAR (share sheet nativo / Web Share API)
+  share_plus: ^11.0.0
 
 dev_dependencies:
   flutter_test:

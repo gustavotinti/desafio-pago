@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../core/utils/format.dart';
 import '../../../core/widgets/safe_avatar.dart';
@@ -155,28 +156,33 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
     }
   }
 
-  /// Compartilhar pedindo voto: gera uma mensagem pronta (com o perfil de
-  /// quem fez a participação) pra colar no WhatsApp/redes.
+  /// Botão de compartilhamento (share sheet nativo / Web Share API).
+  /// Compartilha o LINK dinâmico da participação — a prévia da página (Open
+  /// Graph, via função `entryPreview`) já mostra "{autor} quer o seu voto!" e
+  /// o link abre direto na arte com o botão de votar piscando.
   Future<void> _shareEntry(Entry entry) async {
+    // NÃO await nada antes do share: preserva o "user gesture" exigido pela
+    // Web Share API no navegador.
     final url =
         'https://desafiopago.com.br/challenges/${widget.challenge.id}?entry=${entry.id}';
     final p = _profiles[entry.userId];
     final username = p?['username'] as String?;
     final who = username != null && username.isNotEmpty
         ? '@$username'
-        : (p?['name'] as String? ?? 'esta participação');
-    final msg = '🗳️ Vote em $who no Desafio Pago!\n'
-        'Desafio: "${widget.challenge.title}" — '
-        '${Fmt.brl(widget.challenge.amount)} em jogo 🏆\n'
-        'Toque no link, veja a participação e vote:\n'
-        '$url';
-    await Clipboard.setData(ClipboardData(text: msg));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-          content: Text(
-              'Mensagem pedindo voto para $who copiada! Cole no WhatsApp 📲')),
-    );
+        : 'esta participação';
+    final text = 'Vote em $who no Desafio Pago! 🗳️🏆\n$url';
+    try {
+      await SharePlus.instance.share(
+        ShareParams(text: text, subject: 'Peça votos no Desafio Pago'),
+      );
+    } catch (_) {
+      // Navegador sem share nativo: copia o link como fallback.
+      await Clipboard.setData(ClipboardData(text: url));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Link copiado! Cole no WhatsApp 📲')),
+      );
+    }
   }
 
   void _openProfile(String userId) {
@@ -731,10 +737,10 @@ class _EntryCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                // Compartilhar pedindo voto para este perfil
+                // Compartilhar pedindo voto para este perfil (share sheet)
                 IconButton(
-                  icon: const Icon(Icons.campaign_outlined, size: 20),
-                  tooltip: 'Pedir votos (copia mensagem)',
+                  icon: const Icon(Icons.share, size: 19),
+                  tooltip: 'Compartilhar e pedir votos',
                   visualDensity: VisualDensity.compact,
                   color: const Color(0xFF003b8a),
                   onPressed: onShare,
@@ -838,30 +844,15 @@ class _EntryCard extends StatelessWidget {
               ],
             ),
             // ── Botão de voto em destaque (embaixo da participação) ──
+            // Quando a pessoa chega pelo link compartilhado, o botão da arte
+            // destacada PISCA pra chamar a atenção pro voto.
             if (!isFinished) ...[
               const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: canVote ? onVote : null,
-                  icon: Icon(
-                      hasVoted && !canVote
-                          ? Icons.check_circle
-                          : Icons.how_to_vote,
-                      size: 18),
-                  label: Text(
-                    canVote
-                        ? 'Votar nesta participação'
-                        : (hasVoted
-                            ? 'Você já votou neste desafio ✓'
-                            : 'Votar'),
-                  ),
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    textStyle: const TextStyle(
-                        fontSize: 13.5, fontWeight: FontWeight.w600),
-                  ),
-                ),
+              _VoteButton(
+                canVote: canVote,
+                hasVoted: hasVoted,
+                highlight: isHighlighted,
+                onVote: onVote,
               ),
             ],
           ],
@@ -904,6 +895,114 @@ class _EntryCard extends StatelessWidget {
           ),
         );
     }
+  }
+}
+
+// ─── Botão de votar (pisca quando chega pelo link compartilhado) ─────────────
+
+class _VoteButton extends StatefulWidget {
+  final bool canVote;
+  final bool hasVoted;
+  final bool highlight;
+  final VoidCallback onVote;
+
+  const _VoteButton({
+    required this.canVote,
+    required this.hasVoted,
+    required this.highlight,
+    required this.onVote,
+  });
+
+  @override
+  State<_VoteButton> createState() => _VoteButtonState();
+}
+
+class _VoteButtonState extends State<_VoteButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c;
+
+  bool get _pulsing => widget.highlight && widget.canVote;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    );
+    if (_pulsing) _c.repeat(reverse: true);
+  }
+
+  @override
+  void didUpdateWidget(covariant _VoteButton old) {
+    super.didUpdateWidget(old);
+    if (_pulsing && !_c.isAnimating) {
+      _c.repeat(reverse: true);
+    } else if (!_pulsing && _c.isAnimating) {
+      _c.stop();
+      _c.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final button = SizedBox(
+      width: double.infinity,
+      child: FilledButton.icon(
+        onPressed: widget.canVote ? widget.onVote : null,
+        icon: Icon(
+            widget.hasVoted && !widget.canVote
+                ? Icons.check_circle
+                : Icons.how_to_vote,
+            size: 18),
+        label: Text(
+          widget.canVote
+              ? 'Votar nesta participação'
+              : (widget.hasVoted
+                  ? 'Você já votou neste desafio ✓'
+                  : 'Votar'),
+        ),
+        style: FilledButton.styleFrom(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          textStyle:
+              const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+        ),
+      ),
+    );
+
+    if (!_pulsing) return button;
+
+    // Piscada: leve zoom + brilho pulsante ao redor do botão.
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (context, child) {
+        final t = Curves.easeInOut.transform(_c.value);
+        return Transform.scale(
+          scale: 1.0 + 0.03 * t,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF0cc0df)
+                      .withValues(alpha: 0.30 + 0.35 * t),
+                  blurRadius: 6 + 14 * t,
+                  spreadRadius: 1 + 2 * t,
+                ),
+              ],
+            ),
+            child: child,
+          ),
+        );
+      },
+      child: button,
+    );
   }
 }
 

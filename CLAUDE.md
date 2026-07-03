@@ -62,7 +62,7 @@ outros participam com conteúdo (texto/imagem/vídeo), e o mais votado vence o p
 - Retry automático em falha
 - Status: pending | posted | failed
 
-## Estado atual (v2.7.0 — julho/2026)
+## Estado atual (v2.7.1 — julho/2026)
 No ar: https://desafiopago.com.br (e https://desafiopago.web.app)
 Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
 
@@ -112,12 +112,15 @@ Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
   prêmios em jogo (agregação count/sum) e participantes. Overrides do admin
   em `config/platformPulse` aplicados via **stream em tempo real** (edição
   aparece na hora, sem recarregar)
-- **Ticker de atividade** sob o pulso: participações reais recentes
-  ("@user participou de \"...\" · há N min") alternando a cada 4s
+- **Ticker de vitórias** sob o pulso: mostra em rotação aleatória quem
+  GANHOU quais desafios ("🏆 @user ganhou R$X · '...'"), lendo desafios reais
+  encerrados + vencedores (prova social) — troca a cada 4s
 - **Card da participação mostra o autor** (avatar + nome + @username + selo,
-  toca → perfil), botão "pedir votos" (copia mensagem pronta pedindo voto
-  para aquele perfil, com link da arte) e **botão de votar em destaque**
-  (largura total) embaixo de cada participação
+  toca → perfil), **botão de compartilhar** (share sheet nativo / Web Share
+  API — compartilha o link dinâmico, cuja prévia OG já diz "{autor} quer o
+  seu voto") e **botão de votar em destaque** (largura total) embaixo de cada
+  participação. Ao chegar pelo link compartilhado, o **botão de votar da arte
+  destacada PISCA** (zoom + brilho pulsante) pra guiar o clique no voto
 - **"Sua posição"** na arte: rank do usuário + votos pra liderar + CTA Divulgar
 - **Votos ao vivo**: página da arte em `StreamBuilder` (votos/posição em tempo real)
 - **Notificações in-app** persistidas (`users/{uid}/notifications`, sininho com
