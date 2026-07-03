@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../../core/widgets/safe_avatar.dart';
 import '../../auth/presentation/auth_guard.dart';
 import '../domain/entities/comment.dart';
 import '../infrastructure/comment_repository.dart';
@@ -30,10 +32,36 @@ class _CommentSectionState extends State<CommentSection> {
   String? _replyToId;
   String? _replyToName;
 
+  // Fotos de perfil dos autores (publicProfiles) — cache por userId.
+  final Map<String, String?> _photos = {};
+
   @override
   void initState() {
     super.initState();
     _loadLikes();
+  }
+
+  Future<void> _ensurePhotos(List<Comment> comments) async {
+    final missing = comments
+        .map((c) => c.userId)
+        .toSet()
+        .where((id) => id.isNotEmpty && !_photos.containsKey(id))
+        .toList();
+    if (missing.isEmpty) return;
+    for (final id in missing) {
+      _photos[id] = null; // em andamento — evita busca duplicada
+    }
+    try {
+      final db = FirebaseFirestore.instance;
+      final docs = await Future.wait(
+          missing.map((id) => db.collection('publicProfiles').doc(id).get()));
+      if (!mounted) return;
+      setState(() {
+        for (final d in docs) {
+          _photos[d.id] = d.data()?['photoUrl'] as String?;
+        }
+      });
+    } catch (_) {/* sem foto, o avatar mostra o ícone padrão */}
   }
 
   @override
@@ -280,6 +308,7 @@ class _CommentSectionState extends State<CommentSection> {
               );
             }
             final all = snapshot.data!;
+            _ensurePhotos(all); // async; re-renderiza quando as fotos chegam
             if (all.isEmpty) {
               return const Padding(
                 padding: EdgeInsets.symmetric(vertical: 4),
@@ -299,6 +328,7 @@ class _CommentSectionState extends State<CommentSection> {
             for (final top in tops) {
               widgets.add(_CommentTile(
                 comment: top,
+                photoUrl: _photos[top.userId],
                 isLiked: _liked.contains(top.id),
                 onLike: () => _toggleLike(top),
                 onReply: () => _startReply(top),
@@ -311,6 +341,7 @@ class _CommentSectionState extends State<CommentSection> {
                   padding: const EdgeInsets.only(left: 36),
                   child: _CommentTile(
                     comment: reply,
+                    photoUrl: _photos[reply.userId],
                     isLiked: _liked.contains(reply.id),
                     onLike: () => _toggleLike(reply),
                     isAdmin: widget.isAdmin,
@@ -402,6 +433,7 @@ class _CommentSectionState extends State<CommentSection> {
 
 class _CommentTile extends StatelessWidget {
   final Comment comment;
+  final String? photoUrl;
   final bool isLiked;
   final VoidCallback onLike;
   final VoidCallback? onReply;
@@ -413,6 +445,7 @@ class _CommentTile extends StatelessWidget {
     required this.comment,
     required this.isLiked,
     required this.onLike,
+    this.photoUrl,
     this.onReply,
     this.isAdmin = false,
     this.onAdminEdit,
@@ -434,10 +467,8 @@ class _CommentTile extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const CircleAvatar(
-            radius: 13,
-            child: Icon(Icons.person, size: 14),
-          ),
+          // Foto real do perfil de quem comentou (fallback: ícone padrão).
+          SafeAvatar(photoUrl: photoUrl, radius: 13),
           const SizedBox(width: 8),
           Expanded(
             child: Column(
