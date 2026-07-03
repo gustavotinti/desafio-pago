@@ -22,12 +22,26 @@ class _WinItem {
   final String who; // @username ou nome
   final double amount;
   final String challengeTitle;
+  final int template; // qual variação de frase usar
   const _WinItem({
     required this.who,
     required this.amount,
     required this.challengeTitle,
+    required this.template,
   });
 }
+
+// Variações da frase de vitória — tokens: {who}, {amt}, {t}.
+const _winTemplates = [
+  '{who} ganhou {amt} · "{t}"',
+  '{who} levou {amt} no desafio "{t}"',
+  '{who} faturou {amt} com "{t}" 💰',
+  '{who} venceu "{t}" e ganhou {amt}',
+  '{amt} pagos para {who} · "{t}"',
+  '{who} acabou de ganhar {amt} em "{t}" 🎉',
+  'prêmio de {amt} foi para {who} · "{t}"',
+  '{who} conquistou {amt} vencendo "{t}" 🏆',
+];
 
 class _ActivityTickerState extends State<ActivityTicker> {
   List<_WinItem> _items = [];
@@ -81,6 +95,7 @@ class _ActivityTickerState extends State<ActivityTicker> {
             : (name ?? '');
       }
 
+      final rand = Random();
       for (final d in rows) {
         final data = d.data();
         final w = (data['winnerIds'] as List);
@@ -88,11 +103,16 @@ class _ActivityTickerState extends State<ActivityTicker> {
         final title = data['title'] as String? ?? '';
         final amount = (data['amount'] as num?)?.toDouble() ?? 0;
         if (who.isEmpty || title.isEmpty || amount <= 0) continue;
-        raw.add(_WinItem(who: who, amount: amount, challengeTitle: title));
+        raw.add(_WinItem(
+          who: who,
+          amount: amount,
+          challengeTitle: title,
+          template: rand.nextInt(_winTemplates.length),
+        ));
       }
       if (!mounted || raw.isEmpty) return;
 
-      raw.shuffle(Random()); // ordem aleatória
+      raw.shuffle(rand); // ordem aleatória
       setState(() => _items = raw);
       _timer = Timer.periodic(const Duration(seconds: 4), (_) {
         if (!mounted) return;
@@ -101,6 +121,30 @@ class _ActivityTickerState extends State<ActivityTicker> {
     } catch (_) {
       // silencioso — sem vitórias, o ticker simplesmente não aparece
     }
+  }
+
+  // Monta os spans da frase a partir do template ({who}/{amt}/{t} com estilo).
+  List<InlineSpan> _spansFor(_WinItem item) {
+    final tpl = _winTemplates[item.template % _winTemplates.length];
+    const bold = TextStyle(fontWeight: FontWeight.bold);
+    const money = TextStyle(
+        fontWeight: FontWeight.bold, color: Color(0xFF00875A));
+    final spans = <InlineSpan>[];
+    var i = 0;
+    for (final m in RegExp(r'\{(who|amt|t)\}').allMatches(tpl)) {
+      if (m.start > i) spans.add(TextSpan(text: tpl.substring(i, m.start)));
+      switch (m.group(1)) {
+        case 'who':
+          spans.add(TextSpan(text: item.who, style: bold));
+        case 'amt':
+          spans.add(TextSpan(text: Fmt.brl(item.amount), style: money));
+        case 't':
+          spans.add(TextSpan(text: item.challengeTitle));
+      }
+      i = m.end;
+    }
+    if (i < tpl.length) spans.add(TextSpan(text: tpl.substring(i)));
+    return spans;
   }
 
   @override
@@ -142,20 +186,7 @@ class _ActivityTickerState extends State<ActivityTicker> {
                   text: TextSpan(
                     style: const TextStyle(
                         fontSize: 12, color: Colors.black87),
-                    children: [
-                      TextSpan(
-                        text: item.who,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      const TextSpan(text: ' ganhou '),
-                      TextSpan(
-                        text: Fmt.brl(item.amount),
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF00875A)),
-                      ),
-                      TextSpan(text: ' · "${item.challengeTitle}"'),
-                    ],
+                    children: _spansFor(item),
                   ),
                 ),
               ),

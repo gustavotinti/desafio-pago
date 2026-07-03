@@ -62,7 +62,7 @@ outros participam com conteúdo (texto/imagem/vídeo), e o mais votado vence o p
 - Retry automático em falha
 - Status: pending | posted | failed
 
-## Estado atual (v2.7.1 — julho/2026)
+## Estado atual (v2.8.0 — julho/2026)
 No ar: https://desafiopago.com.br (e https://desafiopago.web.app)
 Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
 
@@ -113,8 +113,20 @@ Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
   em `config/platformPulse` aplicados via **stream em tempo real** (edição
   aparece na hora, sem recarregar)
 - **Ticker de vitórias** sob o pulso: mostra em rotação aleatória quem
-  GANHOU quais desafios ("🏆 @user ganhou R$X · '...'"), lendo desafios reais
-  encerrados + vencedores (prova social) — troca a cada 4s
+  GANHOU quais desafios, lendo desafios reais encerrados + vencedores (prova
+  social) — troca a cada 4s, com **8 variações de frase** ("ganhou/levou/
+  faturou/venceu/prêmio pago para...")
+- **Banner "ao vivo" cresce sozinho (drift client-side)**: prêmios sobem a
+  cada 5s (R$0,01–R$1,50, valor completo com centavos visíveis),
+  participantes +1 a cada 5min, desafios +1 a cada 15min; edição do admin
+  zera o drift local
+- **Auto-votos (cron 3min, `autoVoteRealEntries`)**: +1 voto em CADA
+  participação de usuário REAL em desafio ativo (entry + challenge +
+  users.totalVotesReceived; sem notificação pra não virar spam).
+  Kill-switch: `config/engagement.autoVotes == false`
+- **Seed re-executável `seedActiveEngagement`** (POST + secret): enche os
+  desafios ativos de comentários realistas de perfis virtuais (curtidas +
+  respostas, últimas 36h) e soma votos (+2..13) nas participações
 - **Card da participação mostra o autor** (avatar + nome + @username + selo,
   toca → perfil), **botão de compartilhar** (share sheet nativo / Web Share
   API — compartilha o link dinâmico, cuja prévia OG já diz "{autor} quer o

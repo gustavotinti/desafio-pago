@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -30,6 +31,15 @@ class _PlatformPulseState extends State<PlatformPulse> {
   Map<String, dynamic>? _overrides;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _cfgSub;
 
+  // Crescimento ao vivo (drift): prêmios sobem a cada 5s (R$0,01–R$1,50),
+  // participantes a cada 5min e desafios a cada 15min — sensação de
+  // plataforma pulsando em tempo real.
+  final _rand = Random();
+  double _driftPrize = 0;
+  int _driftPart = 0;
+  int _driftChallenges = 0;
+  final List<Timer> _driftTimers = [];
+
   @override
   void initState() {
     super.initState();
@@ -43,12 +53,32 @@ class _PlatformPulseState extends State<PlatformPulse> {
         .snapshots()
         .listen((doc) {
       _overrides = doc.data();
+      // Edição do admin zera o drift local (mostra exatamente o que salvou).
+      _driftPrize = 0;
+      _driftPart = 0;
+      _driftChallenges = 0;
       _apply();
     }, onError: (_) {});
+
+    _driftTimers.add(Timer.periodic(const Duration(seconds: 5), (_) {
+      _driftPrize += 0.01 + _rand.nextDouble() * 1.49; // R$0,01–R$1,50
+      _apply();
+    }));
+    _driftTimers.add(Timer.periodic(const Duration(minutes: 5), (_) {
+      _driftPart += 1;
+      _apply();
+    }));
+    _driftTimers.add(Timer.periodic(const Duration(minutes: 15), (_) {
+      _driftChallenges += 1;
+      _apply();
+    }));
   }
 
   @override
   void dispose() {
+    for (final t in _driftTimers) {
+      t.cancel();
+    }
     _cfgSub?.cancel();
     super.dispose();
   }
@@ -70,7 +100,7 @@ class _PlatformPulseState extends State<PlatformPulse> {
     }
   }
 
-  // Combina bases + overrides (campo a campo) e atualiza a tela.
+  // Combina bases + overrides (campo a campo) + drift e atualiza a tela.
   void _apply() {
     if (!mounted) return;
     var a = _baseActive;
@@ -87,9 +117,9 @@ class _PlatformPulseState extends State<PlatformPulse> {
       }
     }
     setState(() {
-      _activeChallenges = a;
-      _prizePool = p;
-      _participants = part;
+      _activeChallenges = a == null ? null : a + _driftChallenges;
+      _prizePool = p == null ? null : p + _driftPrize;
+      _participants = part == null ? null : part + _driftPart;
     });
   }
 
@@ -227,7 +257,8 @@ class _PlatformPulseState extends State<PlatformPulse> {
                 _Stat(
                   icon: Icons.emoji_events,
                   value: _prizePool,
-                  format: (v) => Fmt.brlCompact(v),
+                  // Valor completo (com centavos): o drift de 5s fica visível.
+                  format: (v) => Fmt.brl(v),
                   label: 'em prêmios',
                 ),
                 _divider(),

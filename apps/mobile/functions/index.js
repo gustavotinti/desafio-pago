@@ -506,6 +506,73 @@ exports.finalizeChallenges = functions.pubsub
       return null;
     });
 
+// ─── AUTO-VOTOS EM PARTICIPAÇÕES DE USUÁRIOS REAIS (cron 3min) ───────────────
+// A cada 3 minutos, +1 voto em CADA participação de usuário REAL (não virtual,
+// não demo) em desafios ativos. Mantém os contadores consistentes: entry,
+// challenge e users.totalVotesReceived (o mirror espelha pro ranking) — o
+// trigger syncChallengeTopEntries atualiza as prévias do feed sozinho.
+// Kill-switch: config/engagement.autoVotes == false desliga.
+exports.autoVoteRealEntries = functions.pubsub
+    .schedule("every 3 minutes")
+    .onRun(async () => {
+      const db = admin.firestore();
+
+      const cfg = await db.collection("config").doc("engagement").get();
+      if (cfg.exists && cfg.data().autoVotes === false) return null;
+
+      const challSnap = await db.collection("challenges")
+          .where("status", "==", "active").get();
+      if (challSnap.empty) return null;
+      const activeIds = new Set(challSnap.docs.map((d) => d.id));
+
+      // Participações ativas de desafios ativos (filtro em memória —
+      // conjunto pequeno; evita índice composto).
+      const entriesSnap = await db.collection("entries")
+          .where("isActive", "==", true).get();
+      const candidates = entriesSnap.docs.filter((d) => {
+        const e = d.data();
+        return activeIds.has(e.challengeId) && e.isDemo !== true &&
+            e.userId && !String(e.userId).startsWith("demo_");
+      });
+      if (candidates.length === 0) return null;
+
+      // Usuário REAL = tem doc em /users e não é virtual.
+      const uids = [...new Set(candidates.map((d) => d.data().userId))];
+      const userDocs = await db.getAll(
+          ...uids.map((id) => db.collection("users").doc(id)));
+      const realIds = new Set(userDocs
+          .filter((u) => u.exists && u.data().isVirtual !== true)
+          .map((u) => u.id));
+
+      const realEntries =
+          candidates.filter((d) => realIds.has(d.data().userId));
+      if (realEntries.length === 0) return null;
+
+      const batch = db.batch();
+      const perChallenge = {};
+      const perOwner = {};
+      for (const d of realEntries) {
+        batch.update(d.ref,
+            {voteCount: admin.firestore.FieldValue.increment(1)});
+        const e = d.data();
+        perChallenge[e.challengeId] = (perChallenge[e.challengeId] || 0) + 1;
+        perOwner[e.userId] = (perOwner[e.userId] || 0) + 1;
+      }
+      for (const [cid, n] of Object.entries(perChallenge)) {
+        batch.update(db.collection("challenges").doc(cid),
+            {voteCount: admin.firestore.FieldValue.increment(n)});
+      }
+      for (const [uid, n] of Object.entries(perOwner)) {
+        batch.update(db.collection("users").doc(uid),
+            {totalVotesReceived: admin.firestore.FieldValue.increment(n)});
+      }
+      await batch.commit();
+      console.log(
+          `autoVoteRealEntries: +1 voto em ${realEntries.length} ` +
+          "participações reais");
+      return null;
+    });
+
 async function finalizeChallenge(db, challengeDoc) {
   const challengeId = challengeDoc.id;
   const challengeRef = db.collection("challenges").doc(challengeId);
@@ -3126,6 +3193,201 @@ exports.seedVirtualComments = functions.runWith({timeoutSeconds: 540})
       }
       await flush();
       return res.json({success: true, comments: total});
+    });
+
+// ─── SEED ENGAJAMENTO NOS DESAFIOS ATIVOS (re-executável) ─────────────────────
+// Enche os desafios ATIVOS de comentários realistas (perfis virtuais, com
+// curtidas e algumas respostas) e acrescenta votos às participações.
+// Aditivo: pode rodar de novo para "reabastecer" o engajamento.
+exports.seedActiveEngagement = functions.runWith({timeoutSeconds: 540})
+    .https.onRequest(async (req, res) => {
+      if (req.method !== "POST") {
+        return res.status(405).json({error: "Method Not Allowed"});
+      }
+      if (!req.body || req.body.secret !== "SEED_2026_DP") {
+        return res.status(403).json({error: "Forbidden"});
+      }
+      const db = admin.firestore();
+
+      const usersSnap = await db.collection("users")
+          .where("isVirtual", "==", true).limit(400).get();
+      const vUsers = usersSnap.docs
+          .map((d) => ({id: d.id, name: d.data().name || "Usuário"}));
+      if (vUsers.length < 10) {
+        return res.status(412).json({error: "Rode seedVirtualUsers primeiro."});
+      }
+
+      const challSnap = await db.collection("challenges")
+          .where("status", "==", "active").get();
+      if (challSnap.empty) {
+        return res.json({success: true, comments: 0, votes: 0});
+      }
+      const activeIds = new Set(challSnap.docs.map((d) => d.id));
+      const entriesSnap = await db.collection("entries")
+          .where("isActive", "==", true).get();
+      const entries = entriesSnap.docs
+          .filter((d) => activeIds.has(d.data().challengeId));
+
+      const ri = (n) => Math.floor(Math.random() * n);
+      const pick = (a) => a[ri(a.length)];
+      const now = Date.now();
+
+      const generic = [
+        "Top demais! 🔥", "Arrasou!", "Merece ganhar 👏", "Que demais!",
+        "Simplesmente perfeito", "Tá levando essa 💪", "Sensacional",
+        "Muito bom mesmo", "Curti demais", "Brabo 🔥", "Show de bola",
+        "Nota 10", "Meu voto é seu 🗳️", "Apoiado! 👏", "mt bom isso",
+        "aí sim hein 👏👏", "ganhou meu respeito", "vou votar nessa",
+        "tá acirrado esse desafio 👀", "quero ver quem leva essa",
+        "melhor participação até agora", "essa merece o prêmio",
+        "votei! boa sorte 🍀", "capricho total", "sem palavras 👏",
+        "isso vai longe", "já tá na frente por mérito", "genial",
+        "criatividade em outro nível", "apostando nessa 🤞",
+        "como assim isso não tá em primeiro??", "top top top",
+        "kkkkk adorei", "que capricho gente", "surreal 😱",
+        "o nível tá alto nesse desafio", "difícil escolher, mas essa é boa",
+        "essa competição tá boa demais", "prêmio já tem dono kkk",
+        "vim pelo desafio, fiquei pela qualidade", "muito estilo",
+      ];
+      const imageC = [
+        "Que foto incrível! 📸", "Ângulo perfeito 😍", "Qualidade absurda",
+        "Que clique!", "Ficou lindo demais", "Foto de capa! 🤩",
+        "essa imagem tá muito boa", "parece profissional 📷",
+        "que edição limpa", "cores perfeitas 😍", "enquadramento top",
+      ];
+      const videoC = [
+        "Que vídeo bom! 🎬", "Edição muito boa 👏", "assisti 3x kkk",
+        "esse vídeo merece viralizar", "produção caprichada 🎥",
+        "que transição foi essa?? 🔥", "conteúdo de qualidade",
+      ];
+      const textC = [
+        "kkkk muito boa 😂", "Concordo demais", "Verdade pura 👏",
+        "Anotado!", "Essa foi forte", "Genial kkk", "Real demais",
+        "escreveu tudo", "resumiu perfeitamente", "sábio demais kkk",
+        "isso é muito real", "falou por todos nós",
+      ];
+      const replies = [
+        "kkk verdade", "concordo!", "apoiadíssimo", "vote gente 🙏",
+        "exatamente isso", "falou tudo", "kkkkkk", "sim!! 👏",
+        "também acho", "essa é a real", "verdade demais", "certíssimo",
+      ];
+
+      let batch = db.batch();
+      let ops = 0;
+      let totalComments = 0;
+      let totalVotes = 0;
+      const flush = async () => {
+        if (ops > 0) {
+          await batch.commit();
+          batch = db.batch();
+          ops = 0;
+        }
+      };
+      const bump = async () => {
+        ops++;
+        if (ops >= 450) await flush();
+      };
+
+      // Comentário (com chance de curtidas e de resposta).
+      const addComment = async (challengeId, entryId, pool) => {
+        const u = pick(vUsers);
+        const createdAt = now - ri(36 * 3600000); // últimas 36h
+        const ref = db.collection("comments").doc();
+        batch.set(ref, {
+          challengeId,
+          entryId,
+          parentId: "",
+          userId: u.id,
+          userName: u.name,
+          text: pick(pool),
+          likeCount: Math.random() < 0.35 ? 1 + ri(18) : 0,
+          isActive: true,
+          createdAt: new Date(createdAt).toISOString(),
+          isVirtual: true,
+        });
+        totalComments++;
+        await bump();
+        if (Math.random() < 0.2) {
+          const r = pick(vUsers);
+          batch.set(db.collection("comments").doc(), {
+            challengeId,
+            entryId,
+            parentId: ref.id,
+            userId: r.id,
+            userName: r.name,
+            text: pick(replies),
+            likeCount: Math.random() < 0.25 ? 1 + ri(6) : 0,
+            isActive: true,
+            createdAt: new Date(
+                createdAt + (5 + ri(120)) * 60000).toISOString(),
+            isVirtual: true,
+          });
+          totalComments++;
+          await bump();
+        }
+      };
+
+      // 1) Comentários no desafio + nas participações.
+      for (const c of challSnap.docs) {
+        const nCh = 3 + ri(5); // 3–7 no desafio
+        for (let i = 0; i < nCh; i++) {
+          await addComment(c.id, "", generic);
+        }
+      }
+      for (const e of entries) {
+        const d = e.data();
+        const pool = d.contentType === "image" ?
+            imageC.concat(generic) :
+            (d.contentType === "video" ?
+                videoC.concat(generic) : textC.concat(generic));
+        const nE = 2 + ri(4); // 2–5 por participação
+        for (let i = 0; i < nE; i++) {
+          await addComment(d.challengeId, e.id, pool);
+        }
+      }
+
+      // 2) Votos nas participações (contadores consistentes).
+      const perChallenge = {};
+      const perOwner = {};
+      for (const e of entries) {
+        const d = e.data();
+        const n = 2 + ri(12); // +2..+13 votos
+        batch.update(e.ref,
+            {voteCount: admin.firestore.FieldValue.increment(n)});
+        perChallenge[d.challengeId] = (perChallenge[d.challengeId] || 0) + n;
+        if (d.userId && !String(d.userId).startsWith("demo_")) {
+          perOwner[d.userId] = (perOwner[d.userId] || 0) + n;
+        }
+        totalVotes += n;
+        await bump();
+      }
+      for (const [cid, n] of Object.entries(perChallenge)) {
+        batch.update(db.collection("challenges").doc(cid),
+            {voteCount: admin.firestore.FieldValue.increment(n)});
+        await bump();
+      }
+      // Só incrementa donos que existem em /users (o mirror espelha).
+      const ownerIds = Object.keys(perOwner);
+      if (ownerIds.length > 0) {
+        const ownerDocs = await db.getAll(
+            ...ownerIds.map((id) => db.collection("users").doc(id)));
+        for (const o of ownerDocs) {
+          if (!o.exists) continue;
+          batch.update(o.ref, {
+            totalVotesReceived:
+                admin.firestore.FieldValue.increment(perOwner[o.id]),
+          });
+          await bump();
+        }
+      }
+      await flush();
+      return res.json({
+        success: true,
+        comments: totalComments,
+        votes: totalVotes,
+        challenges: challSnap.size,
+        entries: entries.length,
+      });
     });
 
 // ─── SEED DESAFIOS VIRTUAIS — LOTE 2 ──────────────────────────────────────────
