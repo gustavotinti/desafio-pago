@@ -952,8 +952,8 @@ class _VoteButtonState extends State<_VoteButton>
 
   @override
   Widget build(BuildContext context) {
-    final button = SizedBox(
-      width: double.infinity,
+    // Tamanho normal (sem esticar na largura), centralizado sob o conteúdo.
+    final button = Center(
       child: FilledButton.icon(
         onPressed: widget.canVote ? widget.onVote : null,
         icon: Icon(
@@ -969,7 +969,8 @@ class _VoteButtonState extends State<_VoteButton>
                   : 'Votar'),
         ),
         style: FilledButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
           textStyle:
               const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
         ),

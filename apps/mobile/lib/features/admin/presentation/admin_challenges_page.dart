@@ -31,11 +31,26 @@ class AdminChallengesPage extends StatelessWidget {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final docs = snapshot.data?.docs ?? [];
+          final docs = (snapshot.data?.docs ?? []).toList();
 
           if (docs.isEmpty) {
             return const Center(child: Text('Nenhum desafio ainda.'));
           }
+
+          // Padrão: ativos no topo e, dentro de cada grupo, maior prêmio antes.
+          double amountOf(QueryDocumentSnapshot d) =>
+              ((d.data() as Map<String, dynamic>)['amount'] as num?)
+                  ?.toDouble() ??
+              0;
+          bool activeOf(QueryDocumentSnapshot d) =>
+              ((d.data() as Map<String, dynamic>)['status'] ?? 'active') ==
+              'active';
+          docs.sort((a, b) {
+            final aa = activeOf(a);
+            final bb = activeOf(b);
+            if (aa != bb) return aa ? -1 : 1; // ativos primeiro
+            return amountOf(b).compareTo(amountOf(a)); // maior valor primeiro
+          });
 
           return ListView.builder(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 80),

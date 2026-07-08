@@ -70,11 +70,26 @@ class _ActivityTickerState extends State<ActivityTicker> {
           .limit(40)
           .get();
 
+      // Desafios de VÍDEO estão sendo desativados — o tipo não fica no doc do
+      // desafio, só nas participações (contentType). Buscamos os challengeIds
+      // que têm participação de vídeo e os excluímos do ticker.
+      final videoIds = <String>{};
+      try {
+        final vSnap = await db
+            .collection('entries')
+            .where('contentType', isEqualTo: 'video')
+            .get();
+        for (final e in vSnap.docs) {
+          final cid = e.data()['challengeId'] as String?;
+          if (cid != null) videoIds.add(cid);
+        }
+      } catch (_) {/* sem índice/erro: segue sem filtrar */}
+
       final winners = <String, String>{}; // uid -> @/nome (cache)
       final raw = <_WinItem>[];
       final rows = snap.docs.where((d) {
         final w = d.data()['winnerIds'];
-        return w is List && w.isNotEmpty;
+        return w is List && w.isNotEmpty && !videoIds.contains(d.id);
       }).toList();
       if (rows.isEmpty) return;
 

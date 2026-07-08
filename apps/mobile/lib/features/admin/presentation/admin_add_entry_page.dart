@@ -11,7 +11,7 @@ import '../../../core/widgets/safe_avatar.dart';
 import '../../../core/widgets/web_frame.dart';
 
 /// Admin adiciona uma participação a um desafio, atribuída a um **usuário
-/// virtual** escolhido. Suporta texto, imagem (com recorte no app) e vídeo.
+/// virtual** escolhido. Suporta texto e imagem (com recorte no app).
 class AdminAddEntryPage extends StatefulWidget {
   final String challengeId;
   final String challengeTitle;
@@ -38,8 +38,8 @@ class _AdminAddEntryPageState extends State<AdminAddEntryPage> {
   String _userName = '';
   String _userPhoto = '';
 
-  String _type = 'text'; // text | image | video
-  Uint8List? _mediaBytes; // imagem recortada ou vídeo
+  String _type = 'text'; // text | image
+  Uint8List? _mediaBytes; // imagem recortada
   String _mediaExt = 'jpg';
   String _mediaMime = 'image/jpeg';
 
@@ -96,21 +96,6 @@ class _AdminAddEntryPageState extends State<AdminAddEntryPage> {
     });
   }
 
-  Future<void> _pickVideo() async {
-    final picked = await ImagePicker().pickVideo(
-      source: ImageSource.gallery,
-      maxDuration: const Duration(seconds: 15),
-    );
-    if (picked == null) return;
-    final bytes = await picked.readAsBytes();
-    if (!mounted) return;
-    setState(() {
-      _mediaBytes = bytes;
-      _mediaExt = 'mp4';
-      _mediaMime = 'video/mp4';
-    });
-  }
-
   Future<String> _upload(Uint8List bytes) async {
     final ref = FirebaseStorage.instance.ref(
         'entries/${widget.challengeId}/admin_'
@@ -129,7 +114,7 @@ class _AdminAddEntryPageState extends State<AdminAddEntryPage> {
       return;
     }
     if (_type != 'text' && _mediaBytes == null) {
-      _snack('Selecione ${_type == 'image' ? 'a imagem' : 'o vídeo'}');
+      _snack('Selecione a imagem');
       return;
     }
     setState(() => _saving = true);
@@ -240,6 +225,7 @@ class _AdminAddEntryPageState extends State<AdminAddEntryPage> {
             const Text('2. Conteúdo',
                 style: TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
+            // Vídeo desativado por enquanto — só texto e imagem.
             SegmentedButton<String>(
               segments: const [
                 ButtonSegment(
@@ -250,10 +236,6 @@ class _AdminAddEntryPageState extends State<AdminAddEntryPage> {
                     value: 'image',
                     label: Text('Imagem'),
                     icon: Icon(Icons.image)),
-                ButtonSegment(
-                    value: 'video',
-                    label: Text('Vídeo'),
-                    icon: Icon(Icons.videocam)),
               ],
               selected: {_type},
               onSelectionChanged: (s) => setState(() {
@@ -274,36 +256,16 @@ class _AdminAddEntryPageState extends State<AdminAddEntryPage> {
               )
             else ...[
               ElevatedButton.icon(
-                onPressed: _type == 'image' ? _pickImage : _pickVideo,
-                icon: Icon(_type == 'image'
-                    ? Icons.photo_library
-                    : Icons.video_library),
-                label: Text(_type == 'image'
-                    ? 'Escolher e recortar imagem'
-                    : 'Escolher vídeo'),
+                onPressed: _pickImage,
+                icon: const Icon(Icons.photo_library),
+                label: const Text('Escolher e recortar imagem'),
               ),
               if (_mediaBytes != null) ...[
                 const SizedBox(height: 12),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: _type == 'image'
-                      ? Image.memory(_mediaBytes!,
-                          height: 220, fit: BoxFit.contain)
-                      : Container(
-                          height: 90,
-                          color: const Color(0xFF15171C),
-                          alignment: Alignment.center,
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.check_circle,
-                                  color: Colors.green, size: 18),
-                              SizedBox(width: 8),
-                              Text('Vídeo selecionado',
-                                  style: TextStyle(color: Colors.white70)),
-                            ],
-                          ),
-                        ),
+                  child: Image.memory(_mediaBytes!,
+                      height: 220, fit: BoxFit.contain),
                 ),
               ],
             ],

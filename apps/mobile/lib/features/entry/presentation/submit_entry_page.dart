@@ -8,11 +8,10 @@ import '../application/submit_entry.dart';
 import '../domain/entities/content_type.dart';
 import '../infrastructure/entry_repository.dart';
 import '../../../core/widgets/image_crop_page.dart';
-import 'auto_video.dart';
 
 // Formatos aceitos: 9:16, 4:5, 1:1 — garantidos pelo editor de recorte.
+// Vídeo desativado por enquanto — só texto e imagem.
 const _maxTextLength = 5000;
-const _maxVideoSeconds = 15;
 
 class SubmitEntryPage extends StatefulWidget {
   final String challengeId;
@@ -62,17 +61,6 @@ class _SubmitEntryPageState extends State<SubmitEntryPage> {
         name: 'participacao.jpg',
       );
     });
-  }
-
-  // ── Pegar vídeo ──────────────────────────────────────────────────────────
-  Future<void> _pickVideo() async {
-    final picker = ImagePicker();
-    final picked = await picker.pickVideo(
-      source: ImageSource.gallery,
-      maxDuration: const Duration(seconds: _maxVideoSeconds),
-    );
-    if (picked == null) return;
-    setState(() => _selectedFile = picked);
   }
 
   // ── Enviar ───────────────────────────────────────────────────────────────
@@ -172,6 +160,7 @@ class _SubmitEntryPageState extends State<SubmitEntryPage> {
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
+            // Vídeo desativado por enquanto — só texto e imagem.
             SegmentedButton<ContentType>(
               segments: const [
                 ButtonSegment(
@@ -183,11 +172,6 @@ class _SubmitEntryPageState extends State<SubmitEntryPage> {
                   value: ContentType.image,
                   label: Text('Imagem'),
                   icon: Icon(Icons.image),
-                ),
-                ButtonSegment(
-                  value: ContentType.video,
-                  label: Text('Vídeo'),
-                  icon: Icon(Icons.videocam),
                 ),
               ],
               selected: {_selectedType},
@@ -233,48 +217,6 @@ class _SubmitEntryPageState extends State<SubmitEntryPage> {
               ),
               _buildImagePreview(),
               if (_selectedFile != null) ...[
-                const SizedBox(height: 8),
-                _SelectedFileTile(name: _selectedFile!.name),
-              ],
-            ],
-
-            // ── Vídeo ───────────────────────────────────────────────
-            if (_selectedType == ContentType.video) ...[
-              _FormatGuide(
-                lines: const [
-                  'Proporções aceitas:',
-                  '  9:16 (1080 × 1920)  ·  4:5 (1080 × 1350)',
-                  '  1:1 (1080 × 1080)',
-                  'Duração máxima: 15 segundos',
-                  'Tamanho máximo: 50 MB',
-                  'Edite e recorte antes de selecionar, se necessário.',
-                ],
-              ),
-              const SizedBox(height: 12),
-              ElevatedButton.icon(
-                onPressed: _pickVideo,
-                icon: Icon(_selectedFile == null
-                    ? Icons.video_library
-                    : Icons.change_circle_outlined),
-                label: Text(
-                    _selectedFile == null ? 'Escolher vídeo' : 'Trocar vídeo'),
-              ),
-              if (_selectedFile != null) ...[
-                const SizedBox(height: 12),
-                // Prévia do vídeo (na web toca o blob; toque para reproduzir).
-                if (kIsWeb)
-                  Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 280),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: AspectRatio(
-                          aspectRatio: 4 / 5,
-                          child: AutoVideo(url: _selectedFile!.path),
-                        ),
-                      ),
-                    ),
-                  ),
                 const SizedBox(height: 8),
                 _SelectedFileTile(name: _selectedFile!.name),
               ],
