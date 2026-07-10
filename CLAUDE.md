@@ -209,7 +209,10 @@ Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
   `/publicProfiles` (sem PII) é público para o visitante
 - Contadores de follow só via Cloud Function; `isFullAdmin()` nas regras
   (moderador não mexe no roster de admins); `/follows` write travado
-- `functions/.env` fora do git (token MP, MP_WEBHOOK_SECRET, OpenAI)
+- `functions/.env` fora do git (token MP, MP_WEBHOOK_SECRET; a linha
+  `OPENAI_API_KEY=` existe mas está VAZIA — IA de conteúdo/moderação só
+  funciona quando o usuário preencher OPENAI_API_KEY ou GEMINI_API_KEY
+  e as functions forem redeployadas)
 
 ### ⚙️ Infra / pontos técnicos importantes
 - **Storage bucket REAL: `desafio-app-b8665.firebasestorage.app`**
