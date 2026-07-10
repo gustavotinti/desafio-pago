@@ -82,11 +82,11 @@ class _SplashScreenState extends State<_SplashScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      // Intro (splash) igual à do Brasil nos dois sites — o GIF internacional
+      // tem fundo diferente e destoava aqui; ele fica só no logo do topo.
       body: Center(
         child: Image.asset(
-          AppConfig.intl
-              ? 'assets/images/logo_anim_intl.gif'
-              : 'assets/images/logo_anim_h_light.gif',
+          'assets/images/logo_anim_h_light.gif',
           height: 200,
         ),
       ),
