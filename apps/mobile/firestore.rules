@@ -184,5 +184,21 @@ service cloud.firestore {
       allow read: if isAdmin();
       allow write: if false;
     }
+
+    // ── SEO (artigos /novidades, fila de tópicos, dados do GSC) ───────────────
+    match /seo_articles/{id} {
+      // Conteúdo público (as páginas SSR leem via Admin SDK; o painel admin
+      // lista via client SDK). Escrita só por Cloud Functions.
+      allow read: if true;
+      allow write: if false;
+    }
+    match /seo_topics/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    match /seo_gsc/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
   }
 }

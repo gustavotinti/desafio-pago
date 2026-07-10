@@ -62,7 +62,7 @@ outros participam com conteúdo (texto/imagem/vídeo), e o mais votado vence o p
 - Retry automático em falha
 - Status: pending | posted | failed
 
-## Estado atual (v2.8.4 — julho/2026)
+## Estado atual (v2.9.0 — julho/2026)
 No ar: https://desafiopago.com.br (e https://desafiopago.web.app)
 Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
 
@@ -171,6 +171,27 @@ Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
   perfil** (virtual ou real); lápis de edição inline no feed e no perfil público
 - **Excluir participação** (reverte contadores) + **editar/excluir comentários**;
   editar votos (ajusta `totalVotesReceived`)
+
+**SEO orgânico (v2.9.0 — máquina de tráfego sem mídia paga)**
+- **Hub `/novidades`** renderizado no SERVIDOR (função `seoPage` via rewrite —
+  o app Flutter é canvas e invisível pro Google): índice + artigos com
+  JSON-LD (Article/FAQPage/Breadcrumb), OG tags, CSS leve, bloco de desafios
+  ativos reais (CTA) e links internos. Cache s-maxage.
+- **`/sitemap.xml`** automático (função `seoSitemap`): home, /novidades,
+  artigos e todos os /challenges/{id}. `web/robots.txt` aponta pro sitemap.
+- **Geração de conteúdo por IA** (`functions/seo.js`): usa GEMINI_API_KEY se
+  existir, senão OPENAI_API_KEY (já no .env). Artigos PT-BR úteis (900-1300
+  palavras, sem promessas falsas), slug único, sanitização de HTML.
+- **Cron diário** `seoDailyPublish` (9h BRT): publica 1 artigo/dia da fila
+  `seo_topics` (~48 temas seed). Kill-switch: `config/seo.autoPublish`.
+- **Loop de demanda GSC** `gscSyncQueries` (toda segunda 8h): lê o Search
+  Console (queries com impressões e posição ruim = oportunidade) e alimenta
+  a fila de tópicos. REQUER: adicionar
+  `desafio-app-b8665@appspot.gserviceaccount.com` como usuário na
+  propriedade do GSC + API searchconsole.googleapis.com habilitada.
+- **Admin → SEO/Novidades**: gerar artigo na hora (tema livre ou fila),
+  toggle da publicação automática, fila de tópicos e lista dos publicados.
+- Meta tags/JSON-LD da home melhorados (web/index.html).
 
 **Verificação**
 - Pedido de selo (nome/sobrenome/telefone/CPF) + fila prioritária paga

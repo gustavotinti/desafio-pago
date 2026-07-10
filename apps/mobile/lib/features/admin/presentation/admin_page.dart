@@ -10,6 +10,7 @@ import 'admin_verification_page.dart';
 import 'admin_virtual_users_page.dart';
 import 'admin_audience_page.dart';
 import 'admin_platform_page.dart';
+import 'admin_seo_page.dart';
 
 /// Painel Admin — hub com visão geral ao vivo (contadores), atalhos em grid
 /// responsivo (2 colunas no desktop, 1 no celular), badges de pendências e
@@ -215,6 +216,14 @@ class _AdminPageState extends State<AdminPage> {
                     spacing: 12,
                     runSpacing: 12,
                     children: [
+                      card(
+                        icon: Icons.travel_explore_rounded,
+                        title: 'SEO / Novidades',
+                        subtitle:
+                            'Artigos por IA, fila de temas e demanda do Google',
+                        gradient: const [Color(0xFF1565C0), Color(0xFF42A5F5)],
+                        page: const AdminSeoPage(),
+                      ),
                       card(
                         icon: Icons.campaign_rounded,
                         title: 'Dados para campanhas',

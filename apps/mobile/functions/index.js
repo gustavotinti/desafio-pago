@@ -4296,3 +4296,8 @@ exports.entryPreview = functions.https.onRequest(async (req, res) => {
 
 // (Removido: updateVirtualAvatars — migração obsoleta que setava URLs sem CORS.
 //  Os retratos virtuais são auto-hospedados em /portraits/{men|women}/N.jpg.)
+
+// ─── SEO ORGÂNICO (hub /novidades, sitemap, IA de conteúdo, GSC) ─────────────
+// Ver functions/seo.js — páginas SSR para o Google indexar (o app Flutter é
+// canvas e invisível pra busca), sitemap.xml e geração de artigos por IA.
+Object.assign(exports, require("./seo"));
