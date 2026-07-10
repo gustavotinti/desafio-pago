@@ -4301,3 +4301,8 @@ exports.entryPreview = functions.https.onRequest(async (req, res) => {
 // Ver functions/seo.js — páginas SSR para o Google indexar (o app Flutter é
 // canvas e invisível pra busca), sitemap.xml e geração de artigos por IA.
 Object.assign(exports, require("./seo"));
+
+// ─── PAGAMENTOS INTERNACIONAIS (PayPal + XRP — trialspaid.web.app) ───────────
+// Ver functions/payments_intl.js — depósito PayPal creditando o ledger e
+// saque em cripto (XRP) com fluxo manual do admin (como o Pix).
+Object.assign(exports, require("./payments_intl"));

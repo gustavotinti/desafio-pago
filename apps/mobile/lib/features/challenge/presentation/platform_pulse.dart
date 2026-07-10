@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/i18n.dart';
 import '../../../core/utils/format.dart';
 import '../../../core/widgets/web_frame.dart';
 
@@ -251,7 +252,7 @@ class _PlatformPulseState extends State<PlatformPulse> {
                   icon: Icons.local_fire_department,
                   value: _activeChallenges?.toDouble(),
                   format: (v) => Fmt.number(v.round()),
-                  label: 'desafios ativos',
+                  label: I18n.tr('stat_active'),
                 ),
                 _divider(),
                 _Stat(
@@ -259,14 +260,14 @@ class _PlatformPulseState extends State<PlatformPulse> {
                   value: _prizePool,
                   // Valor completo (com centavos): o drift de 5s fica visível.
                   format: (v) => Fmt.brl(v),
-                  label: 'em prêmios',
+                  label: I18n.tr('stat_prizes'),
                 ),
                 _divider(),
                 _Stat(
                   icon: Icons.groups,
                   value: _participants?.toDouble(),
                   format: (v) => Fmt.number(v.round()),
-                  label: 'participantes',
+                  label: I18n.tr('stat_participants'),
                 ),
               ],
             ),
@@ -327,7 +328,7 @@ class _LiveTagState extends State<_LiveTag>
         ),
         const SizedBox(width: 6),
         Text(
-          'AO VIVO AGORA',
+          I18n.tr('live_now'),
           style: TextStyle(
             color: Colors.white.withValues(alpha: 0.85),
             fontSize: 10,

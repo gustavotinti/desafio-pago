@@ -3,7 +3,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import 'home_page.dart';
 import 'auth_guard.dart';
+import '../../../core/config/app_config.dart';
 import '../../../core/deep_link.dart';
+import '../../../core/i18n/i18n.dart';
 import '../../../core/widgets/web_frame.dart';
 import '../../challenge/infrastructure/get_challenges.dart';
 import '../../entry/presentation/challenge_entries_page.dart';
@@ -20,7 +22,7 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _index = 0;
 
-  static const _version = 'Desafio Pago v2.9.0';
+  static const _version = '${AppConfig.brand} v3.0.0';
 
   @override
   void initState() {
@@ -82,21 +84,21 @@ class _MainShellState extends State<MainShell> {
           NavigationBar(
             selectedIndex: _index,
             onDestinationSelected: (i) => setState(() => _index = i),
-            destinations: const [
+            destinations: [
               NavigationDestination(
-                icon: Icon(Icons.explore_outlined),
-                selectedIcon: Icon(Icons.explore),
-                label: 'Desafios',
+                icon: const Icon(Icons.explore_outlined),
+                selectedIcon: const Icon(Icons.explore),
+                label: I18n.tr('tab_challenges'),
               ),
               NavigationDestination(
-                icon: Icon(Icons.leaderboard_outlined),
-                selectedIcon: Icon(Icons.leaderboard),
-                label: 'Rankings',
+                icon: const Icon(Icons.leaderboard_outlined),
+                selectedIcon: const Icon(Icons.leaderboard),
+                label: I18n.tr('tab_rankings'),
               ),
               NavigationDestination(
-                icon: Icon(Icons.person_outline),
-                selectedIcon: Icon(Icons.person),
-                label: 'Perfil',
+                icon: const Icon(Icons.person_outline),
+                selectedIcon: const Icon(Icons.person),
+                label: I18n.tr('tab_profile'),
               ),
             ],
           ),
@@ -115,7 +117,7 @@ class _GuestProfile extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF7F9FC),
-      appBar: AppBar(title: const Text('Perfil')),
+      appBar: AppBar(title: Text(I18n.tr('tab_profile'))),
       body: WebFrame(
         maxWidth: 420,
         child: ListView(
@@ -143,17 +145,18 @@ class _GuestProfile extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 22),
-            const Text(
-              'Crie sua conta grátis',
+            Text(
+              I18n.tr('guest_title'),
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              style:
+                  const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Entre com o Google para participar dos desafios e '
-              'acompanhar seus ganhos.',
+            Text(
+              I18n.tr('guest_sub'),
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.black54, fontSize: 14, height: 1.4),
+              style: const TextStyle(
+                  color: Colors.black54, fontSize: 14, height: 1.4),
             ),
             const SizedBox(height: 26),
 
@@ -172,34 +175,34 @@ class _GuestProfile extends StatelessWidget {
                   ),
                 ],
               ),
-              child: const Column(
+              child: Column(
                 children: [
                   _GuestBenefit(
                     icon: Icons.emoji_events,
-                    color: Color(0xFFF5A623),
-                    title: 'Ganhe prêmios em dinheiro',
-                    subtitle: 'Participe e vença desafios pagos',
+                    color: const Color(0xFFF5A623),
+                    title: I18n.tr('guest_b1_title'),
+                    subtitle: I18n.tr('guest_b1_sub'),
                   ),
-                  Divider(height: 1),
+                  const Divider(height: 1),
                   _GuestBenefit(
                     icon: Icons.how_to_vote,
-                    color: Color(0xFF003b8a),
-                    title: 'Vote nos melhores',
-                    subtitle: 'Ajude a escolher quem leva o prêmio',
+                    color: const Color(0xFF003b8a),
+                    title: I18n.tr('guest_b2_title'),
+                    subtitle: I18n.tr('guest_b2_sub'),
                   ),
-                  Divider(height: 1),
+                  const Divider(height: 1),
                   _GuestBenefit(
                     icon: Icons.add_circle,
-                    color: Color(0xFFff00bf),
-                    title: 'Crie seus desafios',
-                    subtitle: 'Lance um prêmio e desafie a galera',
+                    color: const Color(0xFFff00bf),
+                    title: I18n.tr('guest_b3_title'),
+                    subtitle: I18n.tr('guest_b3_sub'),
                   ),
-                  Divider(height: 1),
+                  const Divider(height: 1),
                   _GuestBenefit(
-                    icon: Icons.pix,
-                    color: Color(0xFF00A86B),
-                    title: 'Saque via Pix',
-                    subtitle: 'Receba seus ganhos quando quiser',
+                    icon: AppConfig.intl ? Icons.currency_bitcoin : Icons.pix,
+                    color: const Color(0xFF00A86B),
+                    title: I18n.tr('guest_b4_title'),
+                    subtitle: I18n.tr('guest_b4_sub'),
                   ),
                 ],
               ),
@@ -209,10 +212,10 @@ class _GuestProfile extends StatelessWidget {
             // — Botão oficial do Google —
             const GoogleSignInButton(),
             const SizedBox(height: 14),
-            const Text(
-              'Apenas para usuários no Brasil · +18 anos',
+            Text(
+              I18n.tr('guest_footer'),
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 11, color: Colors.black38),
+              style: const TextStyle(fontSize: 11, color: Colors.black38),
             ),
           ],
         ),

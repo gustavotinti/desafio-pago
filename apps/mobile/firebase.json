@@ -1,47 +1,74 @@
 {
-  "hosting": {
-    "site": "desafiopago",
-    "public": "build/web",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-    "predeploy": ["node copy_web_assets.js"],
-    "rewrites": [
-      { "source": "/challenges/**", "function": "entryPreview" },
-      { "source": "/novidades", "function": "seoPage" },
-      { "source": "/novidades/**", "function": "seoPage" },
-      { "source": "/sitemap.xml", "function": "seoSitemap" },
-      { "source": "**", "destination": "/index.html" }
-    ],
-    "headers": [
-      {
-        "source": "/avatars/**",
-        "headers": [
-          { "key": "Access-Control-Allow-Origin", "value": "*" },
-          { "key": "Cache-Control", "value": "public, max-age=604800" }
-        ]
-      },
-      {
-        "source": "/portraits/**",
-        "headers": [
-          { "key": "Access-Control-Allow-Origin", "value": "*" },
-          { "key": "Cache-Control", "value": "public, max-age=604800" }
-        ]
-      },
-      {
-        "source": "/challenge_images/**",
-        "headers": [
-          { "key": "Access-Control-Allow-Origin", "value": "*" },
-          { "key": "Cache-Control", "value": "public, max-age=604800" }
-        ]
-      },
-      {
-        "source": "/challenge_videos/**",
-        "headers": [
-          { "key": "Access-Control-Allow-Origin", "value": "*" },
-          { "key": "Cache-Control", "value": "public, max-age=604800" }
-        ]
-      }
-    ]
-  },
+  "hosting": [
+    {
+      "target": "app",
+      "public": "build/web",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "predeploy": ["node copy_web_assets.js"],
+      "rewrites": [
+        { "source": "/challenges/**", "function": "entryPreview" },
+        { "source": "/novidades", "function": "seoPage" },
+        { "source": "/novidades/**", "function": "seoPage" },
+        { "source": "/sitemap.xml", "function": "seoSitemap" },
+        { "source": "**", "destination": "/index.html" }
+      ],
+      "headers": [
+        {
+          "source": "/avatars/**",
+          "headers": [
+            { "key": "Access-Control-Allow-Origin", "value": "*" },
+            { "key": "Cache-Control", "value": "public, max-age=604800" }
+          ]
+        },
+        {
+          "source": "/portraits/**",
+          "headers": [
+            { "key": "Access-Control-Allow-Origin", "value": "*" },
+            { "key": "Cache-Control", "value": "public, max-age=604800" }
+          ]
+        },
+        {
+          "source": "/challenge_images/**",
+          "headers": [
+            { "key": "Access-Control-Allow-Origin", "value": "*" },
+            { "key": "Cache-Control", "value": "public, max-age=604800" }
+          ]
+        },
+        {
+          "source": "/challenge_videos/**",
+          "headers": [
+            { "key": "Access-Control-Allow-Origin", "value": "*" },
+            { "key": "Cache-Control", "value": "public, max-age=604800" }
+          ]
+        }
+      ]
+    },
+    {
+      "target": "intl",
+      "public": "build/web_intl",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [
+        { "source": "/challenges/**", "function": "entryPreview" },
+        { "source": "**", "destination": "/index.html" }
+      ],
+      "headers": [
+        {
+          "source": "/avatars/**",
+          "headers": [
+            { "key": "Access-Control-Allow-Origin", "value": "*" },
+            { "key": "Cache-Control", "value": "public, max-age=604800" }
+          ]
+        },
+        {
+          "source": "/portraits/**",
+          "headers": [
+            { "key": "Access-Control-Allow-Origin", "value": "*" },
+            { "key": "Cache-Control", "value": "public, max-age=604800" }
+          ]
+        }
+      ]
+    }
+  ],
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"

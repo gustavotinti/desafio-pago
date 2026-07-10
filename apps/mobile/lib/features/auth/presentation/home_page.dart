@@ -19,6 +19,9 @@ import '../../entry/presentation/submit_entry_page.dart';
 import '../../admin/presentation/admin_challenges_page.dart';
 import '../../admin/presentation/admin_page.dart';
 import '../../admin/infrastructure/admin_repository.dart';
+import '../../../core/config/app_config.dart';
+import '../../../core/i18n/i18n.dart';
+import '../../../core/i18n/language_selector.dart';
 import '../../../core/utils/format.dart';
 import '../../../core/widgets/web_frame.dart';
 import 'auth_guard.dart';
@@ -78,14 +81,13 @@ class _HomePageState extends State<HomePage> {
             height: 52,
             width: 220,
             child: Image.asset(
-              _logoSettled
-                  ? 'assets/images/2.png'
-                  : 'assets/images/logo_anim_sq_dark.gif',
+              _logoSettled ? AppConfig.logoStatic : AppConfig.logoAnim,
               fit: BoxFit.contain,
             ),
           ),
         ),
         actions: [
+          const LanguageSelector(),
           if (_currentUserId != null) const NotificationBell(),
           if (_isAdmin)
             IconButton(
@@ -128,7 +130,7 @@ class _HomePageState extends State<HomePage> {
           _reload();
         },
         icon: const Icon(Icons.add),
-        label: const Text('Criar desafio'),
+        label: Text(I18n.tr('create_challenge')),
       ),
     );
   }
@@ -346,11 +348,11 @@ class _FeedTabState extends State<_FeedTab> {
         onRefresh: _loadFirst,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          children: const [
-            SizedBox(height: 140),
+          children: [
+            const SizedBox(height: 140),
             Center(
-              child: Text('Nenhum desafio aqui ainda.',
-                  style: TextStyle(color: Colors.black54)),
+              child: Text(I18n.tr('feed_empty'),
+                  style: const TextStyle(color: Colors.black54)),
             ),
           ],
         ),
@@ -439,14 +441,20 @@ class _ChallengeCard extends StatelessWidget {
 
   String _timeLeft() {
     final diff = challenge.expiresAt.difference(DateTime.now());
-    if (diff.isNegative) return 'Expirado';
+    if (diff.isNegative) return I18n.tr('expired');
     if (diff.inDays > 0) {
-      return 'Expira em ${diff.inDays}d ${diff.inHours.remainder(24)}h';
+      return I18n.trp('expires_d', {
+        'd': '${diff.inDays}',
+        'h': '${diff.inHours.remainder(24)}',
+      });
     }
     if (diff.inHours > 0) {
-      return 'Expira em ${diff.inHours}h ${diff.inMinutes.remainder(60)}min';
+      return I18n.trp('expires_h', {
+        'h': '${diff.inHours}',
+        'm': '${diff.inMinutes.remainder(60)}',
+      });
     }
-    return 'Expira em ${diff.inMinutes}min';
+    return I18n.trp('expires_m', {'m': '${diff.inMinutes}'});
   }
 
   @override
@@ -589,9 +597,12 @@ class _ChallengeCard extends StatelessWidget {
                       Flexible(
                         child: Text(
                           challenge.winnerIds.length == 1
-                              ? 'Vencedor definido • ${Fmt.brl(challenge.amount)}'
-                              : '${challenge.winnerIds.length} vencedores '
-                                  '(empate) • ${Fmt.brl(challenge.amount)}',
+                              ? I18n.trp('winner_defined',
+                                  {'v': Fmt.brl(challenge.amount)})
+                              : I18n.trp('winners_tie', {
+                                  'n': '${challenge.winnerIds.length}',
+                                  'v': Fmt.brl(challenge.amount),
+                                }),
                           style: TextStyle(
                             fontSize: 12,
                             color: Colors.green.shade700,
@@ -605,9 +616,9 @@ class _ChallengeCard extends StatelessWidget {
                 if (_isFinished &&
                     challenge.winnerIds.isEmpty) ...[
                   const SizedBox(height: 10),
-                  const Text(
-                    'Sem participações',
-                    style: TextStyle(
+                  Text(
+                    I18n.tr('no_entries_short'),
+                    style: const TextStyle(
                         fontSize: 12, color: Colors.black45),
                   ),
                 ],
@@ -649,7 +660,7 @@ class _ChallengeCard extends StatelessWidget {
                         ),
                         onPressed: () async {
                           if (!await ensureLoggedIn(context,
-                              message: 'Entre para participar do desafio')) {
+                              message: I18n.tr('participate_login'))) {
                             return;
                           }
                           if (!context.mounted) return;
@@ -664,7 +675,7 @@ class _ChallengeCard extends StatelessWidget {
                           );
                           onNavigated();
                         },
-                        child: const Text('Participar'),
+                        child: Text(I18n.tr('participate')),
                       ),
                     if (!_isFinished)
                       OutlinedButton(
@@ -675,7 +686,7 @@ class _ChallengeCard extends StatelessWidget {
                               fontSize: 13, fontFamily: 'Garet'),
                         ),
                         onPressed: onAddAmount,
-                        child: const Text('+ Prêmio'),
+                        child: Text(I18n.tr('add_prize_btn')),
                       ),
                     OutlinedButton(
                       style: OutlinedButton.styleFrom(
@@ -695,11 +706,11 @@ class _ChallengeCard extends StatelessWidget {
                         );
                         onNavigated();
                       },
-                      child: const Text('Ver participações'),
+                      child: Text(I18n.tr('view_entries')),
                     ),
                     // ── Share button ──────────────────────────────────
                     IconButton(
-                      tooltip: 'Compartilhar desafio',
+                      tooltip: I18n.tr('share_challenge'),
                       icon: const Icon(Icons.share_outlined, size: 20),
                       style: IconButton.styleFrom(
                         padding: const EdgeInsets.all(8),
@@ -713,13 +724,14 @@ class _ChallengeCard extends StatelessWidget {
                       ),
                       onPressed: () async {
                         final url =
-                            'https://desafiopago.com.br/challenges/${challenge.id}';
+                            '${AppConfig.siteUrl}/challenges/${challenge.id}';
                         await Clipboard.setData(
                             ClipboardData(text: url));
                         if (!context.mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                              content: Text('Link do desafio copiado!')),
+                          SnackBar(
+                              content:
+                                  Text(I18n.tr('challenge_link_copied'))),
                         );
                       },
                     ),
@@ -916,14 +928,14 @@ class _NewBadgeState extends State<_NewBadge>
             ),
           ],
         ),
-        child: const Row(
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.auto_awesome, size: 13, color: Colors.white),
-            SizedBox(width: 5),
+            const Icon(Icons.auto_awesome, size: 13, color: Colors.white),
+            const SizedBox(width: 5),
             Text(
-              'NOVO',
-              style: TextStyle(
+              I18n.tr('new_badge'),
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 11,
                 fontWeight: FontWeight.w800,
@@ -1011,11 +1023,10 @@ class _HighDemandFooter extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 14),
-              const _DotsText(text: 'Carregando mais desafios'),
+              _DotsText(text: I18n.tr('high_demand_title')),
               const SizedBox(height: 6),
               Text(
-                'Estamos com alta demanda de usuários agora — '
-                'o servidor pode levar um instante para carregar mais.',
+                I18n.tr('high_demand_msg'),
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 12,

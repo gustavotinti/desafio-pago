@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../core/i18n/i18n.dart';
 import '../../../core/widgets/web_frame.dart';
 import '../application/submit_entry.dart';
 import '../domain/entities/content_type.dart';
@@ -87,7 +88,7 @@ class _SubmitEntryPageState extends State<SubmitEntryPage> {
     } else {
       if (_selectedFile == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Selecione um arquivo')),
+          SnackBar(content: Text(I18n.tr('select_file'))),
         );
         return;
       }
@@ -107,7 +108,7 @@ class _SubmitEntryPageState extends State<SubmitEntryPage> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Participação enviada!')),
+          SnackBar(content: Text(I18n.tr('entry_sent'))),
         );
         Navigator.pop(context);
       }
@@ -156,18 +157,18 @@ class _SubmitEntryPageState extends State<SubmitEntryPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // ── Imagem (único tipo por enquanto) ────────────────────
-            const Text(
-              'Sua participação',
-              style: TextStyle(fontWeight: FontWeight.bold),
+            Text(
+              I18n.tr('your_entry'),
+              style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 12),
             _FormatGuide(
-              lines: const [
-                'Envie uma imagem — proporções aceitas:',
+              lines: [
+                I18n.tr('img_rule_title'),
                 '  9:16 (1080 × 1920)  ·  4:5 (1080 × 1350)',
                 '  1:1 (1080 × 1080)',
-                'Tamanho máximo: 10 MB',
-                'Você recorta a imagem aqui no app — é só escolher.',
+                I18n.tr('img_rule_size'),
+                I18n.tr('img_rule_crop'),
               ],
             ),
             const SizedBox(height: 12),
@@ -176,8 +177,9 @@ class _SubmitEntryPageState extends State<SubmitEntryPage> {
               icon: Icon(_selectedFile == null
                   ? Icons.photo_library
                   : Icons.crop_rotate),
-              label: Text(
-                  _selectedFile == null ? 'Escolher imagem' : 'Trocar imagem'),
+              label: Text(_selectedFile == null
+                  ? I18n.tr('choose_image')
+                  : I18n.tr('change_image')),
             ),
             _buildImagePreview(),
             if (_selectedFile != null) ...[
@@ -199,7 +201,7 @@ class _SubmitEntryPageState extends State<SubmitEntryPage> {
                         child: CircularProgressIndicator(
                             strokeWidth: 2, color: Colors.white),
                       )
-                    : const Text('Enviar participação'),
+                    : Text(I18n.tr('send_entry')),
               ),
             ),
           ],

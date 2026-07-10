@@ -2,6 +2,17 @@
   "projects": {
     "default": "desafio-app-b8665"
   },
-  "targets": {},
+  "targets": {
+    "desafio-app-b8665": {
+      "hosting": {
+        "app": [
+          "desafiopago"
+        ],
+        "intl": [
+          "trialspaid"
+        ]
+      }
+    }
+  },
   "etags": {}
 }

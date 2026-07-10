@@ -9,9 +9,12 @@ import 'package:intl/date_symbol_data_local.dart';
 
 import 'firebase_options.dart';
 import 'core/deep_link.dart';
+import 'core/config/app_config.dart';
 import 'core/config/emulator.dart';
+import 'core/i18n/i18n.dart';
 import 'core/services/notification_service.dart';
 import 'core/theme/app_theme.dart';
+import 'core/utils/rates.dart';
 import 'features/auth/presentation/banned_page.dart';
 import 'features/auth/presentation/main_shell.dart';
 import 'features/auth/presentation/terms_page.dart';
@@ -24,6 +27,8 @@ void main() async {
   await connectToEmulators();
   await NotificationService.init();
   if (!kIsWeb) await ScreenProtector.preventScreenshotOn();
+  // Build internacional: carrega cotações (USD/XRP) em segundo plano.
+  if (AppConfig.intl) loadIntlRates();
   runApp(const MyApp());
 }
 
@@ -32,15 +37,19 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Desafio Pago',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.theme,
-      // Texto selecionável em todo o app (Flutter Web/CanvasKit não seleciona
-      // por padrão). Imagens/vídeos não entram na seleção.
-      builder: (context, child) =>
-          SelectionArea(child: child ?? const SizedBox.shrink()),
-      home: const _SplashScreen(),
+    // O app inteiro re-renderiza quando o idioma muda (build internacional).
+    return ValueListenableBuilder<String>(
+      valueListenable: I18n.locale,
+      builder: (context, _, _) => MaterialApp(
+        title: AppConfig.brand,
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.theme,
+        // Texto selecionável em todo o app (Flutter Web/CanvasKit não seleciona
+        // por padrão). Imagens/vídeos não entram na seleção.
+        builder: (context, child) =>
+            SelectionArea(child: child ?? const SizedBox.shrink()),
+        home: const _SplashScreen(),
+      ),
     );
   }
 }
@@ -75,7 +84,9 @@ class _SplashScreenState extends State<_SplashScreen> {
       backgroundColor: Colors.white,
       body: Center(
         child: Image.asset(
-          'assets/images/logo_anim_h_light.gif',
+          AppConfig.intl
+              ? 'assets/images/logo_anim_intl.gif'
+              : 'assets/images/logo_anim_h_light.gif',
           height: 200,
         ),
       ),

@@ -3,9 +3,12 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 
+import '../../../core/config/app_config.dart';
+import '../../../core/i18n/i18n.dart';
 import '../../../core/utils/format.dart';
 import '../../../core/widgets/safe_avatar.dart';
 import '../../../core/widgets/web_frame.dart';
+import '../../payments/presentation/paypal_topup_page.dart';
 import '../../withdrawals/infrastructure/withdraw_repository.dart';
 import '../../finance/infrastructure/get_transactions.dart';
 import '../../users/presentation/edit_profile_page.dart';
@@ -27,6 +30,9 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   final _amountController = TextEditingController();
+  // Saque internacional (cripto)
+  final _xrpAddressController = TextEditingController();
+  final _xrpTagController = TextEditingController();
 
   Map<String, dynamic> _userData = {};
   List _transactions = [];
@@ -40,6 +46,8 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   void dispose() {
     _amountController.dispose();
+    _xrpAddressController.dispose();
+    _xrpTagController.dispose();
     super.dispose();
   }
 
@@ -84,6 +92,51 @@ class _ProfilePageState extends State<ProfilePage> {
         );
         _amountController.clear();
         _load();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    }
+  }
+
+  /// Saque internacional: valor em USD → ledger (BRL) → recebido em XRP.
+  Future<void> _requestCryptoWithdraw() async {
+    final usd = double.tryParse(
+            _amountController.text.trim().replaceAll(',', '.')) ??
+        0;
+    final address = _xrpAddressController.text.trim();
+    if (usd <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(I18n.tr('invalid_value'))));
+      return;
+    }
+    if (address.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(I18n.tr('xrp_address_required'))));
+      return;
+    }
+    try {
+      final res = await FirebaseFunctions.instanceFor(region: 'us-central1')
+          .httpsCallable('requestCryptoWithdraw')
+          .call({
+        'amount': Fmt.usdToBrl(usd),
+        'xrpAddress': address,
+        'xrpTag': _xrpTagController.text.trim(),
+      });
+      final data = Map<String, dynamic>.from(res.data as Map);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(I18n.trp('withdraw_requested_xrp',
+                {'xrp': '${data['xrpEstimate']}'}))));
+        _amountController.clear();
+        _load();
+      }
+    } on FirebaseFunctionsException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(e.message ?? 'Error')));
       }
     } catch (e) {
       if (mounted) {
@@ -169,7 +222,7 @@ class _ProfilePageState extends State<ProfilePage> {
           height: 52,
           width: 220,
           child: Image.asset(
-            'assets/images/2.png',
+            AppConfig.logoStatic,
             fit: BoxFit.contain,
           ),
         ),
@@ -196,7 +249,7 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
           IconButton(
             icon: const Icon(Icons.logout),
-            tooltip: 'Sair',
+            tooltip: I18n.tr('logout'),
             onPressed: () => FirebaseAuth.instance.signOut(),
           ),
         ],
@@ -246,15 +299,16 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
           const SizedBox(height: 16),
 
-          // — Verificação —
-          _VerificationSection(isVerified: isVerified, currentName: name),
+          // — Verificação (fila paga via Pix — só no Brasil) —
+          if (!AppConfig.intl)
+            _VerificationSection(isVerified: isVerified, currentName: name),
 
           // — Stats row —
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               _Stat(
-                label: 'Seguidores',
+                label: I18n.tr('followers'),
                 value: Fmt.number(followersCount),
                 onTap: () {
                   final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -271,7 +325,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 },
               ),
               _Stat(
-                label: 'Seguindo',
+                label: I18n.tr('following'),
                 value: Fmt.number(followingCount),
                 onTap: () {
                   final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -287,8 +341,12 @@ class _ProfilePageState extends State<ProfilePage> {
                   );
                 },
               ),
-              _Stat(label: 'Votos', value: Fmt.number(totalVotes)),
-              _Stat(label: 'Ganhos', value: Fmt.brlCompact(totalEarned)),
+              _Stat(
+                  label: I18n.tr('votes_label'),
+                  value: Fmt.number(totalVotes)),
+              _Stat(
+                  label: I18n.tr('earnings'),
+                  value: Fmt.brlCompact(totalEarned)),
             ],
           ),
           const SizedBox(height: 14),
@@ -298,9 +356,9 @@ class _ProfilePageState extends State<ProfilePage> {
             child: ListTile(
               leading: const Icon(Icons.dashboard_customize_outlined,
                   color: Color(0xFF003b8a)),
-              title: const Text('Minha atividade'),
-              subtitle: const Text('Meus desafios e participações',
-                  style: TextStyle(fontSize: 12)),
+              title: Text(I18n.tr('my_activity')),
+              subtitle: Text(I18n.tr('my_activity_sub'),
+                  style: const TextStyle(fontSize: 12)),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => Navigator.push(
                 context,
@@ -326,17 +384,21 @@ class _ProfilePageState extends State<ProfilePage> {
               onPressed: () async {
                 await Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const TopUpPage()),
+                  MaterialPageRoute(
+                      builder: (_) => AppConfig.intl
+                          ? const PaypalTopUpPage()
+                          : const TopUpPage()),
                 );
                 _load();
               },
               icon: const Icon(Icons.add),
-              label: const Text('Adicionar créditos'),
+              label: Text(I18n.tr('add_credits')),
             ),
           ),
           const SizedBox(height: 16),
 
-          // — Chave Pix —
+          // — Chave Pix (só Brasil) —
+          if (!AppConfig.intl)
           InkWell(
             onTap: () async {
               final updated = await Navigator.push<bool>(
@@ -412,38 +474,86 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
           const SizedBox(height: 16),
 
-          // — Saque —
-          TextField(
-            controller: _amountController,
-            keyboardType:
-                const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(
-              labelText: 'Valor para saque (mín. R\$100)',
-              border: OutlineInputBorder(),
+          // — Saque (Brasil: Pix · Internacional: cripto/XRP) —
+          if (!AppConfig.intl) ...[
+            TextField(
+              controller: _amountController,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                labelText: 'Valor para saque (mín. R\$100)',
+                border: OutlineInputBorder(),
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          ElevatedButton(
-            onPressed: _requestWithdraw,
-            child: const Text('Solicitar saque'),
-          ),
+            const SizedBox(height: 8),
+            ElevatedButton(
+              onPressed: _requestWithdraw,
+              child: const Text('Solicitar saque'),
+            ),
+          ] else ...[
+            Text(
+              I18n.tr('withdraw_crypto_title'),
+              style: const TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _amountController,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(
+                prefixText: '\$ ',
+                labelText: I18n.tr('withdraw_amount_usd'),
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _xrpAddressController,
+              decoration: InputDecoration(
+                labelText: I18n.tr('xrp_address'),
+                hintText: 'r...',
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _xrpTagController,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: I18n.tr('xrp_tag'),
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              I18n.tr('crypto_note'),
+              style: const TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+            const SizedBox(height: 8),
+            ElevatedButton(
+              onPressed: _requestCryptoWithdraw,
+              child: Text(I18n.tr('request_withdraw')),
+            ),
+          ],
           const Divider(height: 32),
 
           // — Histórico —
-          const Text(
-            'Histórico',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          Text(
+            I18n.tr('history'),
+            style:
+                const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
           if (_transactions.isEmpty)
-            const Text('Nenhuma transação ainda')
+            Text(I18n.tr('no_transactions'))
           else
             ...(_transactions.map((t) => ListTile(
                   dense: true,
                   title: Text(t['description'] ?? ''),
                   subtitle: Text(t['type'] ?? ''),
                   trailing: Text(
-                    'R\$ ${(t['amount'] as num).toStringAsFixed(2)}',
+                    Fmt.brl((t['amount'] as num)),
                     style: TextStyle(color: _txColor(t['type'] ?? '')),
                   ),
                 ))),
@@ -500,14 +610,14 @@ class _BalanceCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.account_balance_wallet_outlined,
+              const Icon(Icons.account_balance_wallet_outlined,
                   color: Colors.white70, size: 16),
-              SizedBox(width: 6),
+              const SizedBox(width: 6),
               Text(
-                'CRÉDITOS DISPONÍVEIS',
-                style: TextStyle(
+                I18n.tr('credits_available'),
+                style: const TextStyle(
                   color: Colors.white70,
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
@@ -526,6 +636,16 @@ class _BalanceCard extends StatelessWidget {
               letterSpacing: -0.5,
             ),
           ),
+          // Internacional: equivalência do saldo em XRP (cotação de mercado).
+          if (AppConfig.intl)
+            Text(
+              I18n.trp('xrp_balance_note', {'xrp': Fmt.xrp(balance)}),
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.85),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           if (pendingBalance > 0 || lockedBalance > 0) ...[
             const SizedBox(height: 10),
             Divider(color: Colors.white.withValues(alpha: 0.2), height: 1),
@@ -535,7 +655,7 @@ class _BalanceCard extends StatelessWidget {
                 if (pendingBalance > 0)
                   _BalanceLine(
                     icon: Icons.pending_outlined,
-                    label: 'Em desafios',
+                    label: I18n.tr('in_challenges'),
                     value: Fmt.brl(pendingBalance),
                     color: Colors.amber,
                   ),
@@ -544,7 +664,7 @@ class _BalanceCard extends StatelessWidget {
                 if (lockedBalance > 0)
                   _BalanceLine(
                     icon: Icons.lock_outline,
-                    label: 'Aguard. saque',
+                    label: I18n.tr('awaiting_withdraw'),
                     value: Fmt.brl(lockedBalance),
                     color: Colors.cyanAccent,
                   ),

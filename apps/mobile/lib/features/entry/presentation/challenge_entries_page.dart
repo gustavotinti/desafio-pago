@@ -5,6 +5,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../core/config/app_config.dart';
+import '../../../core/i18n/i18n.dart';
 import '../../../core/utils/format.dart';
 import '../../../core/widgets/safe_avatar.dart';
 import '../../../core/widgets/safe_image.dart';
@@ -104,12 +106,14 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
   }
 
   Future<void> _vote(String entryId) async {
-    if (!await ensureLoggedIn(context, message: 'Entre para votar')) return;
+    if (!await ensureLoggedIn(context, message: I18n.tr('vote_login'))) {
+      return;
+    }
     try {
       await _voteRepo.vote(widget.challenge.id, entryId);
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Voto registrado!')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(I18n.tr('vote_registered'))));
       // Stream atualiza os votos ao vivo; bloqueia novo voto (exceto admin).
       if (!_isAdmin) setState(() => _hasVoted = true);
     } catch (e) {
@@ -163,24 +167,28 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
   Future<void> _shareEntry(Entry entry) async {
     // NÃO await nada antes do share: preserva o "user gesture" exigido pela
     // Web Share API no navegador.
-    final url =
-        'https://desafiopago.com.br/challenges/${widget.challenge.id}?entry=${entry.id}';
+    final url = '${AppConfig.siteUrl}/challenges/'
+        '${widget.challenge.id}?entry=${entry.id}';
     final p = _profiles[entry.userId];
     final username = p?['username'] as String?;
     final who = username != null && username.isNotEmpty
         ? '@$username'
-        : 'esta participação';
-    final text = 'Vote em $who no Desafio Pago! 🗳️🏆\n$url';
+        : (p?['name'] as String? ?? '');
+    final text = I18n.trp('share_ask', {
+      'who': who,
+      'brand': AppConfig.brand,
+      'url': url,
+    });
     try {
       await SharePlus.instance.share(
-        ShareParams(text: text, subject: 'Peça votos no Desafio Pago'),
+        ShareParams(text: text, subject: I18n.tr('share_subject')),
       );
     } catch (_) {
       // Navegador sem share nativo: copia o link como fallback.
       await Clipboard.setData(ClipboardData(text: url));
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Link copiado! Cole no WhatsApp 📲')),
+        SnackBar(content: Text(I18n.tr('link_copied_share'))),
       );
     }
   }
@@ -369,7 +377,7 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
                   return ListView(
                     padding: const EdgeInsets.all(12),
                     children: [
-                      const Center(child: Text('Nenhuma participação ainda')),
+                      Center(child: Text(I18n.tr('no_entries_yet'))),
                       const SizedBox(height: 24),
                       _ChallengeComments(
                         challengeId: widget.challenge.id,
@@ -446,9 +454,9 @@ class _ChallengeComments extends StatelessWidget {
         children: [
           const Divider(),
           const SizedBox(height: 4),
-          const Text(
-            'Comentários do desafio',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+          Text(
+            I18n.tr('challenge_comments'),
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
           ),
           const SizedBox(height: 8),
           CommentSection(
@@ -538,7 +546,9 @@ class _PrizeHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  finished ? 'PRÊMIO • ENCERRADO' : 'PRÊMIO EM DISPUTA',
+                  finished
+                      ? I18n.tr('prize_closed')
+                      : I18n.tr('prize_dispute'),
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.85),
                     fontSize: 11,
@@ -567,7 +577,8 @@ class _PrizeHeader extends StatelessWidget {
                         color: Colors.white70, size: 14),
                     const SizedBox(width: 4),
                     Text(
-                      '${challenge.entryCount} participações',
+                      I18n.trp('participations_n',
+                          {'n': '${challenge.entryCount}'}),
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.9),
                         fontSize: 12,
@@ -816,7 +827,11 @@ class _EntryCard extends StatelessWidget {
             Row(
               children: [
                 Text(
-                  '${entry.voteCount} voto${entry.voteCount == 1 ? '' : 's'}',
+                  I18n.trp('votes_n', {
+                    'n': '${entry.voteCount}',
+                    's': entry.voteCount == 1 ? '' : 's',
+                    's2': entry.voteCount == 1 ? '' : 'n',
+                  }),
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
                 if (isAdmin && onEditVotes != null) ...[
@@ -834,7 +849,7 @@ class _EntryCard extends StatelessWidget {
                 TextButton.icon(
                   onPressed: onComments,
                   icon: const Icon(Icons.comment_outlined, size: 16),
-                  label: const Text('Comentários'),
+                  label: Text(I18n.tr('comments')),
                   style: TextButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 8),
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -963,10 +978,10 @@ class _VoteButtonState extends State<_VoteButton>
             size: 18),
         label: Text(
           widget.canVote
-              ? 'Votar nesta participação'
+              ? I18n.tr('vote_this')
               : (widget.hasVoted
-                  ? 'Você já votou neste desafio ✓'
-                  : 'Votar'),
+                  ? I18n.tr('already_voted')
+                  : I18n.tr('vote')),
         ),
         style: FilledButton.styleFrom(
           padding:
@@ -1056,8 +1071,11 @@ class _MyPositionCard extends StatelessWidget {
               children: [
                 Text(
                   leading
-                      ? 'Você está liderando! 🏆'
-                      : 'Você está em ${pos.rank}º de ${pos.total}',
+                      ? I18n.tr('leading')
+                      : I18n.trp('my_position', {
+                          'rank': '${pos.rank}',
+                          'total': '${pos.total}',
+                        }),
                   style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -1066,10 +1084,12 @@ class _MyPositionCard extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   leading
-                      ? 'Continue divulgando pra manter a ponta.'
-                      : 'Faltam ${pos.gapToLead} voto'
-                          '${pos.gapToLead == 1 ? '' : 's'} pra liderar. '
-                          'Chame a galera!',
+                      ? I18n.tr('keep_lead')
+                      : I18n.trp('gap_to_lead', {
+                          'n': '${pos.gapToLead}',
+                          's': pos.gapToLead == 1 ? '' : 's',
+                          's2': pos.gapToLead == 1 ? '' : 'n',
+                        }),
                   style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.92),
                       fontSize: 12.5),
@@ -1082,7 +1102,7 @@ class _MyPositionCard extends StatelessWidget {
             ElevatedButton.icon(
               onPressed: onShare,
               icon: const Icon(Icons.share, size: 16),
-              label: const Text('Divulgar'),
+              label: Text(I18n.tr('promote')),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,
                 foregroundColor: accent,

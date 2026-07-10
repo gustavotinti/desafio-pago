@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/i18n.dart';
 import '../../../core/utils/format.dart';
 import '../../../core/widgets/web_frame.dart';
 
@@ -31,16 +32,10 @@ class _WinItem {
   });
 }
 
-// Variações da frase de vitória — tokens: {who}, {amt}, {t}.
-const _winTemplates = [
-  '{who} ganhou {amt} · "{t}"',
-  '{who} levou {amt} no desafio "{t}"',
-  '{who} faturou {amt} com "{t}" 💰',
-  '{who} venceu "{t}" e ganhou {amt}',
-  '{amt} pagos para {who} · "{t}"',
-  '{who} acabou de ganhar {amt} em "{t}" 🎉',
-  'prêmio de {amt} foi para {who} · "{t}"',
-  '{who} conquistou {amt} vencendo "{t}" 🏆',
+// Variações da frase de vitória — chaves i18n com tokens {who}, {amt}, {t}.
+const _winTemplateKeys = [
+  'win_tpl_0', 'win_tpl_1', 'win_tpl_2', 'win_tpl_3',
+  'win_tpl_4', 'win_tpl_5', 'win_tpl_6', 'win_tpl_7',
 ];
 
 class _ActivityTickerState extends State<ActivityTicker> {
@@ -123,7 +118,7 @@ class _ActivityTickerState extends State<ActivityTicker> {
           who: who,
           amount: amount,
           challengeTitle: title,
-          template: rand.nextInt(_winTemplates.length),
+          template: rand.nextInt(_winTemplateKeys.length),
         ));
       }
       if (!mounted || raw.isEmpty) return;
@@ -141,7 +136,8 @@ class _ActivityTickerState extends State<ActivityTicker> {
 
   // Monta os spans da frase a partir do template ({who}/{amt}/{t} com estilo).
   List<InlineSpan> _spansFor(_WinItem item) {
-    final tpl = _winTemplates[item.template % _winTemplates.length];
+    final tpl = I18n
+        .tr(_winTemplateKeys[item.template % _winTemplateKeys.length]);
     const bold = TextStyle(fontWeight: FontWeight.bold);
     const money = TextStyle(
         fontWeight: FontWeight.bold, color: Color(0xFF00875A));

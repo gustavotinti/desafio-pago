@@ -62,9 +62,34 @@ outros participam com conteúdo (texto/imagem/vídeo), e o mais votado vence o p
 - Retry automático em falha
 - Status: pending | posted | failed
 
-## Estado atual (v2.9.0 — julho/2026)
+## Estado atual (v3.0.0 — julho/2026)
 No ar: https://desafiopago.com.br (e https://desafiopago.web.app)
+**Internacional: https://trialspaid.web.app** (mesmo projeto/DB)
 Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
+
+### 🌍 Internacional (TrialsPaid — v3.0.0)
+- **Mesmo codebase, 2 builds**: BR (padrão, idêntico) e intl via
+  `--dart-define=INTL_BUILD=true` → deploy no site hosting `trialspaid`
+  (targets: `app`=desafiopago, `intl`=trialspaid; `build/web_intl` é cópia
+  pós-build com meta/manifest rebrandados via sed — ver histórico do deploy).
+- **AppConfig** (`core/config/app_config.dart`): intl/brand/siteUrl/logos
+  (logo internacional: `assets/images/logo_intl.png` + `logo_anim_intl.gif`,
+  vindas de "LOGO 3-1 ENG" do usuário).
+- **i18n** (`core/i18n/i18n.dart`): en (padrão), es, fr, it, de — seletor de
+  bandeiras 🇬🇧🇪🇸🇫🇷🇮🇹🇩🇪 no AppBar (persistido em localStorage). BR fica
+  travado em pt e o código intl é tree-shaken do bundle BR.
+- **Moeda**: ledger interno continua 100% BRL (todas as transações atômicas
+  valem). Intl só EXIBE em USD (Fmt.brl converte num ponto único; cotação
+  CoinGecko no arranque) e mostra equivalência do saldo em XRP.
+- **Depósito**: PayPal (`paypalCreateOrder`/`paypalCaptureOrder` — cria
+  ordem, abre aprovação em nova aba, captura idempotente e credita o ledger
+  convertido). REQUER usuário preencher PAYPAL_CLIENT_ID/PAYPAL_SECRET no
+  functions/.env (placeholders já criados; PAYPAL_MODE=live) + redeploy.
+- **Saque**: cripto XRP (`requestCryptoWithdraw` — valida endereço r...,
+  taxa 10%, trava saldo, cria withdrawal method:'xrp' com xrpEstimate);
+  admin envia XRP manualmente e marca pago (mesmo fluxo manual do Pix).
+- No intl: seções Pix/verificação OCULTAS; visitante vê benefício "saque em
+  cripto"; footer sem "apenas Brasil".
 
 ### ✅ Implementado e no ar
 **Acesso & onboarding**
