@@ -70,26 +70,27 @@ class _ActivityTickerState extends State<ActivityTicker> {
           .limit(40)
           .get();
 
-      // Desafios de VÍDEO estão sendo desativados — o tipo não fica no doc do
-      // desafio, só nas participações (contentType). Buscamos os challengeIds
-      // que têm participação de vídeo e os excluímos do ticker.
-      final videoIds = <String>{};
+      // Só desafios de IMAGEM entram no ticker (texto e vídeo desativados por
+      // enquanto). O tipo não fica no doc do desafio, só nas participações
+      // (contentType). Buscamos os challengeIds com participação de texto/vídeo
+      // e os excluímos.
+      final excludeIds = <String>{};
       try {
-        final vSnap = await db
+        final xSnap = await db
             .collection('entries')
-            .where('contentType', isEqualTo: 'video')
+            .where('contentType', whereIn: ['text', 'video'])
             .get();
-        for (final e in vSnap.docs) {
+        for (final e in xSnap.docs) {
           final cid = e.data()['challengeId'] as String?;
-          if (cid != null) videoIds.add(cid);
+          if (cid != null) excludeIds.add(cid);
         }
-      } catch (_) {/* sem índice/erro: segue sem filtrar */}
+      } catch (_) {/* erro/sem índice: segue sem filtrar */}
 
       final winners = <String, String>{}; // uid -> @/nome (cache)
       final raw = <_WinItem>[];
       final rows = snap.docs.where((d) {
         final w = d.data()['winnerIds'];
-        return w is List && w.isNotEmpty && !videoIds.contains(d.id);
+        return w is List && w.isNotEmpty && !excludeIds.contains(d.id);
       }).toList();
       if (rows.isEmpty) return;
 

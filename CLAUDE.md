@@ -62,7 +62,7 @@ outros participam com conteúdo (texto/imagem/vídeo), e o mais votado vence o p
 - Retry automático em falha
 - Status: pending | posted | failed
 
-## Estado atual (v2.8.3 — julho/2026)
+## Estado atual (v2.8.4 — julho/2026)
 No ar: https://desafiopago.com.br (e https://desafiopago.web.app)
 Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
 
@@ -76,11 +76,12 @@ Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
   (LGPD, incluindo uso dos dados para campanhas Google/Meta)
 
 **Desafios & participações**
-- Criar (debita saldo), participar (texto/imagem em 9:16, 4:5 ou 1:1 —
+- Criar (debita saldo), participar (**só IMAGEM** em 9:16, 4:5 ou 1:1 —
   sem 16:9), votar, aumentar prêmio (aporte).
-  **Vídeo DESATIVADO por enquanto** — envio só texto/imagem (no app e no
-  admin). Player `AutoVideo` mantido só p/ conteúdo de vídeo já existente;
-  o ticker de vitórias exclui desafios que têm participação de vídeo.
+  **Texto e vídeo DESATIVADOS por enquanto** — envio só imagem (no app e no
+  admin: sem seletor de tipo, vai direto pro cropper). Player `AutoVideo`
+  mantido só p/ conteúdo de vídeo já existente; o ticker de vitórias só
+  mostra desafios de imagem (exclui challengeIds com entry texto/vídeo).
 - **Editor de recorte (cropper)** no envio de imagem — qualquer imagem vira
   9:16/4:5/1:1 (não barra mais por formato). Mesmo cropper na foto de perfil (1:1)
 - Feed único de **ativos** (encerrados não aparecem no feed — ficam em

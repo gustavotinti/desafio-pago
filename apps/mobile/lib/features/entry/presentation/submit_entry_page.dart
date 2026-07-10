@@ -29,7 +29,8 @@ class SubmitEntryPage extends StatefulWidget {
 
 class _SubmitEntryPageState extends State<SubmitEntryPage> {
   final _textController = TextEditingController();
-  ContentType _selectedType = ContentType.text;
+  // Só imagem por enquanto — texto e vídeo desativados.
+  final ContentType _selectedType = ContentType.image;
   XFile? _selectedFile;
   bool _isLoading = false;
 
@@ -154,72 +155,34 @@ class _SubmitEntryPageState extends State<SubmitEntryPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Seletor de tipo ─────────────────────────────────────
+            // ── Imagem (único tipo por enquanto) ────────────────────
             const Text(
-              'Tipo de conteúdo',
+              'Sua participação',
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
-            const SizedBox(height: 8),
-            // Vídeo desativado por enquanto — só texto e imagem.
-            SegmentedButton<ContentType>(
-              segments: const [
-                ButtonSegment(
-                  value: ContentType.text,
-                  label: Text('Texto'),
-                  icon: Icon(Icons.text_fields),
-                ),
-                ButtonSegment(
-                  value: ContentType.image,
-                  label: Text('Imagem'),
-                  icon: Icon(Icons.image),
-                ),
+            const SizedBox(height: 12),
+            _FormatGuide(
+              lines: const [
+                'Envie uma imagem — proporções aceitas:',
+                '  9:16 (1080 × 1920)  ·  4:5 (1080 × 1350)',
+                '  1:1 (1080 × 1080)',
+                'Tamanho máximo: 10 MB',
+                'Você recorta a imagem aqui no app — é só escolher.',
               ],
-              selected: {_selectedType},
-              onSelectionChanged: (s) => setState(() {
-                _selectedType = s.first;
-                _selectedFile = null;
-                _textController.clear();
-              }),
             ),
-            const SizedBox(height: 20),
-
-            // ── Texto ───────────────────────────────────────────────
-            if (_selectedType == ContentType.text)
-              TextField(
-                controller: _textController,
-                maxLines: 8,
-                maxLength: _maxTextLength,
-                decoration: const InputDecoration(
-                  labelText: 'Seu conteúdo',
-                  alignLabelWithHint: true,
-                ),
-              ),
-
-            // ── Imagem ──────────────────────────────────────────────
-            if (_selectedType == ContentType.image) ...[
-              _FormatGuide(
-                lines: const [
-                  'Proporções aceitas:',
-                  '  9:16 (1080 × 1920)  ·  4:5 (1080 × 1350)',
-                  '  1:1 (1080 × 1080)',
-                  'Tamanho máximo: 10 MB',
-                  'Você recorta a imagem aqui no app — é só escolher.',
-                ],
-              ),
-              const SizedBox(height: 12),
-              ElevatedButton.icon(
-                onPressed: _pickImage,
-                icon: Icon(_selectedFile == null
-                    ? Icons.photo_library
-                    : Icons.crop_rotate),
-                label: Text(
-                    _selectedFile == null ? 'Escolher imagem' : 'Trocar imagem'),
-              ),
-              _buildImagePreview(),
-              if (_selectedFile != null) ...[
-                const SizedBox(height: 8),
-                _SelectedFileTile(name: _selectedFile!.name),
-              ],
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: _pickImage,
+              icon: Icon(_selectedFile == null
+                  ? Icons.photo_library
+                  : Icons.crop_rotate),
+              label: Text(
+                  _selectedFile == null ? 'Escolher imagem' : 'Trocar imagem'),
+            ),
+            _buildImagePreview(),
+            if (_selectedFile != null) ...[
+              const SizedBox(height: 8),
+              _SelectedFileTile(name: _selectedFile!.name),
             ],
 
             const SizedBox(height: 28),

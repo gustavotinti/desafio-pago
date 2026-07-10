@@ -29,7 +29,6 @@ class AdminAddEntryPage extends StatefulWidget {
 class _AdminAddEntryPageState extends State<AdminAddEntryPage> {
   final _functions = FirebaseFunctions.instanceFor(region: 'us-central1');
   final _searchCtrl = TextEditingController();
-  final _textCtrl = TextEditingController();
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _results = [];
   bool _searching = false;
@@ -38,7 +37,7 @@ class _AdminAddEntryPageState extends State<AdminAddEntryPage> {
   String _userName = '';
   String _userPhoto = '';
 
-  String _type = 'text'; // text | image
+  final String _type = 'image'; // só imagem por enquanto (texto/vídeo off)
   Uint8List? _mediaBytes; // imagem recortada
   String _mediaExt = 'jpg';
   String _mediaMime = 'image/jpeg';
@@ -48,7 +47,6 @@ class _AdminAddEntryPageState extends State<AdminAddEntryPage> {
   @override
   void dispose() {
     _searchCtrl.dispose();
-    _textCtrl.dispose();
     super.dispose();
   }
 
@@ -109,29 +107,19 @@ class _AdminAddEntryPageState extends State<AdminAddEntryPage> {
       _snack('Escolha um usuário virtual');
       return;
     }
-    if (_type == 'text' && _textCtrl.text.trim().isEmpty) {
-      _snack('Escreva o conteúdo');
-      return;
-    }
-    if (_type != 'text' && _mediaBytes == null) {
+    if (_mediaBytes == null) {
       _snack('Selecione a imagem');
       return;
     }
     setState(() => _saving = true);
     try {
-      String? contentUrl;
-      if (_type != 'text') contentUrl = await _upload(_mediaBytes!);
-      final payload = <String, dynamic>{
+      final contentUrl = await _upload(_mediaBytes!);
+      await _functions.httpsCallable('adminSubmitDemoEntry').call({
         'challengeId': widget.challengeId,
         'contentType': _type,
         'userId': _userId,
-      };
-      if (_type == 'text') {
-        payload['contentText'] = _textCtrl.text.trim();
-      } else {
-        payload['contentUrl'] = contentUrl;
-      }
-      await _functions.httpsCallable('adminSubmitDemoEntry').call(payload);
+        'contentUrl': contentUrl,
+      });
       if (!mounted) return;
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -221,53 +209,22 @@ class _AdminAddEntryPageState extends State<AdminAddEntryPage> {
             ],
             const Divider(height: 32),
 
-            // ── 2) Conteúdo ──────────────────────────────────────────────
-            const Text('2. Conteúdo',
+            // ── 2) Conteúdo (só imagem por enquanto) ─────────────────────
+            const Text('2. Conteúdo (imagem)',
                 style: TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
-            // Vídeo desativado por enquanto — só texto e imagem.
-            SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(
-                    value: 'text',
-                    label: Text('Texto'),
-                    icon: Icon(Icons.text_fields)),
-                ButtonSegment(
-                    value: 'image',
-                    label: Text('Imagem'),
-                    icon: Icon(Icons.image)),
-              ],
-              selected: {_type},
-              onSelectionChanged: (s) => setState(() {
-                _type = s.first;
-                _mediaBytes = null;
-                _textCtrl.clear();
-              }),
+            ElevatedButton.icon(
+              onPressed: _pickImage,
+              icon: const Icon(Icons.photo_library),
+              label: const Text('Escolher e recortar imagem'),
             ),
-            const SizedBox(height: 12),
-            if (_type == 'text')
-              TextField(
-                controller: _textCtrl,
-                maxLines: 5,
-                decoration: const InputDecoration(
-                  labelText: 'Texto da participação',
-                  border: OutlineInputBorder(),
-                ),
-              )
-            else ...[
-              ElevatedButton.icon(
-                onPressed: _pickImage,
-                icon: const Icon(Icons.photo_library),
-                label: const Text('Escolher e recortar imagem'),
+            if (_mediaBytes != null) ...[
+              const SizedBox(height: 12),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.memory(_mediaBytes!,
+                    height: 220, fit: BoxFit.contain),
               ),
-              if (_mediaBytes != null) ...[
-                const SizedBox(height: 12),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.memory(_mediaBytes!,
-                      height: 220, fit: BoxFit.contain),
-                ),
-              ],
             ],
             const SizedBox(height: 24),
             SizedBox(
