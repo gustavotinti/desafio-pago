@@ -62,7 +62,7 @@ outros participam com conteúdo (texto/imagem/vídeo), e o mais votado vence o p
 - Retry automático em falha
 - Status: pending | posted | failed
 
-## Estado atual (v3.2.0 — julho/2026)
+## Estado atual (v3.3.0 — julho/2026)
 No ar: https://desafiopago.com.br (e https://desafiopago.web.app)
 **Internacional: https://trialspaid.web.app** (mesmo projeto/DB)
 Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
@@ -236,6 +236,13 @@ Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
   relacionados do mesmo idioma) — reforça SEO. Crédito "Criado por
   {AppConfig.creator}" no rodapé SSR e no app.
 - **Descoberta no app**: card "Novidades/News" no perfil abre o hub.
+- **Consultor de SEO por IA** (v3.3.0, Admin→SEO): `adminSeoAdvisor` junta o
+  estado (artigos pt/en, fila, desafios ativos por região) + os resultados
+  que o admin cola do Search Console → Gemini/OpenAI devolve diagnóstico,
+  prioridades, ganhos rápidos e temas sugeridos; botão joga os temas na fila
+  (`adminAddSeoTopics`, source 'advisor'). Requer a chave de IA no cofre.
+- **Guia do Search Console** (Admin→SEO): passo a passo de submissão, os 2
+  sitemaps com botão copiar e o e-mail do service account do loop de demanda.
 
 ### 🌐 Seletor de idioma cruzando os sites (v3.2.0)
 - `LanguageSelector` aparece nos DOIS builds. No BR: 🇧🇷 fica ativo e escolher

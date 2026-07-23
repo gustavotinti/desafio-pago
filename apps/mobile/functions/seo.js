@@ -531,6 +531,142 @@ exports.seoSitemap = functions.https.onRequest(async (req, res) => {
   }
 });
 
+// ─── ADMIN: CONSULTOR DE SEO POR IA (tempo real) ─────────────────────────────
+// Junta o estado atual (artigos pt/en, fila de temas, desafios ativos) com os
+// resultados que o admin colou do Google Search Console e pede à IA um plano
+// priorizado, acionável, para conseguir mais acessos AGORA. Retorna também
+// temas sugeridos que podem ir direto pra fila de conteúdo.
+exports.adminSeoAdvisor = functions
+    .runWith({timeoutSeconds: 120})
+    .https.onCall(async (data, context) => {
+      if (!context.auth) {
+        throw new functions.https.HttpsError(
+            "unauthenticated", "Não autenticado");
+      }
+      const db = admin.firestore();
+      const adminDoc =
+          await db.collection("admins").doc(context.auth.uid).get();
+      if (!adminDoc.exists) {
+        throw new functions.https.HttpsError(
+            "permission-denied", "Apenas administradores.");
+      }
+
+      // Contexto atual da operação.
+      const arts = await db.collection("seo_articles")
+          .where("status", "==", "published").get();
+      let pt = 0; let en = 0;
+      arts.forEach((d) => {
+        (d.data().lang || "pt") === "en" ? en++ : pt++;
+      });
+      const topics = await db.collection("seo_topics")
+          .where("used", "==", false).get();
+      let activeBr = 0; let activeIntl = 0;
+      try {
+        const ab = await db.collection("challenges")
+            .where("status", "==", "active")
+            .where("region", "==", "BR").count().get();
+        activeBr = ab.data().count;
+        const ai = await db.collection("challenges")
+            .where("status", "==", "active")
+            .where("region", "==", "INTL").count().get();
+        activeIntl = ai.data().count;
+      } catch (e) {
+        // segue sem contagem
+      }
+
+      const pasted = String(data.pastedResults || "").slice(0, 6000);
+
+      const prompt = `
+Você é um consultor sênior de SEO orgânico. Analise a situação e dê um plano
+PRÁTICO e PRIORIZADO para aumentar o tráfego de busca, em português do Brasil.
+
+Contexto do produto:
+- Duas plataformas irmãs de desafios de FOTO com prêmio em dinheiro:
+  · Brasil: desafiopago.com.br (conteúdo em PT, prêmios/Pix)
+  · Internacional: trialspaid.web.app (conteúdo em EN, saque em cripto/XRP)
+- Cada uma tem um hub de artigos em /novidades (renderizado no servidor) e um
+  sitemap.xml próprio. O app em si é um canvas (invisível ao Google), por isso
+  o tráfego orgânico depende do hub de artigos + páginas de desafios.
+
+Estado atual:
+- Artigos publicados: ${pt} em PT, ${en} em EN.
+- Temas na fila de conteúdo (aguardando publicação): ${topics.size}.
+- Desafios ativos: ${activeBr} no BR, ${activeIntl} no internacional.
+
+${pasted ? `Resultados que o admin colou do Google Search Console (queries,
+cliques, impressões, posição — dados reais):
+"""
+${pasted}
+"""
+Priorize recomendações baseadas NESSES dados reais (queries com muitas
+impressões e posição ruim = maior oportunidade).` :
+    "O admin ainda não colou dados do Search Console. Dê recomendações " +
+    "gerais fortes e explique quais dados do GSC colar aqui para afinar a " +
+    "análise."}
+
+Responda APENAS com JSON válido:
+{
+  "summary": "diagnóstico em 1-2 frases, direto",
+  "priorities": [
+    {"title": "ação prioritária", "why": "por que importa",
+     "how": "como fazer, passo a passo curto"}
+  ],
+  "quickWins": ["ganho rápido acionável", "..."],
+  "suggestedTopics": ["tema de artigo com alta chance de tráfego", "..."]
+}
+Regras: 3 a 5 priorities, 3 a 5 quickWins, 5 a 10 suggestedTopics (títulos de
+artigo prontos, em PT, baseados na demanda). Nada de promessas irreais.`;
+
+      let advice;
+      try {
+        advice = await llmJson(prompt);
+      } catch (e) {
+        throw new functions.https.HttpsError(
+            "failed-precondition",
+            "IA indisponível — configure a chave do Gemini em " +
+            "Admin → Chaves & integrações. (" + e.message + ")");
+      }
+      return {
+        summary: String(advice.summary || ""),
+        priorities: (advice.priorities || []).slice(0, 6),
+        quickWins: (advice.quickWins || []).slice(0, 8),
+        suggestedTopics: (advice.suggestedTopics || []).slice(0, 12)
+            .map((t) => String(t)),
+        stats: {pt, en, queue: topics.size, activeBr, activeIntl},
+      };
+    });
+
+// ─── ADMIN: adicionar temas sugeridos à fila ─────────────────────────────────
+exports.adminAddSeoTopics = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Não autenticado");
+  }
+  const db = admin.firestore();
+  const adminDoc = await db.collection("admins").doc(context.auth.uid).get();
+  if (!adminDoc.exists) {
+    throw new functions.https.HttpsError(
+        "permission-denied", "Apenas administradores.");
+  }
+  const topics = Array.isArray(data.topics) ? data.topics : [];
+  let added = 0;
+  for (const raw of topics) {
+    const topic = String(raw || "").trim();
+    if (topic.length < 8) continue;
+    const id = slugify(topic);
+    if (!id) continue;
+    const ref = db.collection("seo_topics").doc(id);
+    if ((await ref.get()).exists) continue;
+    await ref.set({
+      topic,
+      source: "advisor",
+      used: false,
+      createdAt: new Date().toISOString(),
+    });
+    added++;
+  }
+  return {success: true, added};
+});
+
 // ─── ADMIN: gerar artigo agora ───────────────────────────────────────────────
 
 exports.adminGenerateSeoArticle = functions
