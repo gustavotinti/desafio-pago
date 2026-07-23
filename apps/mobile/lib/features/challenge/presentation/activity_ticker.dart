@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/config/app_config.dart';
 import '../../../core/i18n/i18n.dart';
 import '../../../core/utils/format.dart';
 import '../../../core/widgets/web_frame.dart';
@@ -81,11 +82,18 @@ class _ActivityTickerState extends State<ActivityTicker> {
         }
       } catch (_) {/* erro/sem índice: segue sem filtrar */}
 
+      final region = AppConfig.intl ? 'INTL' : 'BR';
       final winners = <String, String>{}; // uid -> @/nome (cache)
       final raw = <_WinItem>[];
       final rows = snap.docs.where((d) {
-        final w = d.data()['winnerIds'];
-        return w is List && w.isNotEmpty && !excludeIds.contains(d.id);
+        final data = d.data();
+        final w = data['winnerIds'];
+        // Só a região deste site (legado sem region = BR).
+        final r = (data['region'] as String?) ?? 'BR';
+        return w is List &&
+            w.isNotEmpty &&
+            r == region &&
+            !excludeIds.contains(d.id);
       }).toList();
       if (rows.isEmpty) return;
 

@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/config/app_config.dart';
 import '../../../core/i18n/i18n.dart';
 import '../../../core/utils/format.dart';
 import '../../../core/widgets/web_frame.dart';
@@ -89,7 +90,8 @@ class _PlatformPulseState extends State<PlatformPulse> {
     try {
       final active = db
           .collection('challenges')
-          .where('status', isEqualTo: 'active');
+          .where('status', isEqualTo: 'active')
+          .where('region', isEqualTo: AppConfig.intl ? 'INTL' : 'BR');
       final agg = await active.aggregate(count(), sum('amount')).get();
       final people = await db.collection('publicProfiles').count().get();
       _baseActive = agg.count ?? 0;

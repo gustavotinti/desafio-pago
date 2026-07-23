@@ -18,6 +18,8 @@ class Challenge {
   // "Novo" — fixado no topo do feed pelo super admin (recurso manual exclusivo).
   final bool pinned;
   final DateTime? pinnedAt;
+  // Região do desafio: 'BR' (padrão) ou 'INTL' (site trialspaid).
+  final String region;
 
   Challenge({
     required this.id,
@@ -34,5 +36,6 @@ class Challenge {
     this.topEntries = const [],
     this.pinned = false,
     this.pinnedAt,
+    this.region = 'BR',
   });
 }

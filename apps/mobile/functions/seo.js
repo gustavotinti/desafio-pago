@@ -8,6 +8,7 @@
 
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
+const {getSecret} = require("./secrets");
 
 const SITE = "https://desafiopago.com.br";
 const BRAND = "Desafio Pago";
@@ -51,7 +52,7 @@ const fmtDate = (iso) => {
 // ─── IA: gera JSON (Gemini se houver chave; senão OpenAI) ────────────────────
 
 const llmJson = async (prompt) => {
-  const gemini = process.env.GEMINI_API_KEY;
+  const gemini = await getSecret("GEMINI_API_KEY");
   if (gemini) {
     const url = "https://generativelanguage.googleapis.com/v1beta/models/" +
         `gemini-2.0-flash:generateContent?key=${gemini}`;
@@ -72,7 +73,7 @@ const llmJson = async (prompt) => {
     if (!text) throw new Error("Gemini sem resposta: " + JSON.stringify(j));
     return JSON.parse(text);
   }
-  const openai = process.env.OPENAI_API_KEY;
+  const openai = await getSecret("OPENAI_API_KEY");
   if (!openai) throw new Error("Sem GEMINI_API_KEY nem OPENAI_API_KEY");
   const r = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -675,6 +676,199 @@ const INITIAL_TOPICS = [
   "concursos de fotografia no Brasil: onde encontrar oportunidades",
   "como a votação do público funciona em concursos e como vencer",
 ];
+
+// ─── SEED: artigos iniciais escritos à mão (funciona SEM chave de IA) ────────
+// Garante que /novidades já nasça com conteúdo real e indexável enquanto a
+// geração automática por IA não é ativada. Re-executável (pula os já criados).
+const STARTER_ARTICLES = [
+  {
+    title: "Como ganhar dinheiro com fotos tiradas pelo celular",
+    metaDescription: "Guia prático para transformar suas fotos de celular " +
+      "em renda extra: desafios pagos, bancos de imagem, dicas de qualidade " +
+      "e como receber via Pix com segurança.",
+    keywords: ["ganhar dinheiro com fotos", "renda extra fotografia",
+      "vender fotos celular"],
+    intro: "<p>Você não precisa de uma câmera profissional para ganhar um " +
+      "dinheiro extra com fotografia. O celular que está no seu bolso já é " +
+      "suficiente para começar — o que muda o jogo é <strong>saber onde " +
+      "colocar essas fotos para trabalharem por você</strong>. Neste guia, " +
+      "reunimos caminhos reais (sem promessas mágicas) para monetizar suas " +
+      "imagens, com foco no que dá pra fazer hoje mesmo.</p>",
+    sections: [
+      {heading: "1. Desafios de foto com prêmio",
+        html: "<p>A forma mais direta e divertida é participar de " +
+          "<strong>desafios de foto pagos</strong>: alguém coloca um prêmio " +
+          "em dinheiro, você envia sua melhor imagem sobre o tema e a mais " +
+          "votada leva o valor. No <strong>Desafio Pago</strong>, por " +
+          "exemplo, o prêmio vai para o saldo do vencedor e pode ser sacado " +
+          "via Pix. É competitivo, mas premia criatividade — não " +
+          "equipamento caro.</p><p>Dica: capriche no tema pedido e divulgue " +
+          "sua participação para juntar votos. Engajamento conta tanto " +
+          "quanto a qualidade da foto.</p>"},
+      {heading: "2. Bancos de imagem (renda passiva)",
+        html: "<p>Plataformas de banco de imagens pagam royalties quando " +
+          "alguém baixa sua foto. O ganho por download costuma ser pequeno, " +
+          "mas é <em>renda passiva</em>: uma boa foto pode vender várias " +
+          "vezes ao longo dos anos. Aposte em imagens genéricas e úteis " +
+          "(pessoas trabalhando, comida, natureza, tecnologia).</p>"},
+      {heading: "3. Melhore a qualidade sem gastar nada",
+        html: "<ul><li><strong>Luz natural</strong> é sua melhor amiga: " +
+          "fotografe perto de janelas ou na primeira/última hora do dia.</li>" +
+          "<li>Use a <strong>regra dos terços</strong> (ative as linhas de " +
+          "grade da câmera).</li><li>Limpe a lente — parece óbvio, mas " +
+          "resolve metade das fotos borradas.</li><li>Evite zoom digital; " +
+          "aproxime-se do assunto.</li></ul>"},
+      {heading: "4. Como receber com segurança",
+        html: "<p>Prefira plataformas que pagam via <strong>Pix</strong> e " +
+          "deixam as regras claras (taxas, prazo, saque mínimo). Desconfie " +
+          "de quem promete valores altos sem esforço ou pede pagamento " +
+          "adiantado para 'liberar' ganhos. Ganho de verdade nunca cobra " +
+          "para te pagar.</p>"},
+    ],
+    faq: [
+      {question: "Preciso de câmera profissional?",
+        answer: "Não. Celulares atuais tiram fotos ótimas. O que importa é " +
+          "luz, composição e um tema bem executado."},
+      {question: "Dá pra viver só disso?",
+        answer: "Para a maioria é uma renda extra, não um salário. Encare " +
+          "como um complemento que cresce com consistência."},
+      {question: "Como recebo o dinheiro?",
+        answer: "Em plataformas sérias, via Pix. No Desafio Pago o prêmio " +
+          "cai no seu saldo e você saca quando quiser (saque mínimo R$100)."},
+    ],
+  },
+  {
+    title: "Desafios online valendo dinheiro: como funcionam de verdade",
+    metaDescription: "Entenda como funcionam os desafios online com prêmio " +
+      "em dinheiro, como participar com segurança, como são escolhidos os " +
+      "vencedores e como sacar seus ganhos.",
+    keywords: ["desafios online valendo dinheiro", "competição online prêmio",
+      "concurso pago internet"],
+    intro: "<p>Desafios online com prêmio em dinheiro viraram uma forma " +
+      "popular de unir diversão e renda extra. Mas como eles funcionam por " +
+      "dentro? Quem paga o prêmio? Como se garante que o vencedor recebe? " +
+      "Explicamos tudo de forma simples e honesta.</p>",
+    sections: [
+      {heading: "O básico: tema, participação e voto",
+        html: "<p>Um desafio tem um <strong>tema</strong> (ex.: 'melhor foto " +
+          "de café'), um <strong>prêmio</strong> em dinheiro e um " +
+          "<strong>prazo</strong>. As pessoas participam enviando conteúdo e " +
+          "o público vota. Quem tiver mais votos ao fim do prazo vence e " +
+          "leva o prêmio.</p>"},
+      {heading: "De onde vem o prêmio",
+        html: "<p>O prêmio geralmente é bancado por quem cria o desafio " +
+          "(que deposita o valor) e pode crescer com aportes de outras " +
+          "pessoas. Em plataformas bem feitas, esse valor fica " +
+          "<strong>reservado</strong> até o fim — não some no meio do " +
+          "caminho.</p>"},
+      {heading: "Como se garante o pagamento",
+        html: "<p>Procure plataformas com <strong>regras claras</strong>: " +
+          "saldo interno, saque via Pix, taxa transparente e histórico de " +
+          "transações. No Desafio Pago, cada operação de dinheiro é feita " +
+          "em transação atômica — sem saldo negativo, sem prêmio pago em " +
+          "dobro.</p>"},
+      {heading: "Dicas para vencer",
+        html: "<ul><li>Leia o tema com atenção e responda exatamente ao que " +
+          "foi pedido.</li><li>Capriche na qualidade, mas invista também em " +
+          "<strong>divulgação</strong>: chame amigos para votar.</li>" +
+          "<li>Participe cedo — mais tempo no ar costuma render mais " +
+          "votos.</li></ul>"},
+    ],
+    faq: [
+      {question: "É seguro colocar dinheiro nesses desafios?",
+        answer: "Em plataformas sérias, sim. Verifique regras, taxas e se o " +
+          "saque é claro. Evite quem promete ganho fácil garantido."},
+      {question: "O que acontece em caso de empate?",
+        answer: "Boas plataformas dividem o prêmio entre os empatados. No " +
+          "Desafio Pago, o centavo indivisível fica com a plataforma."},
+      {question: "Preciso pagar para participar?",
+        answer: "Depende do desafio. Muitos são gratuitos para participar; " +
+          "criar um desafio é que envolve depositar o prêmio."},
+    ],
+  },
+  {
+    title: "Como conseguir mais votos e divulgar sua participação",
+    metaDescription: "Estratégias práticas para conseguir votos em desafios " +
+      "e concursos online: como pedir votos sem ser chato, usar o WhatsApp " +
+      "a seu favor e criar prova social.",
+    keywords: ["como conseguir votos", "divulgar participação",
+      "ganhar votação online"],
+    intro: "<p>Ter a melhor foto não basta se ninguém a vê. Em desafios " +
+      "decididos por voto popular, <strong>divulgação é metade do jogo</strong>. " +
+      "A boa notícia: com algumas estratégias simples você multiplica seus " +
+      "votos sem incomodar ninguém.</p>",
+    sections: [
+      {heading: "Peça votos do jeito certo",
+        html: "<p>Em vez de um genérico 'vota em mim', conte uma " +
+          "<strong>história</strong>: por que você entrou, o que o prêmio " +
+          "significa, por que aquela foto é especial. Pessoas votam em " +
+          "pessoas, não em links.</p>"},
+      {heading: "Use o link direto da sua participação",
+        html: "<p>Compartilhe o <strong>link que abre direto na sua arte</strong>, " +
+          "com botão de votar em destaque. Quanto menos cliques entre a " +
+          "pessoa e o voto, mais votos você recebe. O Desafio Pago gera esse " +
+          "link com uma prévia bonita para WhatsApp e redes.</p>"},
+      {heading: "Crie prova social",
+        html: "<p>Mostrar que você já tem votos incentiva mais votos " +
+          "(efeito manada). Comemore marcos ('já passamos de 100 votos, " +
+          "bora pra 200!') e agradeça publicamente quem apoiou.</p>"},
+      {heading: "Escolha os melhores horários",
+        html: "<p>Poste quando seus contatos estão online: início da manhã, " +
+          "hora do almoço e início da noite costumam render mais. Evite " +
+          "mandar tudo de uma vez — distribua ao longo do prazo.</p>"},
+    ],
+    faq: [
+      {question: "Posso pedir votos em grupos de WhatsApp?",
+        answer: "Sim, com bom senso. Personalize a mensagem, não repita no " +
+          "mesmo grupo várias vezes e agradeça quem ajudar."},
+      {question: "Vale a pena pedir voto para desconhecidos?",
+        answer: "O retorno é baixo. Foque em quem já te conhece — a taxa de " +
+          "conversão é muito maior."},
+      {question: "Comprar votos funciona?",
+        answer: "Não recomendamos: além de antiético, plataformas sérias " +
+          "detectam e podem desclassificar. Votos reais valem mais."},
+    ],
+  },
+];
+
+exports.seedSeoArticles = functions.runWith({timeoutSeconds: 300})
+    .https.onRequest(async (req, res) => {
+      if (req.method !== "POST") {
+        return res.status(405).json({error: "Method Not Allowed"});
+      }
+      if (!req.body || req.body.secret !== "SEED_2026_DP") {
+        return res.status(403).json({error: "Forbidden"});
+      }
+      const db = admin.firestore();
+      let created = 0;
+      const now = new Date();
+      for (let i = 0; i < STARTER_ARTICLES.length; i++) {
+        const a = STARTER_ARTICLES[i];
+        const slug = slugify(a.title);
+        const dup = await db.collection("seo_articles")
+            .where("slug", "==", slug).limit(1).get();
+        if (!dup.empty) continue;
+        // Datas escalonadas (não parecer tudo publicado no mesmo instante).
+        const publishedAt =
+          new Date(now.getTime() - i * 86400000).toISOString();
+        await db.collection("seo_articles").add({
+          slug,
+          topic: a.title,
+          title: a.title,
+          metaDescription: a.metaDescription,
+          intro: a.intro,
+          sections: a.sections,
+          faq: a.faq,
+          keywords: a.keywords,
+          status: "published",
+          source: "handwritten",
+          publishedAt,
+          updatedAt: publishedAt,
+        });
+        created++;
+      }
+      return res.json({success: true, created});
+    });
 
 exports.seedSeoTopics = functions
     .runWith({timeoutSeconds: 540})

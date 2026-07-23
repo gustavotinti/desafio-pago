@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../../../core/config/app_config.dart';
 import '../../../core/widgets/web_frame.dart';
 import '../infrastructure/admin_repository.dart';
 import 'admin_add_entry_page.dart';
@@ -125,6 +126,7 @@ class _CreateChallengeDialogState extends State<_CreateChallengeDialog> {
         'description': description,
         'amount': amount,
         'durationDays': _durationDays,
+        'region': AppConfig.intl ? 'INTL' : 'BR',
       });
 
       if (mounted) Navigator.pop(context);

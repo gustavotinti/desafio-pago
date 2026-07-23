@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../../core/config/app_config.dart';
 import '../domain/entities/challenge.dart';
 import '../domain/entities/challenge_status.dart';
 
@@ -7,6 +8,9 @@ enum ChallengeSortBy { amount, voteCount, newest }
 
 class GetChallenges {
   final _firestore = FirebaseFirestore.instance;
+
+  // Região deste site: 'INTL' no trialspaid, 'BR' no desafiopago.
+  static String get region => AppConfig.intl ? 'INTL' : 'BR';
 
   Future<List<Challenge>> call({
     ChallengeStatus? status,
@@ -43,6 +47,7 @@ class GetChallenges {
     Query<Map<String, dynamic>> query = _firestore
         .collection('challenges')
         .where('status', isEqualTo: status.name)
+        .where('region', isEqualTo: region)
         .orderBy('amount', descending: true)
         .limit(limit);
     if (startAfter != null) query = query.startAfterDocument(startAfter);
@@ -67,9 +72,10 @@ class GetChallenges {
         .collection('challenges')
         .where('pinned', isEqualTo: true)
         .get();
+    // Filtra status + região no cliente (conjunto pequeno; sem índice extra).
     final list = snap.docs
         .map((d) => _map(d.id, d.data()))
-        .where((c) => c.status == ChallengeStatus.active)
+        .where((c) => c.status == ChallengeStatus.active && c.region == region)
         .toList();
     list.sort((a, b) {
       final at = a.pinnedAt ?? a.createdAt;
@@ -113,6 +119,8 @@ class GetChallenges {
       pinnedAt: data['pinnedAt'] != null
           ? DateTime.tryParse(data['pinnedAt'].toString())
           : null,
+      // Sem region no doc (legado) = 'BR'.
+      region: (data['region'] as String?) ?? 'BR',
     );
   }
 }

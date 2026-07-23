@@ -5,10 +5,13 @@ const {splitPrizeCents, withdrawalFee, withdrawalNet} = require("./money");
 
 admin.initializeApp();
 
+const {getSecret} = require("./secrets");
+
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-function mpPaymentClient() {
-  const token = process.env.MERCADOPAGO_ACCESS_TOKEN;
+async function mpPaymentClient() {
+  // Token do cofre (painel admin) com fallback pro .env.
+  const token = await getSecret("MERCADOPAGO_ACCESS_TOKEN");
   return new Payment(new MercadoPagoConfig({accessToken: token}));
 }
 
@@ -110,6 +113,9 @@ exports.createChallenge = functions.https.onCall(async (data, context) => {
     const expiresAt = new Date(
         now.getTime() + durationDays * 24 * 60 * 60 * 1000,
     ).toISOString();
+    // Região do desafio: 'BR' (padrão) ou 'INTL' (site trialspaid). Separa os
+    // feeds — o ranking continua compartilhado.
+    const region = data.region === "INTL" ? "INTL" : "BR";
     const challengeRef = db.collection("challenges").doc();
     const challengeData = {
       title,
@@ -118,6 +124,7 @@ exports.createChallenge = functions.https.onCall(async (data, context) => {
       amount: Number(amount),
       creatorContribution: isAdmin ? 0 : Number(amount),
       status: "active",
+      region,
       voteCount: 0,
       entryCount: 0,
       winnerIds: [],
@@ -699,7 +706,7 @@ exports.createPixPayment = functions.https.onCall(async (data, context) => {
   const userDoc = await db.collection("users").doc(userId).get();
   const userEmail = userDoc.data()?.email || "payer@desafiopago.com";
 
-  const client = mpPaymentClient();
+  const client = await mpPaymentClient();
   const mp = await client.create({
     body: {
       transaction_amount: txAmount,
@@ -750,7 +757,7 @@ exports.mercadoPagoWebhook = functions.https.onRequest(async (req, res) => {
   // Ativa quando MP_WEBHOOK_SECRET está definido (em functions/.env +
   // configurado no painel do MP). Sem o segredo, é ignorada — a segurança
   // já é garantida pela re-consulta do status real no MP abaixo.
-  const webhookSecret = process.env.MP_WEBHOOK_SECRET;
+  const webhookSecret = await getSecret("MP_WEBHOOK_SECRET");
   if (webhookSecret) {
     const parts = {};
     String(req.headers["x-signature"] || "").split(",").forEach((kv) => {
@@ -789,7 +796,7 @@ exports.mercadoPagoWebhook = functions.https.onRequest(async (req, res) => {
   }
 
   // Query Mercado Pago for current status
-  const mp = await mpPaymentClient().get({id: paymentId});
+  const mp = await (await mpPaymentClient()).get({id: paymentId});
 
   if (mp.status !== "approved") {
     await paymentRef.update({status: mp.status});
@@ -999,7 +1006,7 @@ exports.moderateEntry = functions.firestore
       const entry = snap.data();
       if (!entry.contentText) return null;
 
-      const apiKey = process.env.OPENAI_API_KEY;
+      const apiKey = await getSecret("OPENAI_API_KEY");
       if (!apiKey) return null;
 
       try {
@@ -4306,3 +4313,176 @@ Object.assign(exports, require("./seo"));
 // Ver functions/payments_intl.js — depósito PayPal creditando o ledger e
 // saque em cripto (XRP) com fluxo manual do admin (como o Pix).
 Object.assign(exports, require("./payments_intl"));
+
+// ─── COFRE DE CHAVES (painel admin) ──────────────────────────────────────────
+// Só as callables entram no deploy (getSecret é helper interno, não função).
+const _secrets = require("./secrets");
+exports.adminSetSecret = _secrets.adminSetSecret;
+exports.adminGetSecretStatus = _secrets.adminGetSecretStatus;
+
+// ─── SEED / BACKFILL INTERNACIONAL (one-shot, re-executável) ─────────────────
+// 1) Marca todos os desafios sem `region` como 'BR'. 2) Se não houver desafios
+// internacionais, cria alguns (em inglês) com participações de perfis virtuais
+// para o trialspaid.web.app não nascer vazio. Ranking segue compartilhado.
+exports.seedInternational = functions.runWith({timeoutSeconds: 540})
+    .https.onRequest(async (req, res) => {
+      if (req.method !== "POST") {
+        return res.status(405).json({error: "Method Not Allowed"});
+      }
+      if (!req.body || req.body.secret !== "SEED_2026_DP") {
+        return res.status(403).json({error: "Forbidden"});
+      }
+      const db = admin.firestore();
+      const ri = (n) => Math.floor(Math.random() * n);
+
+      // 1) Backfill region = 'BR' onde faltar.
+      const all = await db.collection("challenges").get();
+      let br = 0;
+      let batch = db.batch();
+      let ops = 0;
+      for (const d of all.docs) {
+        if (d.data().region === undefined || d.data().region === null) {
+          batch.update(d.ref, {region: "BR"});
+          br++;
+          if (++ops >= 400) {
+            await batch.commit();
+            batch = db.batch();
+            ops = 0;
+          }
+        }
+      }
+      if (ops > 0) await batch.commit();
+
+      // 2) Já existem desafios INTL? Então só o backfill.
+      const intlExisting = await db.collection("challenges")
+          .where("region", "==", "INTL").limit(1).get();
+      if (!intlExisting.empty) {
+        return res.json({success: true, backfilledBR: br, intlCreated: 0});
+      }
+
+      const usersSnap = await db.collection("users")
+          .where("isVirtual", "==", true).limit(300).get();
+      const uids = usersSnap.docs.map((d) => d.id);
+      if (uids.length < 20) {
+        return res.json({
+          success: true, backfilledBR: br, intlCreated: 0,
+          note: "Rode seedVirtualUsers primeiro para popular o intl.",
+        });
+      }
+      const shuffle = (arr) => {
+        const a = arr.slice();
+        for (let i = a.length - 1; i > 0; i--) {
+          const j = ri(i + 1);
+          [a[i], a[j]] = [a[j], a[i]];
+        }
+        return a;
+      };
+      const HOST = "https://desafiopago.web.app";
+      let imgC = ri(40);
+      const nextImg = () =>
+        `${HOST}/challenge_images/${String((imgC++ % 40) + 1)
+            .padStart(2, "0")}.jpg`;
+
+      // Prêmios em BRL no ledger; exibidos em USD no site (≈ /5.5).
+      const specs = [
+        {t: "Best sunset photo from your phone",
+          d: "Golden hour, your city, your shot. Most voted wins.",
+          amount: 140, status: "active", n: 5},
+        {t: "Cutest pet of the week",
+          d: "Show us your best friend. The internet picks the winner.",
+          amount: 320, status: "active", n: 6},
+        {t: "Coffee that starts your day",
+          d: "Your morning cup, your way. Best framing takes the prize.",
+          amount: 90, status: "active", n: 4},
+        {t: "Street photography challenge",
+          d: "One candid moment from your street. Make it count.",
+          amount: 260, status: "active", n: 5},
+        {t: "Best home-cooked plate",
+          d: "Plate it, shoot it, win it. Food that makes us hungry.",
+          amount: 180, status: "active", n: 5},
+        {t: "Your city in one photo",
+          d: "Capture where you live in a single frame.",
+          amount: 210, status: "active", n: 4},
+        {t: "Best travel shot of 2026",
+          d: "The photo you're most proud of this year.",
+          amount: 500, status: "finished", n: 6},
+        {t: "Minimalist photography",
+          d: "Less is more. Clean, simple, striking.",
+          amount: 120, status: "finished", n: 5},
+      ];
+      const now = Date.now();
+      const day = 86400000;
+      let batch2 = db.batch();
+      let ops2 = 0;
+      let created = 0;
+      const flush2 = async () => {
+        if (ops2 > 0) {
+          await batch2.commit();
+          batch2 = db.batch();
+          ops2 = 0;
+        }
+      };
+      for (const spec of specs) {
+        const pool = shuffle(uids);
+        const creator = pool[0];
+        const finished = spec.status === "finished";
+        const createdMs = finished ?
+          now - (20 + ri(20)) * day : now - (1 + ri(6)) * day;
+        const expiresMs = finished ?
+          now - (1 + ri(5)) * day : now + (2 + ri(14)) * day;
+        const entrants = pool.slice(1, 1 + spec.n);
+        const cRef = db.collection("challenges").doc();
+        const entryDocs = [];
+        let totalVotes = 0;
+        let maxVotes = -1;
+        for (let i = 0; i < spec.n; i++) {
+          const votes = finished ? 400 + ri(3000) : 20 + ri(600);
+          totalVotes += votes;
+          if (votes > maxVotes) maxVotes = votes;
+          entryDocs.push({
+            ref: db.collection("entries").doc(),
+            uid: entrants[i],
+            votes,
+            url: nextImg(),
+            createdAt: new Date(createdMs + (i + 1) * 3600000).toISOString(),
+          });
+        }
+        const winnerIds = finished ?
+          entryDocs.filter((e) => e.votes === maxVotes).map((e) => e.uid) : [];
+        batch2.set(cRef, {
+          title: spec.t,
+          description: spec.d,
+          createdBy: creator,
+          amount: spec.amount,
+          creatorContribution: 0,
+          status: spec.status,
+          region: "INTL",
+          voteCount: totalVotes,
+          entryCount: spec.n,
+          winnerIds,
+          createdAt: new Date(createdMs).toISOString(),
+          expiresAt: new Date(expiresMs).toISOString(),
+          isVirtual: true,
+          seedWave: "intl",
+        });
+        created++;
+        ops2++;
+        for (const e of entryDocs) {
+          batch2.set(e.ref, {
+            challengeId: cRef.id,
+            userId: e.uid,
+            contentType: "image",
+            contentText: null,
+            contentUrl: e.url,
+            voteCount: e.votes,
+            isActive: true,
+            createdAt: e.createdAt,
+            isVirtual: true,
+          });
+          if (++ops2 >= 400) await flush2();
+        }
+        if (ops2 >= 400) await flush2();
+      }
+      await flush2();
+      return res.json({success: true, backfilledBR: br, intlCreated: created});
+    });

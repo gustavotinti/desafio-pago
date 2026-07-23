@@ -14,20 +14,21 @@
 
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
+const {getSecret} = require("./secrets");
 
-const _paypalBase = () =>
-  (process.env.PAYPAL_MODE === "sandbox" ?
+const _paypalBase = async () =>
+  ((await getSecret("PAYPAL_MODE")) === "sandbox" ?
     "https://api-m.sandbox.paypal.com" : "https://api-m.paypal.com");
 
 const _paypalToken = async () => {
-  const id = process.env.PAYPAL_CLIENT_ID;
-  const secret = process.env.PAYPAL_SECRET;
+  const id = await getSecret("PAYPAL_CLIENT_ID");
+  const secret = await getSecret("PAYPAL_SECRET");
   if (!id || !secret) {
     throw new functions.https.HttpsError(
         "failed-precondition",
         "PayPal ainda não configurado (PAYPAL_CLIENT_ID/PAYPAL_SECRET).");
   }
-  const r = await fetch(`${_paypalBase()}/v1/oauth2/token`, {
+  const r = await fetch(`${await _paypalBase()}/v1/oauth2/token`, {
     method: "POST",
     headers: {
       "Authorization": "Basic " +
@@ -70,7 +71,7 @@ exports.paypalCreateOrder = functions.https.onCall(async (data, context) => {
         "invalid-argument", "Valor entre US$ 1 e US$ 10.000.");
   }
   const token = await _paypalToken();
-  const r = await fetch(`${_paypalBase()}/v2/checkout/orders`, {
+  const r = await fetch(`${await _paypalBase()}/v2/checkout/orders`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -135,7 +136,7 @@ exports.paypalCaptureOrder = functions.https.onCall(async (data, context) => {
   // Tenta capturar; se já foi capturada, consulta o status real.
   let status = null;
   const cap = await fetch(
-      `${_paypalBase()}/v2/checkout/orders/${orderId}/capture`, {
+      `${await _paypalBase()}/v2/checkout/orders/${orderId}/capture`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -146,7 +147,7 @@ exports.paypalCaptureOrder = functions.https.onCall(async (data, context) => {
   status = capJson.status;
   if (status !== "COMPLETED") {
     const chk = await fetch(
-        `${_paypalBase()}/v2/checkout/orders/${orderId}`, {
+        `${await _paypalBase()}/v2/checkout/orders/${orderId}`, {
           headers: {"Authorization": `Bearer ${token}`},
         });
     const chkJson = await chk.json();

@@ -71,6 +71,14 @@ service cloud.firestore {
       allow write: if isAdmin();    // só admin edita
     }
 
+    // ── SECURE CONFIG (credenciais: MP, PayPal, IA) ───────────────────────────
+    // TRANCADO: nenhum acesso do client. Só as Cloud Functions (Admin SDK)
+    // leem/gravam. O painel admin escreve via função adminSetSecret e nunca
+    // lê o valor de volta (só um status mascarado por adminGetSecretStatus).
+    match /secure_config/{doc} {
+      allow read, write: if false;
+    }
+
     // ── CHALLENGES ───────────────────────────────────────────────────────────
     match /challenges/{challengeId} {
       // Conteúdo público: qualquer visitante pode ver os desafios.

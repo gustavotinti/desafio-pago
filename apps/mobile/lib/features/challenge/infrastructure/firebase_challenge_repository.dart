@@ -1,5 +1,6 @@
 import 'package:cloud_functions/cloud_functions.dart';
 
+import '../../../core/config/app_config.dart';
 import '../domain/entities/challenge.dart';
 
 class FirebaseChallengeRepository {
@@ -16,6 +17,8 @@ class FirebaseChallengeRepository {
         'description': challenge.description,
         'amount': challenge.amount,
         'durationDays': durationDays < 1 ? 1 : durationDays,
+        // Desafio nasce na região do site (BR ou internacional).
+        'region': AppConfig.intl ? 'INTL' : 'BR',
       });
     } on FirebaseFunctionsException catch (e) {
       final msg = (e.message != null && e.message != e.code)

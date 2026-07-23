@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/utils/format.dart';
@@ -11,6 +12,9 @@ import 'admin_virtual_users_page.dart';
 import 'admin_audience_page.dart';
 import 'admin_platform_page.dart';
 import 'admin_seo_page.dart';
+import 'admin_keys_page.dart';
+
+const _superAdminEmail = 'gustavo.a.tinti3@gmail.com';
 
 /// Painel Admin — hub com visão geral ao vivo (contadores), atalhos em grid
 /// responsivo (2 colunas no desktop, 1 no celular), badges de pendências e
@@ -233,6 +237,30 @@ class _AdminPageState extends State<AdminPage> {
                       ),
                     ],
                   ),
+
+                  // ── Sistema (super admin) ────────────────────────
+                  if (FirebaseAuth.instance.currentUser?.email ==
+                      _superAdminEmail) ...[
+                    const SizedBox(height: 18),
+                    const _SectionLabel('Sistema (super admin)'),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        card(
+                          icon: Icons.vpn_key_rounded,
+                          title: 'Chaves & integrações',
+                          subtitle:
+                              'Mercado Pago, PayPal e IA — com instruções',
+                          gradient: const [
+                            Color(0xFF37474F),
+                            Color(0xFF78909C)
+                          ],
+                          page: const AdminKeysPage(),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               );
             },
