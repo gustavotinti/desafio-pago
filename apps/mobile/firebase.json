@@ -49,6 +49,9 @@
       "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
       "rewrites": [
         { "source": "/challenges/**", "function": "entryPreview" },
+        { "source": "/novidades", "function": "seoPage" },
+        { "source": "/novidades/**", "function": "seoPage" },
+        { "source": "/sitemap.xml", "function": "seoSitemap" },
         { "source": "**", "destination": "/index.html" }
       ],
       "headers": [

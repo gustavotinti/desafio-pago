@@ -22,7 +22,7 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _index = 0;
 
-  static const _version = '${AppConfig.brand} v3.1.0';
+  static const _version = '${AppConfig.brand} v3.2.0';
 
   @override
   void initState() {
@@ -64,19 +64,33 @@ class _MainShellState extends State<MainShell> {
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // ── Version label ───────────────────────────────────────────
+          // ── Version + crédito do criador ────────────────────────────
           Container(
             color: Colors.white,
             padding: const EdgeInsets.only(top: 4),
-            child: const Text(
-              _version,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 10,
-                color: Color(0xFFB0B8CC),
-                fontFamily: 'Garet',
-                letterSpacing: 0.3,
-              ),
+            child: Column(
+              children: [
+                const Text(
+                  _version,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: Color(0xFFB0B8CC),
+                    fontFamily: 'Garet',
+                    letterSpacing: 0.3,
+                  ),
+                ),
+                Text(
+                  '${I18n.tr('created_by')} ${AppConfig.creator}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: Color(0xFFB0B8CC),
+                    fontFamily: 'Garet',
+                    letterSpacing: 0.3,
+                  ),
+                ),
+              ],
             ),
           ),
 

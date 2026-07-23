@@ -27,8 +27,16 @@ void main() async {
   await connectToEmulators();
   await NotificationService.init();
   if (!kIsWeb) await ScreenProtector.preventScreenshotOn();
-  // Build internacional: carrega cotações (USD/XRP) em segundo plano.
-  if (AppConfig.intl) loadIntlRates();
+  // Build internacional: carrega cotações (USD/XRP) em segundo plano e
+  // respeita ?lang=xx da URL (quem trocou o idioma no site BR chega já aqui
+  // no idioma escolhido).
+  if (AppConfig.intl) {
+    loadIntlRates();
+    final q = Uri.base.queryParameters['lang'];
+    if (q != null && I18n.langs.any((l) => l.$1 == q)) {
+      I18n.setLocale(q);
+    }
+  }
   runApp(const MyApp());
 }
 

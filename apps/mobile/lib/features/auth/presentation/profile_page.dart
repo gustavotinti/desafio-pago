@@ -6,6 +6,8 @@ import 'package:cloud_functions/cloud_functions.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/i18n/i18n.dart';
 import '../../../core/utils/format.dart';
+import '../../../core/utils/open_url_stub.dart'
+    if (dart.library.js_interop) '../../../core/utils/open_url_web.dart';
 import '../../../core/widgets/safe_avatar.dart';
 import '../../../core/widgets/web_frame.dart';
 import '../../payments/presentation/paypal_topup_page.dart';
@@ -364,6 +366,20 @@ class _ProfilePageState extends State<ProfilePage> {
                 context,
                 MaterialPageRoute(builder: (_) => const MyActivityPage()),
               ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          // — Novidades / blog (hub de SEO — abre no navegador) —
+          Card(
+            margin: EdgeInsets.zero,
+            child: ListTile(
+              leading: const Icon(Icons.article_outlined,
+                  color: Color(0xFF1565C0)),
+              title: Text(I18n.tr('news')),
+              subtitle: Text(I18n.tr('news_sub'),
+                  style: const TextStyle(fontSize: 12)),
+              trailing: const Icon(Icons.open_in_new, size: 18),
+              onTap: () => openExternalUrl('${AppConfig.siteUrl}/novidades'),
             ),
           ),
           const SizedBox(height: 16),

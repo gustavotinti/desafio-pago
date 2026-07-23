@@ -18,6 +18,13 @@ class AppConfig {
   static const String siteUrl =
       intl ? 'https://trialspaid.web.app' : 'https://desafiopago.com.br';
 
+  /// URLs fixas dos dois sites (para o seletor de idioma cruzar entre eles).
+  static const String brSiteUrl = 'https://desafiopago.com.br';
+  static const String intlSiteUrl = 'https://trialspaid.web.app';
+
+  /// Crédito do criador (aparece no rodapé dos dois sites).
+  static const String creator = 'Gustavo Tinti';
+
   /// Logos do topo (o internacional usa a arte em inglês).
   static const String logoStatic =
       intl ? 'assets/images/logo_intl.png' : 'assets/images/2.png';

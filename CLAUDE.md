@@ -62,7 +62,7 @@ outros participam com conteúdo (texto/imagem/vídeo), e o mais votado vence o p
 - Retry automático em falha
 - Status: pending | posted | failed
 
-## Estado atual (v3.1.0 — julho/2026)
+## Estado atual (v3.2.0 — julho/2026)
 No ar: https://desafiopago.com.br (e https://desafiopago.web.app)
 **Internacional: https://trialspaid.web.app** (mesmo projeto/DB)
 Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
@@ -225,8 +225,24 @@ Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
   senão OPENAI_API_KEY. Artigos PT-BR úteis (900-1300 palavras, sem promessas
   falsas), slug único, sanitização de HTML. **Basta colar a chave em
   Admin→Chaves — funciona sem redeploy.**
-- **3 artigos escritos à mão** já publicados em /novidades (`seedSeoArticles`)
-  — conteúdo real/indexável hoje, independente de chave de IA.
+- **Artigos escritos à mão** já publicados (`seedSeoArticles` — `?lang=en`
+  para o conjunto EN) — conteúdo real/indexável hoje, sem depender de IA.
+- **Hub SSR é host-aware** (v3.2.0): `seoPage`/`seoSitemap` detectam o host
+  (trialspaid → EN + branding TrialsPaid + desafios INTL; desafiopago → PT).
+  Artigos têm campo `lang` (legado sem lang = 'pt'); cada hub/sitemap mostra
+  só o seu idioma e sua região. Rewrites /novidades + /sitemap.xml também no
+  target `intl`.
+- **Links internos**: cada artigo mostra "Leia também / Read next" (3
+  relacionados do mesmo idioma) — reforça SEO. Crédito "Criado por
+  {AppConfig.creator}" no rodapé SSR e no app.
+- **Descoberta no app**: card "Novidades/News" no perfil abre o hub.
+
+### 🌐 Seletor de idioma cruzando os sites (v3.2.0)
+- `LanguageSelector` aparece nos DOIS builds. No BR: 🇧🇷 fica ativo e escolher
+  outro idioma abre `trialspaid.web.app/?lang=xx` já naquele idioma (main.dart
+  lê `?lang`). No intl: troca na hora e 🇧🇷 volta pro desafiopago.
+- Crédito do criador (`AppConfig.creator = 'Gustavo Tinti'`) no rodapé de
+  ambos (fácil de trocar/ocultar).
 - **Cron diário** `seoDailyPublish` (9h BRT): publica 1 artigo/dia da fila
   `seo_topics` (~48 temas seed). Kill-switch: `config/seo.autoPublish`.
 - **Loop de demanda GSC** `gscSyncQueries` (toda segunda 8h): lê o Search
