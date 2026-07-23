@@ -62,7 +62,7 @@ outros participam com conteúdo (texto/imagem/vídeo), e o mais votado vence o p
 - Retry automático em falha
 - Status: pending | posted | failed
 
-## Estado atual (v3.0.0 — julho/2026)
+## Estado atual (v3.1.0 — julho/2026)
 No ar: https://desafiopago.com.br (e https://desafiopago.web.app)
 **Internacional: https://trialspaid.web.app** (mesmo projeto/DB)
 Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
@@ -90,6 +90,22 @@ Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
   admin envia XRP manualmente e marca pago (mesmo fluxo manual do Pix).
 - No intl: seções Pix/verificação OCULTAS; visitante vê benefício "saque em
   cripto"; footer sem "apenas Brasil".
+- **Separação de feeds por `region`** (BR x INTL): challenge tem campo
+  `region` ('BR' padrão, 'INTL' no trialspaid); `createChallenge` grava a
+  região do site; feed (page + pinnedActive), pulso e ticker filtram por
+  região (índice composto `status+region+amount`). **Ranking é
+  compartilhado** (lê publicProfiles global). Backfill + seed via
+  `seedInternational` (30 BR + 8 desafios INTL em inglês com participações).
+
+### 🔐 Cofre de chaves (Admin → Chaves & integrações — super admin)
+- Credenciais (MP token, MP webhook secret, PayPal client/secret/mode,
+  Gemini/OpenAI) ficam em `secure_config/keys` — doc **TRANCADO** (rules
+  negam todo acesso do client). Funções `adminSetSecret`/`adminGetSecretStatus`
+  (só super admin). `getSecret(k)` (functions/secrets.js) prioriza o cofre e
+  cai no `.env`; usado por MP (`mpPaymentClient` async), webhook, PayPal, IA
+  de moderação e SEO. **Trocar chave vale na hora, sem redeploy.**
+- Painel: campos write-only (nunca lê o valor de volta — só status mascarado
+  `••••1234`) + instruções de onde/como obter cada chave.
 
 ### ✅ Implementado e no ar
 **Acesso & onboarding**
@@ -204,9 +220,13 @@ Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
   ativos reais (CTA) e links internos. Cache s-maxage.
 - **`/sitemap.xml`** automático (função `seoSitemap`): home, /novidades,
   artigos e todos os /challenges/{id}. `web/robots.txt` aponta pro sitemap.
-- **Geração de conteúdo por IA** (`functions/seo.js`): usa GEMINI_API_KEY se
-  existir, senão OPENAI_API_KEY (já no .env). Artigos PT-BR úteis (900-1300
-  palavras, sem promessas falsas), slug único, sanitização de HTML.
+- **Geração de conteúdo por IA** (`functions/seo.js`): lê a chave via
+  `getSecret` (cofre do admin → fallback .env): GEMINI_API_KEY se houver,
+  senão OPENAI_API_KEY. Artigos PT-BR úteis (900-1300 palavras, sem promessas
+  falsas), slug único, sanitização de HTML. **Basta colar a chave em
+  Admin→Chaves — funciona sem redeploy.**
+- **3 artigos escritos à mão** já publicados em /novidades (`seedSeoArticles`)
+  — conteúdo real/indexável hoje, independente de chave de IA.
 - **Cron diário** `seoDailyPublish` (9h BRT): publica 1 artigo/dia da fila
   `seo_topics` (~48 temas seed). Kill-switch: `config/seo.autoPublish`.
 - **Loop de demanda GSC** `gscSyncQueries` (toda segunda 8h): lê o Search
