@@ -23,6 +23,8 @@ const ALLOWED = [
   "PAYPAL_MODE",
   "GEMINI_API_KEY",
   "OPENAI_API_KEY",
+  "INSTAGRAM_ACCESS_TOKEN",
+  "INSTAGRAM_USER_ID",
 ];
 
 // Cache por instância (TTL curto) — evita ler o Firestore a cada pagamento.

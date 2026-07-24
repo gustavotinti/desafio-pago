@@ -14,6 +14,7 @@ import 'admin_platform_page.dart';
 import 'admin_seo_page.dart';
 import 'admin_keys_page.dart';
 import 'admin_reports_page.dart';
+import 'admin_instagram_page.dart';
 
 const _superAdminEmail = 'gustavo.a.tinti3@gmail.com';
 
@@ -236,6 +237,13 @@ class _AdminPageState extends State<AdminPage> {
                             'Artigos por IA, fila de temas e demanda do Google',
                         gradient: const [Color(0xFF1565C0), Color(0xFF42A5F5)],
                         page: const AdminSeoPage(),
+                      ),
+                      card(
+                        icon: Icons.camera_alt_rounded,
+                        title: 'Instagram',
+                        subtitle: 'Posts automáticos dos desafios (Fase 16)',
+                        gradient: const [Color(0xFFC13584), Color(0xFFF77737)],
+                        page: const AdminInstagramPage(),
                       ),
                       card(
                         icon: Icons.campaign_rounded,

@@ -22,7 +22,7 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _index = 0;
 
-  static const _version = '${AppConfig.brand} v3.4.0';
+  static const _version = '${AppConfig.brand} v3.5.0';
 
   @override
   void initState() {

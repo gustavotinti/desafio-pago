@@ -62,7 +62,7 @@ outros participam com conteúdo (texto/imagem/vídeo), e o mais votado vence o p
 - Retry automático em falha
 - Status: pending | posted | failed
 
-## Estado atual (v3.4.0 — julho/2026)
+## Estado atual (v3.5.0 — julho/2026)
 No ar: https://desafiopago.com.br (e https://desafiopago.web.app)
 **Internacional: https://trialspaid.web.app** (mesmo projeto/DB)
 Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
@@ -303,8 +303,9 @@ Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
   (depósito → saldo → desafio → prêmio → saque)
 - Confirmar o webhook MP em produção ("Simular notificação" = 200)
 - Pagamento automático de saque (precisa de PSP de payout — Asaas/Efí)
-- Bloqueio de VPN; automação Instagram (Fase 16)
+- Bloqueio de VPN
 - Testar o fluxo PayPal ponta a ponta (precisa PAYPAL_CLIENT_ID/SECRET no cofre)
+- Ativar Instagram (precisa INSTAGRAM_ACCESS_TOKEN + INSTAGRAM_USER_ID no cofre)
 - Ampliar testes de integração com emulador (unit já cobre dinheiro/SEO/utils)
 
 ### 🛡️ Moderação & denúncias (v3.4.0)

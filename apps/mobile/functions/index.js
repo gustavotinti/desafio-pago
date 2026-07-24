@@ -58,7 +58,23 @@ async function _sendNotification(db, userId, title, body, data = {}) {
 }
 
 async function _maybeScheduleInstagramPost(db, challengeId, oldAmount, newAmount) {
-  const threshold = Number(process.env.INSTAGRAM_THRESHOLD || 100);
+  // Config em config/instagram (enabled + threshold). Padrão: threshold 100,
+  // ligado (só não agenda se enabled === false).
+  let threshold = Number(process.env.INSTAGRAM_THRESHOLD || 100);
+  let enabled = true;
+  try {
+    const cfg = await db.collection("config").doc("instagram").get();
+    if (cfg.exists) {
+      const d = cfg.data();
+      if (typeof d.threshold === "number" && d.threshold > 0) {
+        threshold = d.threshold;
+      }
+      if (d.enabled === false) enabled = false;
+    }
+  } catch (e) {
+    // usa padrão
+  }
+  if (!enabled) return;
   if (oldAmount < threshold && newAmount >= threshold) {
     const postRef = db.collection("instagram_posts").doc(challengeId);
     const existing = await postRef.get();
@@ -921,20 +937,21 @@ exports.checkPaymentStatus = functions.https.onCall(async (data, context) => {
   return {status: doc.data().status};
 });
 
-// ─── FASE 16: INSTAGRAM AUTOMATION ──────────────────────────────────────────
-// Deploy config:
-//   firebase functions:config:set instagram.access_token="EAA..."
-//   firebase functions:config:set instagram.page_id="123456"
-//   firebase functions:config:set instagram.threshold="100"
+// ─── FASE 16: AUTOMAÇÃO INSTAGRAM ────────────────────────────────────────────
+// Credenciais no cofre (Admin → Chaves): INSTAGRAM_ACCESS_TOKEN (long-lived) e
+// INSTAGRAM_USER_ID (id da conta Instagram Business/Creator). Config em
+// config/instagram (enabled, threshold). Posta 1 imagem (melhor participação
+// do desafio) por desafio, quando o prêmio cruza o threshold.
 
 exports.processInstagramPosts = functions.pubsub
     .schedule("every 10 minutes")
     .onRun(async () => {
       const db = admin.firestore();
-      const accessToken = process.env.INSTAGRAM_ACCESS_TOKEN;
-      const pageId = process.env.INSTAGRAM_PAGE_ID;
+      const accessToken = await getSecret("INSTAGRAM_ACCESS_TOKEN");
+      const igUserId = (await getSecret("INSTAGRAM_USER_ID")) ||
+          (await getSecret("INSTAGRAM_PAGE_ID"));
 
-      if (!accessToken || !pageId) {
+      if (!accessToken || !igUserId) {
         console.log("Instagram não configurado — pulando");
         return null;
       }
@@ -945,45 +962,71 @@ exports.processInstagramPosts = functions.pubsub
 
       if (snapshot.empty) return null;
 
-      const eligible = snapshot.docs.filter((d) => (d.data().retryCount || 0) < 3);
-      await Promise.all(eligible.map((d) => _postToInstagram(db, d, pageId, accessToken)));
+      const eligible = snapshot.docs
+          .filter((d) => (d.data().retryCount || 0) < 3);
+      // Sequencial: a Graph API do IG limita publicações concorrentes.
+      for (const d of eligible) {
+        await _postToInstagram(db, d, igUserId, accessToken);
+      }
       return null;
     });
 
-async function _postToInstagram(db, postDoc, pageId, accessToken) {
+async function _postToInstagram(db, postDoc, igUserId, accessToken) {
   const postData = postDoc.data();
-  const challengeDoc = await db.collection("challenges").doc(postData.challengeId).get();
+  const challengeDoc =
+      await db.collection("challenges").doc(postData.challengeId).get();
 
   if (!challengeDoc.exists) {
-    await postDoc.ref.update({status: "failed", error: "desafio não encontrado"});
+    await postDoc.ref.update(
+        {status: "failed", error: "desafio não encontrado"});
     return;
   }
 
   const challenge = challengeDoc.data();
-  const message =
+  // Instagram exige imagem. Usa a melhor participação (imagem); senão a arte
+  // padrão da marca.
+  const top = Array.isArray(challenge.topEntries) ? challenge.topEntries : [];
+  const firstImg = top.find(
+      (e) => e && e.contentUrl && e.contentType === "image");
+  const imageUrl = (firstImg && firstImg.contentUrl) ||
+      "https://desafiopago.web.app/og-default.png";
+  const caption =
     `🏆 ${challenge.title}\n` +
-    `💰 Prêmio: R$ ${challenge.amount.toFixed(2)}\n` +
-    `Participe agora no Desafio Pago!`;
+    `💰 Prêmio: R$ ${Number(challenge.amount).toFixed(2)}\n` +
+    "Participe agora no Desafio Pago! 👉 link na bio\n\n" +
+    "#desafiopago #desafios #premio #rendaextra #fotografia";
 
+  const base = "https://graph.facebook.com/v21.0";
   try {
-    const response = await fetch(
-        `https://graph.facebook.com/v18.0/${pageId}/feed`,
-        {
-          method: "POST",
-          headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({message, access_token: accessToken}),
-        },
-    );
-    const result = await response.json();
-
-    if (result.id) {
+    // 1) Cria o container de mídia.
+    const cr = await fetch(`${base}/${igUserId}/media`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(
+          {image_url: imageUrl, caption, access_token: accessToken}),
+    });
+    const crJson = await cr.json();
+    if (!crJson.id) {
+      throw new Error(
+          (crJson.error && crJson.error.message) || "container falhou");
+    }
+    // 2) Publica o container.
+    const pub = await fetch(`${base}/${igUserId}/media_publish`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(
+          {creation_id: crJson.id, access_token: accessToken}),
+    });
+    const pubJson = await pub.json();
+    if (pubJson.id) {
       await postDoc.ref.update({
         status: "posted",
-        postId: result.id,
+        postId: pubJson.id,
         postedAt: new Date().toISOString(),
       });
     } else {
-      throw new Error(result.error?.message || "Erro desconhecido");
+      throw new Error(
+          (pubJson.error && pubJson.error.message) || "publish falhou");
     }
   } catch (err) {
     const retryCount = (postData.retryCount || 0) + 1;
@@ -995,6 +1038,57 @@ async function _postToInstagram(db, postDoc, pageId, accessToken) {
     });
   }
 }
+
+// ─── ADMIN: config do Instagram (ligar/desligar + threshold) ─────────────────
+exports.adminSetInstagramConfig =
+    functions.https.onCall(async (data, context) => {
+      if (!context.auth) {
+        throw new functions.https.HttpsError(
+            "unauthenticated", "Não autenticado");
+      }
+      const db = admin.firestore();
+      const adminDoc =
+          await db.collection("admins").doc(context.auth.uid).get();
+      if (!adminDoc.exists) {
+        throw new functions.https.HttpsError(
+            "permission-denied", "Apenas administradores.");
+      }
+      const updates = {updatedAt: new Date().toISOString()};
+      if (typeof data.enabled === "boolean") updates.enabled = data.enabled;
+      if (data.threshold != null) {
+        const t = Number(data.threshold);
+        if (isFinite(t) && t > 0) updates.threshold = Math.round(t * 100) / 100;
+      }
+      await db.collection("config").doc("instagram").set(updates, {merge: true});
+      return {success: true};
+    });
+
+// ─── ADMIN: re-enfileirar um post do Instagram que falhou ────────────────────
+exports.adminRetryInstagramPost =
+    functions.https.onCall(async (data, context) => {
+      if (!context.auth) {
+        throw new functions.https.HttpsError(
+            "unauthenticated", "Não autenticado");
+      }
+      const db = admin.firestore();
+      const adminDoc =
+          await db.collection("admins").doc(context.auth.uid).get();
+      if (!adminDoc.exists) {
+        throw new functions.https.HttpsError(
+            "permission-denied", "Apenas administradores.");
+      }
+      const id = String(data.postId || "");
+      if (!id) {
+        throw new functions.https.HttpsError(
+            "invalid-argument", "postId obrigatório");
+      }
+      await db.collection("instagram_posts").doc(id).update({
+        status: "pending",
+        retryCount: 0,
+        error: admin.firestore.FieldValue.delete(),
+      });
+      return {success: true};
+    });
 
 // ─── MODERAÇÃO COM IA (texto via OpenAI · imagem via Gemini Vision) ──────────
 // Requer chave no cofre (Admin → Chaves): OPENAI_API_KEY p/ texto,

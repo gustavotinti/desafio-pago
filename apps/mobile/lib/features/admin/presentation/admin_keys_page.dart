@@ -226,6 +226,57 @@ class _AdminKeysPageState extends State<AdminKeysPage> {
                       ],
                       onSave: _save,
                     ),
+
+                    // ── Instagram (automação de posts) ───────────────
+                    _KeyCard(
+                      title: 'Instagram (posts automáticos)',
+                      icon: Icons.camera_alt_outlined,
+                      color: const Color(0xFFC13584),
+                      status: _status['INSTAGRAM_ACCESS_TOKEN'],
+                      status2: _status['INSTAGRAM_USER_ID'],
+                      fields: [
+                        _FieldSpec(
+                          key: 'INSTAGRAM_ACCESS_TOKEN',
+                          label: 'Access token (long-lived)',
+                          hint: 'começa com EAA... / IGQ...',
+                        ),
+                        _FieldSpec(
+                          key: 'INSTAGRAM_USER_ID',
+                          label: 'Instagram User ID (conta Business)',
+                          hint: 'id numérico da conta Instagram',
+                        ),
+                      ],
+                      guide: const [
+                        'Requer uma conta Instagram PROFISSIONAL (Business ou '
+                            'Creator) vinculada a uma Página do Facebook.',
+                        'Crie um app em developers.facebook.com → produto '
+                            '"Instagram Graph API" (ou "Instagram").',
+                        'No Graph API Explorer, gere um token com as permissões '
+                            'instagram_basic e instagram_content_publish e '
+                            'troque-o por um token de longa duração.',
+                        'Pegue o "Instagram User ID" da conta (via '
+                            '/me/accounts → instagram_business_account) e cole '
+                            'nos campos.',
+                        'Depois é só ligar a automação e definir o valor de '
+                            'prêmio em Admin → Instagram.',
+                      ],
+                      links: const [
+                        (
+                          label: 'Abrir Meta for Developers',
+                          url: 'https://developers.facebook.com/apps',
+                        ),
+                        (
+                          label: 'Graph API Explorer',
+                          url: 'https://developers.facebook.com/tools/explorer',
+                        ),
+                        (
+                          label: 'Doc: publicar no Instagram',
+                          url: 'https://developers.facebook.com/docs/'
+                              'instagram-api/guides/content-publishing',
+                        ),
+                      ],
+                      onSave: _save,
+                    ),
                   ],
                 ),
               ),
