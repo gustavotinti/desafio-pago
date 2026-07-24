@@ -38,4 +38,18 @@ function withdrawalNet(amount) {
   return Math.round((amount - withdrawalFee(amount)) * 100) / 100;
 }
 
-module.exports = {splitPrizeCents, withdrawalFee, withdrawalNet};
+/**
+ * Estimativa de XRP a partir de um valor em BRL, dado o preço de 1 XRP em BRL.
+ * Arredonda a 4 casas. Retorna 0 se a cotação for inválida.
+ * @param {number} brl valor em BRL (ledger interno)
+ * @param {number} xrpBrl preço de 1 XRP em BRL
+ * @return {number} quantidade de XRP
+ */
+function xrpFromBrl(brl, xrpBrl) {
+  if (!(xrpBrl > 0)) return 0;
+  return Math.round((brl / xrpBrl) * 10000) / 10000;
+}
+
+module.exports = {
+  splitPrizeCents, withdrawalFee, withdrawalNet, xrpFromBrl,
+};

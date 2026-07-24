@@ -2,7 +2,9 @@
 
 const test = require("node:test");
 const assert = require("node:assert");
-const {splitPrizeCents, withdrawalFee, withdrawalNet} = require("../money");
+const {
+  splitPrizeCents, withdrawalFee, withdrawalNet, xrpFromBrl,
+} = require("../money");
 
 test("split exato entre 2 vencedores", () => {
   assert.deepStrictEqual(
@@ -42,4 +44,17 @@ test("taxa de saque é 10% e líquido é 90%", () => {
 test("taxa de saque arredonda a 2 casas", () => {
   assert.strictEqual(withdrawalFee(133.33), 13.33);
   assert.strictEqual(withdrawalNet(133.33), 120);
+});
+
+test("xrpFromBrl: converte e arredonda a 4 casas", () => {
+  // 90 BRL / 13.5 (R$/XRP) = 6.6666... → 6.6667
+  assert.strictEqual(xrpFromBrl(90, 13.5), 6.6667);
+  // 100 BRL / 20 = 5 exato
+  assert.strictEqual(xrpFromBrl(100, 20), 5);
+});
+
+test("xrpFromBrl: cotação inválida → 0 (nunca NaN/Infinity)", () => {
+  assert.strictEqual(xrpFromBrl(100, 0), 0);
+  assert.strictEqual(xrpFromBrl(100, -1), 0);
+  assert.strictEqual(xrpFromBrl(100, undefined), 0);
 });

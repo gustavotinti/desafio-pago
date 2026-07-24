@@ -9,6 +9,7 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const {getSecret} = require("./secrets");
+const {slugify, sanitizeHtml} = require("./text_utils");
 
 const SITE = "https://desafiopago.com.br";
 const BRAND = "Desafio Pago";
@@ -72,21 +73,6 @@ const esc = (s) => String(s == null ? "" : s)
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
-
-// Sanitização leve do HTML vindo da IA (sem script/iframe/handlers).
-const sanitizeHtml = (h) => String(h || "")
-    .replace(/<\s*(script|style|iframe)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, "")
-    .replace(/\son\w+\s*=\s*"[^"]*"/gi, "")
-    .replace(/\son\w+\s*=\s*'[^']*'/gi, "")
-    .replace(/javascript:/gi, "");
-
-const slugify = (s) => String(s || "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80);
 
 const fmtBrl = (v) => `R$ ${(Number(v) || 0).toFixed(2).replace(".", ",")}`;
 

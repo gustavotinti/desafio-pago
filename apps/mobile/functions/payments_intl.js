@@ -15,6 +15,7 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const {getSecret} = require("./secrets");
+const {xrpFromBrl} = require("./money");
 
 // ─── Mensagens localizadas (pt no BR, en no internacional) ───────────────────
 const langOf = (data) => (data && data.lang === "en" ? "en" : "pt");
@@ -242,7 +243,7 @@ exports.paypalCaptureOrder = functions.https.onCall(async (data, context) => {
       completedAt: new Date().toISOString(),
     });
   });
-  const xrpEquiv = Math.round((amountBrl / xrpBrl) * 100) / 100;
+  const xrpEquiv = xrpFromBrl(amountBrl, xrpBrl);
   return {success: true, amountBrl, xrpEquiv};
 });
 
@@ -280,7 +281,7 @@ exports.requestCryptoWithdraw =
       }
       const fee = Math.round(amount * 0.10 * 100) / 100;
       const netAmount = Math.round((amount - fee) * 100) / 100;
-      const xrpEstimate = Math.round((netAmount / xrpBrl) * 10000) / 10000;
+      const xrpEstimate = xrpFromBrl(netAmount, xrpBrl);
 
       const db = admin.firestore();
       const userRef = db.collection("users").doc(userId);
