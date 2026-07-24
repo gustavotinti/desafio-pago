@@ -22,6 +22,7 @@ import '../../admin/infrastructure/admin_repository.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/i18n/i18n.dart';
 import '../../../core/i18n/language_selector.dart';
+import '../../../core/i18n/region_banner.dart';
 import '../../../core/utils/format.dart';
 import '../../../core/widgets/web_frame.dart';
 import 'auth_guard.dart';
@@ -107,6 +108,7 @@ class _HomePageState extends State<HomePage> {
       ),
       body: Column(
         children: [
+          const RegionBanner(),
           PlatformPulse(isAdmin: _isAdmin),
           const ActivityTicker(),
           Expanded(

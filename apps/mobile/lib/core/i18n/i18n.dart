@@ -425,6 +425,24 @@ class I18n {
       'Gib deine XRP-Adresse ein'],
     'created_by': ['Criado por', 'Created by', 'Creado por', 'Créé par',
       'Creato da', 'Erstellt von'],
+    // Sugestão de região (banner que leva ao site certo)
+    'region_to_intl': [
+      'Prefer English? Visit TrialsPaid — the international version.',
+      'Prefer English? Visit TrialsPaid — the international version.',
+      '¿Prefieres inglés? Visita TrialsPaid — la versión internacional.',
+      'Vous préférez l\'anglais ? Découvrez TrialsPaid.',
+      'Preferisci l\'inglese? Visita TrialsPaid.',
+      'Lieber Englisch? Besuche TrialsPaid.'],
+    // Só aparece para visitante com navegador em português → sempre em PT.
+    'region_to_br': [
+      'É do Brasil? Vá para o Desafio Pago — em português, com Pix.',
+      'É do Brasil? Vá para o Desafio Pago — em português, com Pix.',
+      'É do Brasil? Vá para o Desafio Pago — em português, com Pix.',
+      'É do Brasil? Vá para o Desafio Pago — em português, com Pix.',
+      'É do Brasil? Vá para o Desafio Pago — em português, com Pix.',
+      'É do Brasil? Vá para o Desafio Pago — em português, com Pix.'],
+    'region_go': ['Ir', 'Go', 'Ir', 'Aller', 'Vai', 'Los'],
+
     'news': ['Novidades', 'News', 'Novedades', 'Actualités', 'Novità',
       'Neuigkeiten'],
     'news_sub': ['Dicas para ganhar desafios e renda extra',
