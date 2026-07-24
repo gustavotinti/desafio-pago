@@ -3,6 +3,8 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/utils/open_url_stub.dart'
+    if (dart.library.js_interop) '../../../core/utils/open_url_web.dart';
 import '../../../core/widgets/web_frame.dart';
 
 final _functions = FirebaseFunctions.instanceFor(region: 'us-central1');
@@ -430,6 +432,24 @@ class _AdminSeoPageState extends State<AdminSeoPage> {
               'É isso que faz o Google descobrir e indexar suas páginas. '
               'Passo a passo:',
               style: TextStyle(fontSize: 12.5, color: Colors.black54),
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: () =>
+                    openExternalUrl('https://search.google.com/search-console'),
+                icon: const Icon(Icons.open_in_new, size: 15),
+                label: const Text('Abrir o Google Search Console',
+                    style: TextStyle(fontSize: 12)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF1565C0),
+                  side: const BorderSide(color: Color(0xFF90B4E8)),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
             ),
             const SizedBox(height: 10),
             for (var i = 0; i < steps.length; i++)

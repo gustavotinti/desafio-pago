@@ -1,6 +1,8 @@
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/utils/open_url_stub.dart'
+    if (dart.library.js_interop) '../../../core/utils/open_url_web.dart';
 import '../../../core/widgets/web_frame.dart';
 
 final _functions = FirebaseFunctions.instanceFor(region: 'us-central1');
@@ -98,6 +100,13 @@ class _AdminKeysPageState extends State<AdminKeysPage> {
                         'Dica: use a conta EMPRESA para o Pix mostrar o nome '
                             'da empresa no comprovante.',
                       ],
+                      links: const [
+                        (
+                          label: 'Abrir credenciais do Mercado Pago',
+                          url: 'https://www.mercadopago.com.br/developers/'
+                              'panel/app',
+                        ),
+                      ],
                       onSave: _save,
                     ),
 
@@ -121,6 +130,13 @@ class _AdminKeysPageState extends State<AdminKeysPage> {
                             'secreta" gerada.',
                         'Cole aqui para validar a assinatura das notificações '
                             '(deixe vazio para desativar).',
+                      ],
+                      links: const [
+                        (
+                          label: 'Abrir Webhooks do Mercado Pago',
+                          url: 'https://www.mercadopago.com.br/developers/'
+                              'panel/app',
+                        ),
                       ],
                       onSave: _save,
                     ),
@@ -159,6 +175,13 @@ class _AdminKeysPageState extends State<AdminKeysPage> {
                         'Em "Modo" escreva "live" para valer de verdade '
                             '(ou "sandbox" para testar sem dinheiro real).',
                       ],
+                      links: const [
+                        (
+                          label: 'Abrir PayPal Developer (apps Live)',
+                          url: 'https://developer.paypal.com/dashboard/'
+                              'applications/live',
+                        ),
+                      ],
                       onSave: _save,
                     ),
 
@@ -190,6 +213,16 @@ class _AdminKeysPageState extends State<AdminKeysPage> {
                             'gerar na hora em Admin → SEO/Novidades.',
                         'Alternativa: platform.openai.com/api-keys (paga por '
                             'uso) → cole no campo OpenAI.',
+                      ],
+                      links: const [
+                        (
+                          label: 'Pegar chave do Gemini (grátis)',
+                          url: 'https://aistudio.google.com/apikey',
+                        ),
+                        (
+                          label: 'Pegar chave da OpenAI',
+                          url: 'https://platform.openai.com/api-keys',
+                        ),
                       ],
                       onSave: _save,
                     ),
@@ -247,6 +280,8 @@ class _KeyCard extends StatefulWidget {
   final Map<String, dynamic>? status2;
   final List<_FieldSpec> fields;
   final List<String> guide;
+  // Botões que abrem direto a página onde se obtém a chave (label + url).
+  final List<({String label, String url})> links;
   final Future<void> Function(String key, String value) onSave;
 
   const _KeyCard({
@@ -257,6 +292,7 @@ class _KeyCard extends StatefulWidget {
     required this.fields,
     required this.guide,
     required this.onSave,
+    this.links = const [],
     this.status2,
   });
 
@@ -410,6 +446,33 @@ class _KeyCardState extends State<_KeyCard> {
                           ],
                         ),
                       ),
+                    // Botões que abrem direto a página da chave.
+                    if (widget.links.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: widget.links
+                            .map((l) => OutlinedButton.icon(
+                                  onPressed: () => openExternalUrl(l.url),
+                                  icon: const Icon(Icons.open_in_new,
+                                      size: 15),
+                                  label: Text(l.label,
+                                      style: const TextStyle(fontSize: 12)),
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: widget.color,
+                                    side: BorderSide(
+                                        color: widget.color
+                                            .withValues(alpha: 0.5)),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 12, vertical: 6),
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                ))
+                            .toList(),
+                      ),
+                    ],
                   ],
                 ),
               ),
