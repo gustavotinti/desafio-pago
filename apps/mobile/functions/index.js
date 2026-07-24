@@ -996,36 +996,85 @@ async function _postToInstagram(db, postDoc, pageId, accessToken) {
   }
 }
 
-// ─── FASE 17: MODERAÇÃO COM IA ───────────────────────────────────────────────
-// Deploy config:
-//   firebase functions:config:set openai.api_key="sk-..."
+// ─── MODERAÇÃO COM IA (texto via OpenAI · imagem via Gemini Vision) ──────────
+// Requer chave no cofre (Admin → Chaves): OPENAI_API_KEY p/ texto,
+// GEMINI_API_KEY p/ imagem. Sem chave, apenas não modera (degrada em silêncio).
+
+async function _moderateText(text) {
+  const apiKey = await getSecret("OPENAI_API_KEY");
+  if (!apiKey) return null;
+  const response = await fetch("https://api.openai.com/v1/moderations", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({input: text}),
+  });
+  const result = await response.json();
+  if (result.results?.[0]?.flagged !== true) return null;
+  const cats = result.results[0].categories || {};
+  return Object.keys(cats).filter((k) => cats[k]).join(", ") || "conteúdo";
+}
+
+async function _moderateImage(url) {
+  const gem = await getSecret("GEMINI_API_KEY");
+  if (!gem || !url) return null;
+  // Baixa a imagem (self-hosted no CDN) com timeout e limite de tamanho.
+  const img = await fetch(url, {signal: AbortSignal.timeout(10000)});
+  const buf = Buffer.from(await img.arrayBuffer());
+  if (buf.length > 6 * 1024 * 1024) return null; // muito grande, ignora
+  const b64 = buf.toString("base64");
+  const mime = img.headers.get("content-type") || "image/jpeg";
+
+  const endpoint =
+      "https://generativelanguage.googleapis.com/v1beta/models/" +
+      `gemini-2.0-flash:generateContent?key=${gem}`;
+  const r = await fetch(endpoint, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      contents: [{parts: [
+        {text: "You are a strict content moderator for a public photo " +
+            "challenge app. Flag the image if it contains sexual/nudity " +
+            "content, graphic violence or gore, hate symbols, or clearly " +
+            "illegal content. Normal photos (people, food, places, pets, " +
+            "objects) are fine. Respond ONLY with JSON: " +
+            "{\"flagged\": boolean, \"category\": string}."},
+        {inline_data: {mime_type: mime, data: b64}},
+      ]}],
+      generationConfig: {responseMimeType: "application/json", temperature: 0},
+    }),
+  });
+  const j = await r.json();
+  const txt = j.candidates && j.candidates[0] &&
+      j.candidates[0].content.parts[0].text;
+  if (!txt) return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(txt);
+  } catch (e) {
+    return null;
+  }
+  return parsed.flagged === true ? (parsed.category || "conteúdo") : null;
+}
 
 exports.moderateEntry = functions.firestore
     .document("entries/{entryId}")
     .onCreate(async (snap, context) => {
       const entry = snap.data();
-      if (!entry.contentText) return null;
-
-      const apiKey = await getSecret("OPENAI_API_KEY");
-      if (!apiKey) return null;
+      // Não modera conteúdo virtual/seed nem participações de admin.
+      if (entry.isVirtual === true || entry.isDemo === true) return null;
 
       try {
-        const response = await fetch("https://api.openai.com/v1/moderations", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({input: entry.contentText}),
-        });
+        let flaggedCats = null;
+        if (entry.contentText) {
+          flaggedCats = await _moderateText(entry.contentText);
+        } else if (entry.contentType === "image" && entry.contentUrl) {
+          flaggedCats = await _moderateImage(entry.contentUrl);
+        }
 
-        const result = await response.json();
-        const flagged = result.results?.[0]?.flagged === true;
-
-        if (flagged) {
-          const cats = result.results[0].categories || {};
-          const flaggedCats = Object.keys(cats).filter((k) => cats[k]).join(", ");
-
+        if (flaggedCats) {
           const db = admin.firestore();
           await snap.ref.update({isActive: false});
           await db.collection("audit_logs").add({
@@ -1038,7 +1087,7 @@ exports.moderateEntry = functions.firestore
           });
         }
       } catch (err) {
-        console.error("Erro na moderação:", err);
+        console.error("Erro na moderação:", err.message);
       }
 
       return null;
@@ -1135,6 +1184,72 @@ exports.adminBanUser = functions.https.onCall(async (data, context) => {
   });
 
   return {success: true};
+});
+
+// ─── ADMIN: RESOLVER DENÚNCIAS DE UMA PARTICIPAÇÃO ───────────────────────────
+// action: 'dismiss' (mantém no ar), 'hide' (oculta a participação),
+// 'restore' (reativa) ou 'ban' (oculta + bane o autor). Resolve TODAS as
+// denúncias pendentes daquela participação de uma vez.
+exports.adminResolveReport = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Não autenticado");
+  }
+  const db = admin.firestore();
+  const adminDoc = await db.collection("admins").doc(context.auth.uid).get();
+  if (!adminDoc.exists) {
+    throw new functions.https.HttpsError("permission-denied", "Acesso negado");
+  }
+  const entryId = String(data.entryId || "");
+  const action = String(data.action || "");
+  if (!entryId ||
+      !["dismiss", "hide", "restore", "ban"].includes(action)) {
+    throw new functions.https.HttpsError(
+        "invalid-argument", "entryId e action válidos são obrigatórios");
+  }
+
+  const entryRef = db.collection("entries").doc(entryId);
+  const entryDoc = await entryRef.get();
+  const entry = entryDoc.exists ? entryDoc.data() : null;
+
+  const now = new Date().toISOString();
+  const newStatus = action === "ban" ? "resolved_banned" :
+    action === "hide" ? "resolved_hidden" : "dismissed";
+
+  const reps = await db.collection("reports")
+      .where("entryId", "==", entryId)
+      .where("status", "==", "pending").get();
+
+  const batch = db.batch();
+  if (entryDoc.exists && (action === "hide" || action === "ban")) {
+    batch.update(entryRef, {isActive: false});
+  } else if (entryDoc.exists && action === "restore") {
+    batch.update(entryRef, {isActive: true});
+  }
+  reps.forEach((r) => batch.update(r.ref, {
+    status: newStatus,
+    resolvedAt: now,
+    resolvedBy: context.auth.uid,
+  }));
+  await batch.commit();
+
+  if (action === "ban" && entry && entry.userId) {
+    await db.collection("users").doc(entry.userId).update({
+      isBanned: true,
+      banReason: String(data.reason || "Conteúdo denunciado"),
+      bannedAt: now,
+    });
+  }
+
+  await db.collection("audit_logs").add({
+    type: `report_${action}`,
+    entryId,
+    targetUserId: entry ? entry.userId : null,
+    adminId: context.auth.uid,
+    resolvedReports: reps.size,
+    createdAt: now,
+  });
+
+  return {success: true, resolved: reps.size};
 });
 
 // ─── ACCEPT TERMS ────────────────────────────────────────────────────────────

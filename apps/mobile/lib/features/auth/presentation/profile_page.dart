@@ -221,12 +221,14 @@ class _ProfilePageState extends State<ProfilePage> {
 
     return Scaffold(
       appBar: AppBar(
+        titleSpacing: 8,
         title: SizedBox(
-          height: 52,
-          width: 220,
+          height: 46,
+          width: MediaQuery.of(context).size.width < 400 ? 128 : 200,
           child: Image.asset(
             AppConfig.logoStatic,
             fit: BoxFit.contain,
+            alignment: Alignment.centerLeft,
           ),
         ),
         actions: [

@@ -72,17 +72,22 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    // Logo mais estreito em telas estreitas para não brigar com os ícones da
+    // AppBar (idioma + sino + admin) no celular.
+    final logoWidth = MediaQuery.of(context).size.width < 400 ? 128.0 : 200.0;
     return Scaffold(
       appBar: AppBar(
+        titleSpacing: 8,
         title: AnimatedSwitcher(
           duration: const Duration(milliseconds: 500),
           child: SizedBox(
             key: ValueKey(_logoSettled),
-            height: 52,
-            width: 220,
+            height: 46,
+            width: logoWidth,
             child: Image.asset(
               _logoSettled ? AppConfig.logoStatic : AppConfig.logoAnim,
               fit: BoxFit.contain,
+              alignment: Alignment.centerLeft,
             ),
           ),
         ),

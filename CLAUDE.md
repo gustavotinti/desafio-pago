@@ -62,7 +62,7 @@ outros participam com conteúdo (texto/imagem/vídeo), e o mais votado vence o p
 - Retry automático em falha
 - Status: pending | posted | failed
 
-## Estado atual (v3.3.0 — julho/2026)
+## Estado atual (v3.4.0 — julho/2026)
 No ar: https://desafiopago.com.br (e https://desafiopago.web.app)
 **Internacional: https://trialspaid.web.app** (mesmo projeto/DB)
 Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
@@ -303,8 +303,22 @@ Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
   (depósito → saldo → desafio → prêmio → saque)
 - Confirmar o webhook MP em produção ("Simular notificação" = 200)
 - Pagamento automático de saque (precisa de PSP de payout — Asaas/Efí)
-- Moderação com IA; bloqueio de VPN; automação Instagram (Fase 16)
-- Ampliar testes (hoje: lógica de dinheiro + utils; falta integração c/ emulador)
+- Bloqueio de VPN; automação Instagram (Fase 16)
+- Testar o fluxo PayPal ponta a ponta (precisa PAYPAL_CLIENT_ID/SECRET no cofre)
+- Ampliar testes de integração com emulador (unit já cobre dinheiro/SEO/utils)
+
+### 🛡️ Moderação & denúncias (v3.4.0)
+- **Painel de denúncias** (Admin→Denúncias): agrupa denúncias pendentes por
+  participação, mostra conteúdo+autor+motivos, ações descartar/ocultar/
+  reativar/banir (`adminResolveReport` resolve todas as denúncias da entry;
+  reusa ban). Card no hub com badge de pendências.
+- **Moderação por IA** (`moderateEntry`, trigger onCreate de entries):
+  texto via OpenAI (moderations) e **imagem via Gemini Vision** (baixa a
+  imagem, base64, pergunta se viola política → oculta + audit_log). Lê chave
+  do cofre; ignora conteúdo virtual/demo; degrada sem chave.
+- **Testes**: `functions/text_utils.js` (slugify/sanitizeHtml extraídos e
+  testados), `money.xrpFromBrl`, e `Fmt` (usd/xrp) no Dart — 16 testes JS +
+  8 Dart. AppBar com logo responsivo (não estoura no celular).
 
 ## Checkpoints (git tags)
 v2.0.1 · v2.1.0 · v2.2.0 · v2.2.1 · v2.2.2 · v2.3.0 · v2.4.0 · v2.5.0 — restaurar: `git checkout vX.Y.Z`

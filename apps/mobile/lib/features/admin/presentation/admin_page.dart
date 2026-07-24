@@ -13,6 +13,7 @@ import 'admin_audience_page.dart';
 import 'admin_platform_page.dart';
 import 'admin_seo_page.dart';
 import 'admin_keys_page.dart';
+import 'admin_reports_page.dart';
 
 const _superAdminEmail = 'gustavo.a.tinti3@gmail.com';
 
@@ -159,6 +160,14 @@ class _AdminPageState extends State<AdminPage> {
                         gradient: const [Color(0xFF3F51B5), Color(0xFF7986CB)],
                         badge: _pendingBadge(_pendingVerifications),
                         page: const AdminVerificationPage(),
+                      ),
+                      card(
+                        icon: Icons.flag_rounded,
+                        title: 'Denúncias',
+                        subtitle: 'Moderar conteúdo denunciado (ocultar/banir)',
+                        gradient: const [Color(0xFFC62828), Color(0xFFEF5350)],
+                        badge: _pendingBadge(_pendingReports),
+                        page: const AdminReportsPage(),
                       ),
                     ],
                   ),
