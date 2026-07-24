@@ -126,6 +126,7 @@ class _ProfilePageState extends State<ProfilePage> {
         'amount': Fmt.usdToBrl(usd),
         'xrpAddress': address,
         'xrpTag': _xrpTagController.text.trim(),
+        'lang': 'en',
       });
       final data = Map<String, dynamic>.from(res.data as Map);
       if (mounted) {

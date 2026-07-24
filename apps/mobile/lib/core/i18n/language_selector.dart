@@ -25,15 +25,16 @@ class LanguageSelector extends StatelessWidget {
   void _onSelected(String code) {
     if (AppConfig.intl) {
       // No site internacional: 'pt' volta pro Brasil; resto troca na hora.
+      // Trocar de site navega na MESMA aba (é uma troca de site, não um link).
       if (code == 'pt') {
-        openExternalUrl(AppConfig.brSiteUrl);
+        navigateSameTab(AppConfig.brSiteUrl);
       } else {
         I18n.setLocale(code);
       }
     } else {
       // No Brasil: 'pt' fica; qualquer outro vai pro internacional já no idioma.
       if (code != 'pt') {
-        openExternalUrl('${AppConfig.intlSiteUrl}/?lang=$code');
+        navigateSameTab('${AppConfig.intlSiteUrl}/?lang=$code');
       }
     }
   }

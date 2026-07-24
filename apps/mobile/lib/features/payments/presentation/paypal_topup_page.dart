@@ -41,7 +41,7 @@ class _PaypalTopUpPageState extends State<PaypalTopUpPage> {
     try {
       final res = await _functions
           .httpsCallable('paypalCreateOrder')
-          .call({'amountUsd': usd});
+          .call({'amountUsd': usd, 'lang': 'en'});
       final data = Map<String, dynamic>.from(res.data as Map);
       final approveUrl = data['approveUrl'] as String?;
       if (approveUrl != null) openExternalUrl(approveUrl);
@@ -65,7 +65,7 @@ class _PaypalTopUpPageState extends State<PaypalTopUpPage> {
     try {
       final res = await _functions
           .httpsCallable('paypalCaptureOrder')
-          .call({'orderId': _orderId});
+          .call({'orderId': _orderId, 'lang': 'en'});
       final data = Map<String, dynamic>.from(res.data as Map);
       if (!mounted) return;
       if (data['success'] == true) {

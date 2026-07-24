@@ -440,41 +440,28 @@ exports.seoPage = functions.https.onRequest(async (req, res) => {
     const slug = parts.length > 1 ? decodeURIComponent(parts[1]) : "";
     const chalBlock = await challengesBlock(db, c);
 
-    // Só artigos do idioma deste site (legado sem lang = 'pt').
+    // Uma única leitura: publicados do idioma deste site (legado sem lang =
+    // 'pt'), já ordenados. Serve o índice, o artigo e os relacionados.
     const langOf = (a) => (a.lang || "pt");
+    const snap = await db.collection("seo_articles")
+        .where("status", "==", "published").limit(300).get();
+    const articles = snap.docs.map((d) => d.data())
+        .filter((a) => langOf(a) === c.lang)
+        .sort((a, b) =>
+          String(b.publishedAt).localeCompare(String(a.publishedAt)));
 
     if (!slug) {
-      // Sem orderBy junto do where (evita índice composto) — ordena aqui.
-      const snap = await db.collection("seo_articles")
-          .where("status", "==", "published").limit(300).get();
-      const articles = snap.docs.map((d) => d.data())
-          .filter((a) => langOf(a) === c.lang);
-      articles.sort((a, b) =>
-        String(b.publishedAt).localeCompare(String(a.publishedAt)));
       res.set("Cache-Control", "public, max-age=600, s-maxage=1800");
       return res.status(200)
           .send(renderIndex(c, articles.slice(0, 100), chalBlock));
     }
 
-    const snap = await db.collection("seo_articles")
-        .where("slug", "==", slug).limit(1).get();
-    if (snap.empty || snap.docs[0].data().status !== "published") {
+    const article = articles.find((a) => a.slug === slug);
+    if (!article) {
       return res.redirect(302, `${c.site}/novidades`);
     }
-    const article = snap.docs[0].data();
     // Relacionados: mesmo idioma, exceto o atual, 3 mais recentes.
-    let related = [];
-    try {
-      const relSnap = await db.collection("seo_articles")
-          .where("status", "==", "published").limit(300).get();
-      related = relSnap.docs.map((d) => d.data())
-          .filter((a) => langOf(a) === c.lang && a.slug !== slug)
-          .sort((a, b) =>
-            String(b.publishedAt).localeCompare(String(a.publishedAt)))
-          .slice(0, 3);
-    } catch (e) {
-      // sem relacionados
-    }
+    const related = articles.filter((a) => a.slug !== slug).slice(0, 3);
     res.set("Cache-Control", "public, max-age=3600, s-maxage=86400");
     return res.status(200)
         .send(renderArticle(c, article, chalBlock, related));
