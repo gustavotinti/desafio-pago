@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -135,7 +136,7 @@ class _WithdrawalListState extends State<_WithdrawalList> {
           .call({'withdrawalId': id});
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Pix confirmado como pago!')),
+          const SnackBar(content: Text('Saque confirmado como pago!')),
         );
       }
     } on FirebaseFunctionsException catch (e) {
@@ -144,6 +145,12 @@ class _WithdrawalListState extends State<_WithdrawalList> {
             .showSnackBar(SnackBar(content: Text(e.message ?? 'Erro')));
       }
     }
+  }
+
+  void _copy(BuildContext context, String text) {
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text('Copiado: $text')));
   }
 
   @override
@@ -346,6 +353,11 @@ class _WithdrawalListState extends State<_WithdrawalList> {
             final netAmount = data['netAmount'] ?? amount;
             final pixKey = data['pixKey'] ?? '';
             final userId = data['userId'] ?? '';
+            // Método: 'pix' (Brasil) ou 'xrp' (internacional / cripto).
+            final isCrypto = data['method'] == 'xrp';
+            final xrpAddress = data['xrpAddress'] as String? ?? '';
+            final xrpTag = data['xrpTag'] as String?;
+            final xrpEstimate = data['xrpEstimate'];
 
             return FutureBuilder<Map<String, dynamic>?>(
               future: _getUser(userId),
@@ -387,19 +399,73 @@ class _WithdrawalListState extends State<_WithdrawalList> {
                             style:
                                 const TextStyle(color: Colors.black54, fontSize: 13)),
                         const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            const Icon(Icons.pix, size: 16, color: Colors.teal),
-                            const SizedBox(width: 4),
-                            Expanded(
-                              child: Text(
-                                pixKey,
-                                style: const TextStyle(
-                                    fontFamily: 'monospace', fontSize: 13),
+                        // ── Destino do pagamento (Pix ou cripto/XRP) ──────
+                        if (isCrypto) ...[
+                          _PayoutField(
+                            icon: Icons.currency_bitcoin,
+                            color: const Color(0xFF23292F),
+                            label: 'Endereço XRP',
+                            value: xrpAddress,
+                            onCopy: () => _copy(context, xrpAddress),
+                          ),
+                          if (xrpTag != null && xrpTag.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            _PayoutField(
+                              icon: Icons.tag,
+                              color: const Color(0xFF23292F),
+                              label: 'Destination tag',
+                              value: xrpTag,
+                              onCopy: () => _copy(context, xrpTag),
+                            ),
+                          ],
+                          if (xrpEstimate != null) ...[
+                            const SizedBox(height: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEFF6FF),
+                                borderRadius: BorderRadius.circular(8),
+                                border:
+                                    Border.all(color: const Color(0xFFBFD8F5)),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.send, size: 15,
+                                      color: Color(0xFF1565C0)),
+                                  const SizedBox(width: 6),
+                                  Text('Enviar ≈ $xrpEstimate XRP',
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 13,
+                                          color: Color(0xFF1565C0))),
+                                ],
                               ),
                             ),
                           ],
-                        ),
+                        ] else
+                          Row(
+                            children: [
+                              const Icon(Icons.pix,
+                                  size: 16, color: Colors.teal),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  pixKey,
+                                  style: const TextStyle(
+                                      fontFamily: 'monospace', fontSize: 13),
+                                ),
+                              ),
+                              if (pixKey.toString().isNotEmpty)
+                                IconButton(
+                                  icon: const Icon(Icons.copy, size: 15),
+                                  visualDensity: VisualDensity.compact,
+                                  tooltip: 'Copiar',
+                                  onPressed: () =>
+                                      _copy(context, pixKey.toString()),
+                                ),
+                            ],
+                          ),
                         const SizedBox(height: 10),
                         if (widget.status == 'pending')
                           Row(
@@ -431,7 +497,9 @@ class _WithdrawalListState extends State<_WithdrawalList> {
                             ),
                             onPressed: () => _markPaid(context, doc.id),
                             icon: const Icon(Icons.check_circle_outline),
-                            label: const Text('Confirmar Pix pago'),
+                            label: Text(isCrypto
+                                ? 'Confirmar envio do XRP'
+                                : 'Confirmar Pix pago'),
                           ),
                       ],
                     ),
@@ -482,6 +550,57 @@ class _SummaryCell extends StatelessWidget {
             fontSize: highlight ? 20 : 16,
             fontWeight: FontWeight.bold,
           ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Campo de destino do pagamento com botão copiar (endereço XRP, tag) ────────
+
+class _PayoutField extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String label;
+  final String value;
+  final VoidCallback onCopy;
+
+  const _PayoutField({
+    required this.icon,
+    required this.color,
+    required this.label,
+    required this.value,
+    required this.onCopy,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: color),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label,
+                  style: const TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black45)),
+              SelectableText(
+                value,
+                style: const TextStyle(
+                    fontFamily: 'monospace', fontSize: 13),
+              ),
+            ],
+          ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.copy, size: 15),
+          visualDensity: VisualDensity.compact,
+          tooltip: 'Copiar',
+          onPressed: onCopy,
         ),
       ],
     );
