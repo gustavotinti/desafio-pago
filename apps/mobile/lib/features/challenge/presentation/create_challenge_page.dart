@@ -3,7 +3,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/config/app_config.dart';
+import '../../../core/i18n/i18n.dart';
+import '../../../core/utils/format.dart';
 import '../../../core/widgets/web_frame.dart';
+import '../../payments/presentation/paypal_topup_page.dart';
 import '../../payments/presentation/topup_page.dart';
 import '../application/create_challenge.dart';
 import '../domain/entities/challenge.dart';
@@ -65,20 +69,18 @@ class _CreateChallengePageState extends State<CreateChallengePage> {
     }
   }
 
+  // Valores em BRL (ledger); Fmt.brl exibe em US$ no site internacional.
   void _showAddCreditsDialog(double required, double available) {
     final gap = required - available;
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Créditos insuficientes'),
+        title: Text(I18n.tr('insufficient_title')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Para criar este desafio você precisa de '
-              'R\$${required.toStringAsFixed(2)}.',
-            ),
+            Text(I18n.trp('need_amount', {'v': Fmt.brl(required)})),
             const SizedBox(height: 8),
             Row(
               children: [
@@ -86,7 +88,7 @@ class _CreateChallengePageState extends State<CreateChallengePage> {
                     size: 15, color: Colors.black45),
                 const SizedBox(width: 6),
                 Text(
-                  'Seu saldo: R\$${available.toStringAsFixed(2)}',
+                  I18n.trp('your_balance', {'v': Fmt.brl(available)}),
                   style:
                       const TextStyle(fontSize: 13, color: Colors.black54),
                 ),
@@ -100,7 +102,7 @@ class _CreateChallengePageState extends State<CreateChallengePage> {
                       color: Colors.orange),
                   const SizedBox(width: 6),
                   Text(
-                    'Faltam R\$${gap.toStringAsFixed(2)}',
+                    I18n.trp('missing_amount', {'v': Fmt.brl(gap)}),
                     style: const TextStyle(
                         fontWeight: FontWeight.w600, fontSize: 13),
                   ),
@@ -108,33 +110,37 @@ class _CreateChallengePageState extends State<CreateChallengePage> {
               ),
             ],
             const SizedBox(height: 12),
-            const Text(
-              'Adicione créditos via Pix e volte para criar o desafio.',
-              style: TextStyle(fontSize: 12, color: Colors.black54),
+            Text(
+              I18n.tr('add_credits_hint'),
+              style: const TextStyle(fontSize: 12, color: Colors.black54),
             ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancelar'),
+            child: Text(I18n.tr('cancel')),
           ),
           ElevatedButton.icon(
-            icon: const Icon(Icons.pix, size: 16),
-            label: const Text('Adicionar via Pix'),
+            icon: Icon(
+                AppConfig.intl ? Icons.account_balance_wallet : Icons.pix,
+                size: 16),
+            label: Text(I18n.tr('add_via')),
             onPressed: () async {
               Navigator.pop(ctx);
               await Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const TopUpPage()),
+                MaterialPageRoute(
+                    builder: (_) => AppConfig.intl
+                        ? const PaypalTopUpPage()
+                        : const TopUpPage()),
               );
               await _loadBalance();
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                        'Saldo atualizado — toque em "Criar Desafio" novamente.'),
-                    duration: Duration(seconds: 4),
+                  SnackBar(
+                    content: Text(I18n.tr('balance_updated')),
+                    duration: const Duration(seconds: 4),
                   ),
                 );
               }
@@ -145,13 +151,22 @@ class _CreateChallengePageState extends State<CreateChallengePage> {
     );
   }
 
+  /// Valor digitado → BRL do ledger. No intl o usuário digita US$.
+  double _typedToBrl() {
+    final typed =
+        double.tryParse(_amountController.text.trim().replaceAll(',', '.')) ??
+            0;
+    return AppConfig.intl ? Fmt.usdToBrl(typed) : typed;
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
-    final amount = double.parse(_amountController.text.trim());
+    // amount SEMPRE em BRL (ledger) — no intl converte o US$ digitado.
+    final amount = _typedToBrl();
     final days = int.parse(_durationController.text.trim());
     final balance = _userBalance ?? 0.0;
 
@@ -203,7 +218,7 @@ class _CreateChallengePageState extends State<CreateChallengePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Criar Desafio')),
+      appBar: AppBar(title: Text(I18n.tr('create_title'))),
       body: WebFrame(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
@@ -218,7 +233,7 @@ class _CreateChallengePageState extends State<CreateChallengePage> {
                   isLoading: _isLoadingBalance,
                   onRefresh: _loadBalance,
                   onAddCredits: () => _showAddCreditsDialog(
-                    double.tryParse(_amountController.text.trim()) ?? 0,
+                    _typedToBrl(),
                     _userBalance ?? 0.0,
                   ),
                 ),
@@ -227,50 +242,51 @@ class _CreateChallengePageState extends State<CreateChallengePage> {
                 // ── Form fields ───────────────────────────────────────
                 TextFormField(
                   controller: _titleController,
-                  decoration: const InputDecoration(
-                    labelText: 'Título',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: I18n.tr('title_label'),
+                    border: const OutlineInputBorder(),
                   ),
                   validator: (v) => (v == null || v.trim().isEmpty)
-                      ? 'Título obrigatório'
+                      ? I18n.tr('title_required')
                       : null,
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _descriptionController,
-                  decoration: const InputDecoration(
-                    labelText: 'Descrição',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: I18n.tr('desc_label'),
+                    border: const OutlineInputBorder(),
                   ),
                   maxLines: 3,
                   validator: (v) => (v == null || v.trim().isEmpty)
-                      ? 'Descrição obrigatória'
+                      ? I18n.tr('desc_required')
                       : null,
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _amountController,
-                  decoration: const InputDecoration(
-                    prefixText: 'R\$ ',
-                    labelText: 'Valor do prêmio',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    // BR digita em R$; intl digita em US$ (convertido p/ o ledger).
+                    prefixText: AppConfig.intl ? '\$ ' : 'R\$ ',
+                    labelText: I18n.tr('prize_label'),
+                    border: const OutlineInputBorder(),
                   ),
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
                   onChanged: (_) => setState(() {}), // rebuild for balance hint
                   validator: (v) {
-                    final n = double.tryParse(v?.trim() ?? '');
-                    if (n == null || n <= 0) return 'Informe um valor válido';
+                    final n =
+                        double.tryParse((v ?? '').trim().replaceAll(',', '.'));
+                    if (n == null || n <= 0) return I18n.tr('prize_invalid');
                     return null;
                   },
                 ),
                 // ── Insufficient balance hint ─────────────────────────
                 Builder(builder: (ctx) {
-                  final typed =
-                      double.tryParse(_amountController.text.trim()) ?? 0;
+                  final typedBrl = _typedToBrl();
                   final bal = _userBalance ?? 0.0;
                   if (!_isLoadingBalance && _userBalance != null &&
-                      typed > 0 && bal < typed) {
+                      typedBrl > 0 && bal < typedBrl) {
                     return Padding(
                       padding: const EdgeInsets.only(top: 6),
                       child: Row(
@@ -278,11 +294,13 @@ class _CreateChallengePageState extends State<CreateChallengePage> {
                           const Icon(Icons.info_outline,
                               size: 14, color: Colors.orange),
                           const SizedBox(width: 4),
-                          Text(
-                            'Saldo insuficiente — você adicionará '
-                            'R\$${(typed - bal).toStringAsFixed(2)} via Pix',
-                            style: const TextStyle(
-                                fontSize: 12, color: Colors.orange),
+                          Expanded(
+                            child: Text(
+                              I18n.trp('insufficient_hint',
+                                  {'v': Fmt.brl(typedBrl - bal)}),
+                              style: const TextStyle(
+                                  fontSize: 12, color: Colors.orange),
+                            ),
                           ),
                         ],
                       ),
@@ -293,15 +311,15 @@ class _CreateChallengePageState extends State<CreateChallengePage> {
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _durationController,
-                  decoration: const InputDecoration(
-                    labelText: 'Duração (dias, 1–30)',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: I18n.tr('duration_label'),
+                    border: const OutlineInputBorder(),
                   ),
                   keyboardType: TextInputType.number,
                   validator: (v) {
                     final n = int.tryParse(v?.trim() ?? '');
-                    if (n == null || n < 1) return 'Mínimo 1 dia';
-                    if (n > 30) return 'Máximo 30 dias';
+                    if (n == null || n < 1) return I18n.tr('min_1_day');
+                    if (n > 30) return I18n.tr('max_30_days');
                     return null;
                   },
                 ),
@@ -314,7 +332,7 @@ class _CreateChallengePageState extends State<CreateChallengePage> {
                           width: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('Criar Desafio'),
+                      : Text(I18n.tr('create_title')),
                 ),
               ],
             ),
@@ -361,7 +379,7 @@ class _BalanceTile extends StatelessWidget {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : Text(
-                  'Saldo: R\$${(balance ?? 0.0).toStringAsFixed(2)}',
+                  I18n.trp('balance_label', {'v': Fmt.brl(balance ?? 0.0)}),
                   style: const TextStyle(
                       fontSize: 14,
                       color: Color(0xFF003b8a),
@@ -371,7 +389,8 @@ class _BalanceTile extends StatelessWidget {
           TextButton.icon(
             onPressed: onAddCredits,
             icon: const Icon(Icons.add, size: 14),
-            label: const Text('Adicionar', style: TextStyle(fontSize: 12)),
+            label: Text(I18n.tr('add_short'),
+                style: const TextStyle(fontSize: 12)),
             style: TextButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -380,7 +399,7 @@ class _BalanceTile extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.refresh, size: 16),
             visualDensity: VisualDensity.compact,
-            tooltip: 'Atualizar saldo',
+            tooltip: I18n.tr('refresh_balance'),
             onPressed: onRefresh,
           ),
         ],

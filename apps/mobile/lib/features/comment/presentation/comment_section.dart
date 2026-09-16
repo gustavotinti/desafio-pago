@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../../core/i18n/i18n.dart';
 import '../../../core/widgets/safe_avatar.dart';
 import '../../auth/presentation/auth_guard.dart';
 import '../domain/entities/comment.dart';
@@ -106,7 +107,9 @@ class _CommentSectionState extends State<CommentSection> {
   }
 
   Future<void> _toggleLike(Comment c) async {
-    if (!await ensureLoggedIn(context, message: 'Entre para curtir')) return;
+    if (!await ensureLoggedIn(context, message: I18n.tr('like_login'))) {
+      return;
+    }
     final wasLiked = _liked.contains(c.id);
     setState(() {
       if (wasLiked) {
@@ -132,7 +135,7 @@ class _CommentSectionState extends State<CommentSection> {
   void _startReply(Comment c) {
     setState(() {
       _replyToId = c.id;
-      _replyToName = c.userName ?? 'Usuário';
+      _replyToName = c.userName ?? I18n.tr('user_fallback');
     });
     _inputFocus.requestFocus();
   }
@@ -278,9 +281,10 @@ class _CommentSectionState extends State<CommentSection> {
       children: [
         Row(
           children: [
-            const Text(
-              'Comentários',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            Text(
+              I18n.tr('comments'),
+              style:
+                  const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
             ),
             const Spacer(),
             if (widget.isAdmin)
@@ -310,11 +314,12 @@ class _CommentSectionState extends State<CommentSection> {
             final all = snapshot.data!;
             _ensurePhotos(all); // async; re-renderiza quando as fotos chegam
             if (all.isEmpty) {
-              return const Padding(
-                padding: EdgeInsets.symmetric(vertical: 4),
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Text(
-                  'Nenhum comentário ainda.',
-                  style: TextStyle(color: Colors.black45, fontSize: 12),
+                  I18n.tr('no_comments'),
+                  style:
+                      const TextStyle(color: Colors.black45, fontSize: 12),
                 ),
               );
             }
@@ -370,7 +375,7 @@ class _CommentSectionState extends State<CommentSection> {
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      'Respondendo a $_replyToName',
+                      I18n.trp('replying_to', {'name': _replyToName ?? ''}),
                       style: const TextStyle(
                           fontSize: 12, color: Colors.black54),
                     ),
@@ -398,8 +403,8 @@ class _CommentSectionState extends State<CommentSection> {
                   onSubmitted: (_) => _submit(),
                   decoration: InputDecoration(
                     hintText: _replyToId != null
-                        ? 'Escreva sua resposta...'
-                        : 'Adicionar comentário...',
+                        ? I18n.tr('write_reply')
+                        : I18n.tr('add_comment'),
                     border: const OutlineInputBorder(),
                     isDense: true,
                     contentPadding: const EdgeInsets.symmetric(
@@ -420,7 +425,7 @@ class _CommentSectionState extends State<CommentSection> {
                   : IconButton(
                       onPressed: _submit,
                       icon: const Icon(Icons.send),
-                      tooltip: 'Enviar',
+                      tooltip: I18n.tr('send'),
                       visualDensity: VisualDensity.compact,
                     ),
             ],
@@ -454,10 +459,12 @@ class _CommentTile extends StatelessWidget {
 
   String _formatDate(DateTime dt) {
     final diff = DateTime.now().difference(dt);
-    if (diff.inMinutes < 1) return 'agora';
-    if (diff.inHours < 1) return '${diff.inMinutes}min atrás';
-    if (diff.inDays < 1) return '${diff.inHours}h atrás';
-    return '${diff.inDays}d atrás';
+    if (diff.inMinutes < 1) return I18n.tr('ago_now');
+    if (diff.inHours < 1) {
+      return I18n.trp('ago_min', {'n': '${diff.inMinutes}'});
+    }
+    if (diff.inDays < 1) return I18n.trp('ago_hour', {'n': '${diff.inHours}'});
+    return I18n.trp('ago_day', {'n': '${diff.inDays}'});
   }
 
   @override
@@ -478,7 +485,7 @@ class _CommentTile extends StatelessWidget {
                   children: [
                     Flexible(
                       child: Text(
-                        comment.userName ?? 'Usuário',
+                        comment.userName ?? I18n.tr('user_fallback'),
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           fontWeight: FontWeight.w600,
@@ -533,12 +540,12 @@ class _CommentTile extends StatelessWidget {
                       InkWell(
                         onTap: onReply,
                         borderRadius: BorderRadius.circular(6),
-                        child: const Padding(
-                          padding: EdgeInsets.symmetric(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
                               horizontal: 2, vertical: 2),
                           child: Text(
-                            'Responder',
-                            style: TextStyle(
+                            I18n.tr('reply'),
+                            style: const TextStyle(
                                 fontSize: 11,
                                 color: Colors.black54,
                                 fontWeight: FontWeight.w600),

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../../../core/config/app_config.dart';
+import '../../../core/i18n/i18n.dart';
 import '../../../core/utils/format.dart';
 import '../../../core/widgets/safe_avatar.dart';
 import '../../../core/widgets/web_frame.dart';
@@ -16,15 +18,17 @@ class RankingsPage extends StatelessWidget {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
+          titleSpacing: 8,
           title: SizedBox(
-            height: 52,
-            width: 220,
-            child: Image.asset('assets/images/2.png', fit: BoxFit.contain),
+            height: 46,
+            width: MediaQuery.of(context).size.width < 400 ? 128 : 200,
+            child: Image.asset(AppConfig.logoStatic,
+                fit: BoxFit.contain, alignment: Alignment.centerLeft),
           ),
-          bottom: const TabBar(
+          bottom: TabBar(
             tabs: [
-              Tab(text: 'Maiores ganhos'),
-              Tab(text: 'Mais votados'),
+              Tab(text: I18n.tr('rank_top_earnings')),
+              Tab(text: I18n.tr('rank_most_voted')),
             ],
           ),
         ),
@@ -82,15 +86,15 @@ class _RankingTab extends StatelessWidget {
 
         final docs = snapshot.data!.docs;
         if (docs.isEmpty) {
-          return const Center(
+          return Center(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.leaderboard_outlined,
+                const Icon(Icons.leaderboard_outlined,
                     size: 48, color: Colors.black26),
-                SizedBox(height: 12),
-                Text('Nenhum dado ainda',
-                    style: TextStyle(color: Colors.black45)),
+                const SizedBox(height: 12),
+                Text(I18n.tr('no_data'),
+                    style: const TextStyle(color: Colors.black45)),
               ],
             ),
           );
@@ -102,14 +106,14 @@ class _RankingTab extends StatelessWidget {
           itemBuilder: (context, index) {
             final doc = docs[index];
             final data = doc.data() as Map<String, dynamic>;
-            final name = data['name'] as String? ?? 'Usuário';
+            final name = data['name'] as String? ?? I18n.tr('user_fallback');
             final username = data['username'] as String? ?? '';
             final photoUrl = data['photoUrl'] as String? ?? '';
             final isVerified = data['isVerified'] == true;
             final rawValue = (data[orderBy] as num? ?? 0);
             final displayValue = isEarnings
                 ? Fmt.brl(rawValue)
-                : '${Fmt.number(rawValue)} votos';
+                : I18n.trp('votes_suffix', {'n': Fmt.number(rawValue)});
 
             if (index < 3) {
               return _PodiumTile(
@@ -442,8 +446,9 @@ class _MyRankBannerState extends State<_MyRankBanner> {
   @override
   Widget build(BuildContext context) {
     if (_hidden) return const SizedBox.shrink();
-    final valueStr =
-        widget.isEarnings ? Fmt.brl(_value) : '${Fmt.number(_value)} votos';
+    final valueStr = widget.isEarnings
+        ? Fmt.brl(_value)
+        : I18n.trp('votes_suffix', {'n': Fmt.number(_value)});
     return InkWell(
       onTap: _uid == null
           ? null
@@ -472,7 +477,9 @@ class _MyRankBannerState extends State<_MyRankBanner> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    _rank == null ? 'Sua posição…' : 'Você está em $_rankº',
+                    _rank == null
+                        ? I18n.tr('your_position')
+                        : I18n.trp('you_are_at', {'rank': '$_rank'}),
                     style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
@@ -480,8 +487,8 @@ class _MyRankBannerState extends State<_MyRankBanner> {
                   ),
                   Text(
                     widget.isEarnings
-                        ? 'em ganhos · $valueStr'
-                        : 'em votos · $valueStr',
+                        ? I18n.trp('in_earnings', {'v': valueStr})
+                        : I18n.trp('in_votes', {'v': valueStr}),
                     style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.9),
                         fontSize: 12),
