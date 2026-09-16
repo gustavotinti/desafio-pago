@@ -4695,3 +4695,7 @@ exports.seedInternational = functions.runWith({timeoutSeconds: 540})
       await flush2();
       return res.json({success: true, backfilledBR: br, intlCreated: created});
     });
+
+// ─── GOOGLE SEARCH CONSOLE — setup por API (verifica, cria, envia sitemap) ────
+// Ver functions/gsc_setup.js. One-shot HTTP com secret; idempotente.
+Object.assign(exports, require("./gsc_setup"));
