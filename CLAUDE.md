@@ -62,7 +62,7 @@ outros participam com conteúdo (texto/imagem/vídeo), e o mais votado vence o p
 - Retry automático em falha
 - Status: pending | posted | failed
 
-## Estado atual (v3.5.0 — julho/2026)
+## Estado atual (v3.7.0 — setembro/2026)
 No ar: https://desafiopago.com.br (e https://desafiopago.web.app)
 **Internacional: https://trialspaid.web.app** (mesmo projeto/DB)
 Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
@@ -250,6 +250,17 @@ Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
   lê `?lang`). No intl: troca na hora e 🇧🇷 volta pro desafiopago.
 - Crédito do criador (`AppConfig.creator = 'Gustavo Tinti'`) no rodapé de
   ambos (fácil de trocar/ocultar).
+- **Banner de região** (v3.6.0): pelo `navigator.language` — navegador
+  não-pt no BR sugere TrialsPaid; navegador pt no intl sugere desafiopago.
+  Dispensável (localStorage), navega na mesma aba.
+- **i18n completo nas telas principais** (v3.7.0): onboarding/termos
+  (termos por região — BR Pix/LGPD vs intl EN/cripto; telefone 7-15 dígitos
+  no intl), criar desafio, comentários (inclui timestamps relativos) e
+  rankings. Telas de admin ficam em PT (admin é BR).
+- **Regra de moeda no criar desafio**: o campo é R$ no BR e US$ no intl;
+  `_typedToBrl()` converte o US$ digitado pro ledger (BRL) via
+  `Fmt.usdToBrl` ANTES de criar — sem isso "50" virava R$50. Saldo/diálogo
+  exibem com `Fmt.brl` (US$ no intl) e "adicionar créditos" vai pro PayPal.
 - **Cron diário** `seoDailyPublish` (9h BRT): publica 1 artigo/dia da fila
   `seo_topics` (~48 temas seed). Kill-switch: `config/seo.autoPublish`.
 - **Loop de demanda GSC** `gscSyncQueries` (toda segunda 8h): lê o Search
