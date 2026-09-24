@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/i18n/i18n.dart';
 import '../../../core/utils/format.dart';
+import '../../../core/utils/friendly_error.dart';
 import '../../../core/widgets/safe_avatar.dart';
 import '../../../core/widgets/safe_image.dart';
 import '../../../core/widgets/web_frame.dart';
@@ -46,6 +47,13 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
   // por autor; o stream de votos não refaz as leituras.
   final Map<String, Map<String, dynamic>?> _profiles = {};
 
+  // Leitura de perfil que FALHOU (offline/sem cache) não fica presa como
+  // null: o id sai do cache e é tentado de novo (máx. 3, com espera
+  // crescente) — senão o card mostraria "Participante" até reabrir a tela.
+  static const _maxProfileTries = 3;
+  final Map<String, int> _profileTries = {};
+  final Map<String, DateTime> _profileRetryAt = {};
+
   final _voteRepo = VoteRepository();
   final _reportRepo = ReportRepository();
   final _functions = FirebaseFunctions.instanceFor(region: 'us-central1');
@@ -59,27 +67,58 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
   }
 
   Future<void> _ensureProfiles(List<Entry> entries) async {
+    final now = DateTime.now();
     final missing = entries
         .map((e) => e.userId)
         .toSet()
-        .where((id) => id.isNotEmpty && !_profiles.containsKey(id))
+        .where((id) =>
+            id.isNotEmpty &&
+            !_profiles.containsKey(id) &&
+            (_profileTries[id] ?? 0) < _maxProfileTries &&
+            !(_profileRetryAt[id]?.isAfter(now) ?? false))
         .toList();
     if (missing.isEmpty) return;
     for (final id in missing) {
       _profiles[id] = null; // marca em andamento (evita busca duplicada)
+      _profileTries[id] = (_profileTries[id] ?? 0) + 1;
     }
-    try {
-      final db = FirebaseFirestore.instance;
-      final docs = await Future.wait(
-          missing.map((id) => db.collection('publicProfiles').doc(id).get()));
-      if (!mounted) return;
-      setState(() {
-        for (final d in docs) {
-          _profiles[d.id] = d.data();
+    // Leitura tolerante POR ID: um doc que falha não derruba o lote inteiro
+    // (o Future.wait direto perdia as leituras que tinham dado certo).
+    final db = FirebaseFirestore.instance;
+    final results = await Future.wait(missing.map((id) async {
+      try {
+        final d = await db.collection('publicProfiles').doc(id).get();
+        return (id: id, ok: true, data: d.data());
+      } catch (_) {
+        return (id: id, ok: false, data: null);
+      }
+    }));
+    if (!mounted) return;
+    var retryIn = 0; // segundos até a próxima tentativa (0 = nenhuma)
+    setState(() {
+      for (final r in results) {
+        if (r.ok) {
+          // null aqui é legítimo (sem doc em publicProfiles): não reconsulta.
+          _profiles[r.id] = r.data;
+        } else {
+          // sem perfil, o card mostra só o conteúdo — não bloqueia nada;
+          // libera o id para nova tentativa.
+          _profiles.remove(r.id);
+          final tries = _profileTries[r.id] ?? 1;
+          _profileRetryAt[r.id] =
+              DateTime.now().add(Duration(seconds: 3 * tries));
+          if (tries < _maxProfileTries && 3 * tries + 1 > retryIn) {
+            retryIn = 3 * tries + 1;
+          }
         }
+      }
+    });
+    // Desafio encerrado não reemite o stream: agenda o rebuild que refaz a
+    // busca (o build chama _ensureProfiles) depois da espera.
+    if (retryIn > 0) {
+      Future.delayed(Duration(seconds: retryIn), () {
+        if (mounted) setState(() {});
       });
-    } catch (_) {
-      // sem perfil, o card mostra só o conteúdo — não bloqueia nada
     }
   }
 
@@ -119,27 +158,30 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(e.toString())));
+          .showSnackBar(SnackBar(content: Text(friendlyError(e))));
     }
   }
 
   Future<void> _showReportDialog(String entryId) async {
+    // Chaves do I18n: a tela mostra o motivo traduzido, mas o backend recebe
+    // o texto canônico PT (coluna pt) — o painel de denúncias (admin, PT)
+    // e o histórico continuam iguais.
     const reasons = [
-      'Conteúdo ofensivo ou inadequado',
-      'Spam ou propaganda',
-      'Violência ou automutilação',
-      'Assédio ou bullying',
-      'Outro',
+      'report_offensive',
+      'report_spam',
+      'report_violence',
+      'report_harassment',
+      'report_other',
     ];
 
     final selected = await showDialog<String>(
       context: context,
       builder: (ctx) => SimpleDialog(
-        title: const Text('Motivo da denúncia'),
+        title: Text(I18n.tr('report_reason_title')),
         children: reasons
             .map((r) => SimpleDialogOption(
                   onPressed: () => Navigator.pop(ctx, r),
-                  child: Text(r),
+                  child: Text(I18n.tr(r)),
                 ))
             .toList(),
       ),
@@ -148,15 +190,15 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
     if (selected == null) return;
 
     try {
-      await _reportRepo.reportEntry(entryId, selected);
+      await _reportRepo.reportEntry(entryId, I18n.pt(selected));
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Denúncia enviada. Obrigado!')),
+        SnackBar(content: Text(I18n.tr('report_sent'))),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(e.toString())));
+          .showSnackBar(SnackBar(content: Text(friendlyError(e))));
     }
   }
 
@@ -751,7 +793,7 @@ class _EntryCard extends StatelessWidget {
                 // Compartilhar pedindo voto para este perfil (share sheet)
                 IconButton(
                   icon: const Icon(Icons.share, size: 19),
-                  tooltip: 'Compartilhar e pedir votos',
+                  tooltip: I18n.tr('share_ask_votes'),
                   visualDensity: VisualDensity.compact,
                   color: const Color(0xFF003b8a),
                   onPressed: onShare,
@@ -759,7 +801,7 @@ class _EntryCard extends StatelessWidget {
                 if (canReport)
                   IconButton(
                     icon: const Icon(Icons.flag_outlined, size: 18),
-                    tooltip: 'Denunciar',
+                    tooltip: I18n.tr('report'),
                     visualDensity: VisualDensity.compact,
                     color: Colors.grey,
                     onPressed: onReport,

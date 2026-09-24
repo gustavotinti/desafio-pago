@@ -62,10 +62,53 @@ outros participam com conteúdo (texto/imagem/vídeo), e o mais votado vence o p
 - Retry automático em falha
 - Status: pending | posted | failed
 
-## Estado atual (v3.7.0 — setembro/2026)
+## Estado atual (v3.8.0 — setembro/2026)
 No ar: https://desafiopago.com.br (e https://desafiopago.web.app)
 **Internacional: https://trialspaid.web.app** (mesmo projeto/DB)
 Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
+
+> 🚨 **Desde ~07/09/2026 o projeto está SEM faturamento (Blaze off):** functions
+> em 503, Storage em 402. Só o dono religa. A v3.8.0 está no repo e **não foi
+> deployada**. O passo a passo do dono e a ordem de deploy estão em
+> [`PENDENCIAS.md`](PENDENCIAS.md). Antes de qualquer deploy, confira
+> `curl -s -o /dev/null -w "%{http_code}" https://desafiopago.com.br/sitemap.xml`
+> (503 = ainda sem billing). Não deploye peças soltas: app novo e functions
+> antigas precisam ser compatíveis. Ordem: functions → rules/storage →
+> `node build_sites.js` → hosting.
+
+### 🔧 Hardening (v3.8.0 — auditoria de 24/09, aguardando deploy)
+- **Dinheiro:** `vote` valida entry∈desafio e ativa (inclusive admin);
+  `finalizeChallenge` ignora participação de conta excluída/demo/sem `/users`
+  (vence a próxima elegível; lê antes de escrever na transação);
+  `deleteAccount` exige `{forfeitBalance:true}` quando há saldo (erro
+  `failed-precondition` com `details.reason='balance'`), loga em `audit_logs`,
+  apaga `verificationRequests`, `usernames` e as notificações, e tira da disputa
+  as entries de desafios ativos; `_assertNotBanned` em createChallenge,
+  addAmount, requestWithdraw, createPixPayment, requestCryptoWithdraw e
+  paypalCreateOrder; saques do admin conferem `status=='pending'` na transação.
+- **Câmbio:** `usdBrl` = **BRL por 1 USD** em todo lugar (fallback 5.4); as
+  conversões puras ficam em `money.js` (`brlFromUsd`/`usdFromBrl`/`normalizeRates`).
+  No app, `Fmt.typedToBrl()` converte o valor digitado no criar desafio e no aporte.
+- **Erros:** `lib/core/utils/friendly_error.dart`. Os repositórios lançam
+  `AppException(code, message)` e as telas de usuário final usam
+  `friendlyError(e)` (intl mostra mensagem genérica traduzida por código).
+- **SEO:** `entryPreview` depende do host (`functions/site_ctx.js`: reescreve o
+  `<head>`, canonical sem `?entry`, cache por site); hreflang pt-BR↔en na home e
+  no /novidades; sitemap só com desafios ativos e não virtuais; seoPage 404/503
+  reais.
+- **Intl:** `acceptTerms` recebe `{region, lang}` (INTL aceita 7-15 dígitos);
+  Instagram só posta desafios BR; login, recorte, denúncia e exclusão traduzidos;
+  ordem PayPal pendente guardada no localStorage.
+- **Custo:** `autoVoteRealEntries` busca por challengeId ativo em blocos de 30 e
+  pula entries virtuais; o ticker e as curtidas de comentários agora têm filtro e
+  limite.
+- **Regras:** `/votes` permite o get de doc inexistente do próprio usuário;
+  `commentLikes` só lê os próprios; Storage `/entries` com list negado e write só
+  do dono (`{uid}_...`) ou admin (regra cross-service: no 1º deploy, ACEITAR a
+  permissão Storage→Firestore).
+- **Build:** `node build_sites.js` gera BR (`build/web`) e intl (`build/web_intl`,
+  rebrand + asserções). Substitui o sed manual.
+- Testes: 39 JS + 13 Dart.
 
 ### 🌍 Internacional (TrialsPaid — v3.0.0)
 - **Mesmo codebase, 2 builds**: BR (padrão, idêntico) e intl via
@@ -310,6 +353,9 @@ Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
   one-shot protegidas pelo secret `SEED_2026_DP`.
 
 ### 🔜 Próximos passos / pendências
+Passo a passo detalhado do que depende do dono: [`PENDENCIAS.md`](PENDENCIAS.md).
+- **Religar o faturamento (Blaze)**, depois deploy da v3.8.0 + `gscSetup`
+  (Search Console por API) + `seedSeoTopics` (a fila de temas está vazia)
 - Testar o ciclo de dinheiro ponta a ponta com Pix real
   (depósito → saldo → desafio → prêmio → saque)
 - Confirmar o webhook MP em produção ("Simular notificação" = 200)
@@ -336,7 +382,8 @@ Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
 v2.0.1 · v2.1.0 · v2.2.0 · v2.2.1 · v2.2.2 · v2.3.0 · v2.4.0 · v2.5.0 — restaurar: `git checkout vX.Y.Z`
 
 ## Comandos úteis (em apps/mobile)
-- Build web: `flutter build web --release`
+- Build dos 2 sites (BR + intl): `node build_sites.js` (Flutter fora do PATH:
+  usa `C:\flutter\bin\flutter.bat` ou `$FLUTTER`). Sempre antes de deploy de hosting.
 - Deploy hosting: `firebase deploy --only hosting --project desafio-app-b8665`
 - Deploy função: `firebase deploy --only functions:NOME --project desafio-app-b8665`
 - Lint functions: `npm --prefix functions run lint`

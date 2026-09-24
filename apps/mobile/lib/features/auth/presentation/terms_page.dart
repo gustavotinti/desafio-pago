@@ -4,6 +4,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 
 import '../../../core/config/app_config.dart';
 import '../../../core/i18n/i18n.dart';
+import '../../../core/utils/friendly_error.dart';
 import '../../../core/widgets/web_frame.dart';
 
 // Termos por região. BR (Pix/LGPD) e internacional (cripto/genérico).
@@ -106,18 +107,21 @@ class _TermsPageState extends State<TermsPage> {
     try {
       await FirebaseFunctions.instanceFor(region: 'us-central1')
           .httpsCallable('acceptTerms')
-          .call({'phone': _phone.text.replaceAll(RegExp(r'\D'), '')});
+          .call({
+        'phone': _phone.text.replaceAll(RegExp(r'\D'), ''),
+        // Região/idioma do site: o backend valida o telefone pela regra da
+        // região (BR = DDD 10-11 dígitos; intl = 7-15) e responde no idioma.
+        // Function antiga ignora os dois campos.
+        'region': AppConfig.intl ? 'INTL' : 'BR',
+        'lang': AppConfig.intl ? 'en' : 'pt',
+      });
       widget.onAccepted();
-    } on FirebaseFunctionsException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${I18n.tr('terms_error')}: ${e.message}')),
-        );
-      }
     } catch (e) {
+      // acceptTerms recebe `lang` e já responde no idioma do site.
       if (mounted) {
+        final msg = friendlyError(e, serverLocalized: true);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${I18n.tr('terms_error')}: $e')),
+          SnackBar(content: Text('${I18n.tr('terms_error')}: $msg')),
         );
       }
     } finally {

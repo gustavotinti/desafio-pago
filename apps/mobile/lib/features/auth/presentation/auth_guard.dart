@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../infrastructure/firebase_auth_repository.dart';
 import '../../users/infrastructure/user_repository.dart';
 import '../../../core/deep_link.dart';
+import '../../../core/i18n/i18n.dart';
 
 /// Garante que há um usuário logado para executar uma ação que exige conta.
 ///
@@ -39,8 +40,10 @@ Future<bool> startGoogleLogin(BuildContext context) async {
 
 /// Botão branco no padrão Google (logo oficial + texto), com loading próprio.
 class GoogleSignInButton extends StatefulWidget {
-  final String label;
-  const GoogleSignInButton({super.key, this.label = 'Entrar com Google'});
+  /// Rótulo do botão; nulo = "Entrar com Google" no idioma atual (o
+  /// default não pode ser I18n.tr porque o construtor é const).
+  final String? label;
+  const GoogleSignInButton({super.key, this.label});
 
   @override
   State<GoogleSignInButton> createState() => _GoogleSignInButtonState();
@@ -56,7 +59,8 @@ class _GoogleSignInButtonState extends State<GoogleSignInButton> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Erro ao entrar: $e')));
+            .showSnackBar(SnackBar(
+                content: Text(I18n.trp('login_error', {'e': '$e'}))));
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -101,7 +105,7 @@ class _GoogleSignInButtonState extends State<GoogleSignInButton> {
                     Image.asset('assets/images/google.png', height: 22),
                     const SizedBox(width: 12),
                     Text(
-                      widget.label,
+                      widget.label ?? I18n.tr('sign_in_google'),
                       style: const TextStyle(
                           fontSize: 15, fontWeight: FontWeight.w600),
                     ),
@@ -131,17 +135,16 @@ class _LoginSheet extends StatelessWidget {
             const Icon(Icons.lock_outline, size: 36, color: Color(0xFF003b8a)),
             const SizedBox(height: 12),
             Text(
-              message ?? 'Entre para participar',
+              message ?? I18n.tr('login_default'),
               style:
                   const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 6),
-            const Text(
-              'Crie sua conta com o Google para participar dos desafios, '
-              'votar, comentar e acessar seu perfil.',
+            Text(
+              I18n.tr('login_sheet_sub'),
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.black54, fontSize: 13),
+              style: const TextStyle(color: Colors.black54, fontSize: 13),
             ),
             const SizedBox(height: 20),
             const GoogleSignInButton(),

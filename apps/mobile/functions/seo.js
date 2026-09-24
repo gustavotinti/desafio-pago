@@ -37,6 +37,13 @@ const CTX = {
         "foto, divulgar sua participação, receber prêmios via Pix e fazer " +
         "renda extra online.",
     soon: "Em breve, novos artigos por aqui.", createdBy: "Criado por",
+    notFoundTitle: "Página não encontrada",
+    notFoundText: "Este artigo não existe ou foi removido. Veja os artigos " +
+        "mais recentes abaixo ou volte para o índice de Novidades.",
+    notFoundCta: "Ver todas as Novidades",
+    unavailableTitle: "Instabilidade temporária",
+    unavailableText: "Não conseguimos carregar esta página agora. Tente " +
+        "novamente em alguns instantes.",
   },
   en: {
     site: "https://trialspaid.web.app", brand: "TrialsPaid", lang: "en",
@@ -57,8 +64,23 @@ const CTX = {
         "challenges, promote your entry, get paid in crypto and make " +
         "money online.",
     soon: "New articles coming soon.", createdBy: "Created by",
+    notFoundTitle: "Page not found",
+    notFoundText: "This article doesn't exist or was removed. See the " +
+        "latest articles below or go back to the News index.",
+    notFoundCta: "See all News",
+    unavailableTitle: "Temporarily unavailable",
+    unavailableText: "We couldn't load this page right now. Please try " +
+        "again in a moment.",
   },
 };
+
+// hreflang SÓ entre os HUBS (/novidades): mesmo papel nos dois idiomas.
+// Artigos NÃO recebem hreflang — são conteúdos diferentes, não traduções.
+const HUB_ALTERNATES = [
+  {hreflang: "pt-BR", href: `${CTX.pt.site}/novidades`},
+  {hreflang: "en", href: `${CTX.en.site}/novidades`},
+  {hreflang: "x-default", href: `${CTX.en.site}/novidades`},
+];
 
 const siteCtx = (req) => {
   const host = String(
@@ -260,7 +282,10 @@ const pageShell = (c, opts) => `<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(opts.title)}</title>
 <meta name="description" content="${esc(opts.description)}">
+${opts.robots ? `<meta name="robots" content="${esc(opts.robots)}">` : ""}
 <link rel="canonical" href="${esc(opts.url)}">
+${(opts.alternates || []).map((a) => `<link rel="alternate" ` +
+    `hreflang="${esc(a.hreflang)}" href="${esc(a.href)}">`).join("\n")}
 <link rel="icon" href="/favicon.png">
 <meta property="og:type" content="${opts.ogType || "article"}">
 <meta property="og:site_name" content="${c.brand}">
@@ -410,10 +435,45 @@ ${items || `<p>${c.soon}</p>`}`;
     description: c.indexDesc,
     url,
     ogType: "website",
+    alternates: HUB_ALTERNATES,
     jsonLd,
     body,
   });
 };
+
+// 404 de verdade (sem soft 404): página útil com links pro hub, mas noindex.
+// url = a própria URL pedida (canonical auto-referente; noindex a exclui).
+const renderNotFound = (c, articles, url) => {
+  const items = articles.map((a) => `<a class="list-item"
+href="${c.site}/novidades/${a.slug}">
+<h2>${esc(a.title)}</h2>
+<p>${esc(a.metaDescription)}</p></a>`).join("\n");
+  const body = `
+<p class="meta"><a href="${c.site}/novidades">${c.backToNews}</a></p>
+<h1>${c.notFoundTitle}</h1>
+<p>${c.notFoundText}</p>
+<a class="cta" href="${c.site}/novidades">${c.notFoundCta}</a>
+${items}`;
+  return pageShell(c, {
+    title: `${c.notFoundTitle} | ${c.brand}`,
+    description: c.notFoundText,
+    url,
+    ogType: "website",
+    robots: "noindex",
+    body,
+  });
+};
+
+// Erro transitório: página mínima (sem Firestore) para acompanhar o 503.
+const renderUnavailable = (c, url) => pageShell(c, {
+  title: `${c.unavailableTitle} | ${c.brand}`,
+  description: c.unavailableText,
+  url,
+  ogType: "website",
+  robots: "noindex",
+  body: `<h1>${c.unavailableTitle}</h1><p>${c.unavailableText}</p>
+<a class="cta" href="${c.site}/novidades">${c.notFoundCta}</a>`,
+});
 
 // ─── PÁGINAS SSR: /novidades e /novidades/{slug} ─────────────────────────────
 
@@ -423,7 +483,12 @@ exports.seoPage = functions.https.onRequest(async (req, res) => {
     const db = admin.firestore();
     const parts = (req.path || "").split("/").filter(Boolean);
     // parts: ["novidades"] ou ["novidades", "slug"]
-    const slug = parts.length > 1 ? decodeURIComponent(parts[1]) : "";
+    let slug = parts.length > 1 ? parts[1] : "";
+    try {
+      slug = decodeURIComponent(slug);
+    } catch (e) {
+      // %-encoding malformado: segue cru → não casa com nada → 404 (não 503).
+    }
     const chalBlock = await challengesBlock(db, c);
 
     // Uma única leitura: publicados do idioma deste site (legado sem lang =
@@ -442,9 +507,21 @@ exports.seoPage = functions.https.onRequest(async (req, res) => {
           .send(renderIndex(c, articles.slice(0, 100), chalBlock));
     }
 
-    const article = articles.find((a) => a.slug === slug);
+    let article = articles.find((a) => a.slug === slug);
     if (!article) {
-      return res.redirect(302, `${c.site}/novidades`);
+      // A lista acima tem limit(300) sem ordem: antes de afirmar 404, busca o
+      // slug direto (senão um artigo real fora do lote viraria 404).
+      const direct = await db.collection("seo_articles")
+          .where("slug", "==", slug).limit(1).get();
+      const a = direct.empty ? null : direct.docs[0].data();
+      if (a && a.status === "published" && langOf(a) === c.lang) article = a;
+    }
+    if (!article) {
+      // 404 real (não 302 pro índice): o Google tira a URL da fila em vez
+      // de marcar soft 404. Página útil (links pro hub) + noindex.
+      res.set("Cache-Control", "public, max-age=300, s-maxage=600");
+      return res.status(404).send(renderNotFound(c, articles.slice(0, 5),
+          `${c.site}/novidades/${encodeURIComponent(slug)}`));
     }
     // Relacionados: mesmo idioma, exceto o atual, 3 mais recentes.
     const related = articles.filter((a) => a.slug !== slug).slice(0, 3);
@@ -453,7 +530,12 @@ exports.seoPage = functions.https.onRequest(async (req, res) => {
         .send(renderArticle(c, article, chalBlock, related));
   } catch (e) {
     console.error("seoPage:", e.message);
-    return res.redirect(302, c.site);
+    // Falha transitória (ex.: Firestore): 503 + Retry-After diz ao Google
+    // "tente de novo" sem mexer no índice. Redirecionar pra home fazia um
+    // artigo bom virar soft 404. Sem cache no CDN (não congelar o erro).
+    res.set("Retry-After", "120");
+    res.set("Cache-Control", "no-store");
+    return res.status(503).send(renderUnavailable(c, `${c.site}${req.path}`));
   }
 });
 
@@ -478,9 +560,16 @@ exports.seoSitemap = functions.https.onRequest(async (req, res) => {
         priority: "0.8",
       });
     }
+    // Só desafios ATIVOS, REAIS (isVirtual !== true) e da região do site.
+    // Encerrado vira página rala (o app é canvas, invisível pro Google) e
+    // desafio virtual indexado é risco de política de spam. Mesmo formato de
+    // consulta do challengesBlock (índice status+region+amount).
     const chals = await db.collection("challenges")
-        .where("region", "==", c.region).get();
+        .where("status", "==", "active")
+        .where("region", "==", c.region)
+        .orderBy("amount", "desc").limit(5000).get();
     for (const d of chals.docs) {
+      if (d.data().isVirtual === true) continue;
       urls.push({
         loc: `${c.site}/challenges/${d.id}`,
         lastmod: String(d.data().createdAt || "").slice(0, 10),

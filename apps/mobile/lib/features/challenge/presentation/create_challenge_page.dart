@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/i18n/i18n.dart';
 import '../../../core/utils/format.dart';
+import '../../../core/utils/friendly_error.dart';
 import '../../../core/widgets/web_frame.dart';
 import '../../payments/presentation/paypal_topup_page.dart';
 import '../../payments/presentation/topup_page.dart';
@@ -152,12 +153,7 @@ class _CreateChallengePageState extends State<CreateChallengePage> {
   }
 
   /// Valor digitado → BRL do ledger. No intl o usuário digita US$.
-  double _typedToBrl() {
-    final typed =
-        double.tryParse(_amountController.text.trim().replaceAll(',', '.')) ??
-            0;
-    return AppConfig.intl ? Fmt.usdToBrl(typed) : typed;
-  }
+  double _typedToBrl() => Fmt.typedToBrl(_amountController.text);
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
@@ -206,7 +202,7 @@ class _CreateChallengePageState extends State<CreateChallengePage> {
           _showAddCreditsDialog(amount, _userBalance ?? 0.0);
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(msg)),
+            SnackBar(content: Text(friendlyError(e))),
           );
         }
       }
@@ -275,9 +271,9 @@ class _CreateChallengePageState extends State<CreateChallengePage> {
                       const TextInputType.numberWithOptions(decimal: true),
                   onChanged: (_) => setState(() {}), // rebuild for balance hint
                   validator: (v) {
-                    final n =
-                        double.tryParse((v ?? '').trim().replaceAll(',', '.'));
-                    if (n == null || n <= 0) return I18n.tr('prize_invalid');
+                    if (Fmt.parseTyped(v ?? '') <= 0) {
+                      return I18n.tr('prize_invalid');
+                    }
                     return null;
                   },
                 ),

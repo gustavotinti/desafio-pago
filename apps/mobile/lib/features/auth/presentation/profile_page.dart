@@ -6,6 +6,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/i18n/i18n.dart';
 import '../../../core/utils/format.dart';
+import '../../../core/utils/friendly_error.dart';
 import '../../../core/utils/open_url_stub.dart'
     if (dart.library.js_interop) '../../../core/utils/open_url_web.dart';
 import '../../../core/widgets/safe_avatar.dart';
@@ -38,6 +39,9 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Map<String, dynamic> _userData = {};
   List _transactions = [];
+  // Trava de clique duplo nos botões de saque (Pix e cripto): um toque
+  // duplo durante o cold start criava DOIS pedidos de saque.
+  bool _submittingWithdraw = false;
 
   @override
   void initState() {
@@ -65,21 +69,25 @@ class _ProfilePageState extends State<ProfilePage> {
     final data = doc.data() ?? {};
     _transactions = await GetTransactions()(uid);
 
+    // A tela pode ter saído (logout/exclusão de conta) durante as leituras.
+    if (!mounted) return;
     setState(() => _userData = data);
   }
 
   Future<void> _requestWithdraw() async {
+    if (_submittingWithdraw) return;
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
 
     final amount = double.tryParse(_amountController.text.trim()) ?? 0;
     if (amount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Valor inválido')),
+        SnackBar(content: Text(I18n.tr('invalid_value'))),
       );
       return;
     }
 
+    setState(() => _submittingWithdraw = true);
     try {
       await WithdrawRepository().requestWithdraw(uid, amount);
       final fee = amount * 0.10;
@@ -98,13 +106,16 @@ class _ProfilePageState extends State<ProfilePage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(e.toString())));
+            .showSnackBar(SnackBar(content: Text(friendlyError(e))));
       }
+    } finally {
+      if (mounted) setState(() => _submittingWithdraw = false);
     }
   }
 
   /// Saque internacional: valor em USD → ledger (BRL) → recebido em XRP.
   Future<void> _requestCryptoWithdraw() async {
+    if (_submittingWithdraw) return;
     final usd = double.tryParse(
             _amountController.text.trim().replaceAll(',', '.')) ??
         0;
@@ -119,6 +130,7 @@ class _ProfilePageState extends State<ProfilePage> {
           SnackBar(content: Text(I18n.tr('xrp_address_required'))));
       return;
     }
+    setState(() => _submittingWithdraw = true);
     try {
       final res = await FirebaseFunctions.instanceFor(region: 'us-central1')
           .httpsCallable('requestCryptoWithdraw')
@@ -136,55 +148,126 @@ class _ProfilePageState extends State<ProfilePage> {
         _amountController.clear();
         _load();
       }
-    } on FirebaseFunctionsException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(e.message ?? 'Error')));
-      }
     } catch (e) {
+      // requestCryptoWithdraw recebe `lang` e já responde no idioma.
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(e.toString())));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(friendlyError(e, serverLocalized: true))));
       }
+    } finally {
+      if (mounted) setState(() => _submittingWithdraw = false);
     }
   }
 
-  Future<void> _deleteAccount() async {
+  /// Diálogo de exclusão. Com saldo positivo, avisa o valor que será PERDIDO
+  /// (sem reembolso) e sugere sacar antes. Retorna true se confirmou.
+  Future<bool> _confirmDelete(double balance) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Excluir conta'),
-        content: const Text(
-          'Esta ação é permanente e não pode ser desfeita.\n\n'
-          'Seus dados pessoais serão removidos. '
-          'Suas participações em desafios serão anonimizadas.',
+        title: Text(I18n.tr('delete_account_title')),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(I18n.tr('delete_account_warning')),
+              if (balance > 0) ...[
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.red.shade200),
+                  ),
+                  child: Text(
+                    I18n.trp('delete_account_balance', {
+                      'v': Fmt.brl(balance),
+                      'min': Fmt.brl(WithdrawRepository.minimumAmount),
+                    }),
+                    style: TextStyle(
+                        color: Colors.red.shade900,
+                        fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancelar'),
+            child: Text(I18n.tr('cancel')),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Excluir permanentemente'),
+            child: Text(I18n.tr('delete_account_confirm')),
           ),
         ],
       ),
     );
+    return confirmed == true;
+  }
 
-    if (confirmed != true) return;
+  Future<void> _deleteAccount() async {
+    var balance = (_userData['balance'] as num? ?? 0).toDouble();
+    if (!await _confirmDelete(balance)) return;
 
-    try {
-      await FirebaseFunctions.instance
-          .httpsCallable('deleteAccount')
-          .call();
-      await FirebaseAuth.instance.signOut();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.toString())),
-      );
+    // Contrato com deleteAccount: com saldo, o app manda forfeitBalance:true
+    // (o usuário VIU o aviso do valor perdido). Se o saldo mudou entre a
+    // leitura e a chamada, o servidor responde failed-precondition com
+    // details.reason == 'balance' → avisa de novo e pede nova confirmação.
+    // A function antiga ignora os dois campos.
+    final lang = AppConfig.intl ? 'en' : 'pt';
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        await FirebaseFunctions.instance.httpsCallable('deleteAccount').call({
+          if (balance > 0) 'forfeitBalance': true,
+          'lang': lang,
+        });
+        await FirebaseAuth.instance.signOut();
+        return;
+      } on FirebaseFunctionsException catch (e) {
+        final details = e.details;
+        final isBalance = e.code == 'failed-precondition' &&
+            details is Map &&
+            details['reason'] == 'balance';
+        if (!isBalance) {
+          // deleteAccount recebe `lang` e já responde no idioma do site.
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text(friendlyError(e, serverLocalized: true))),
+          );
+          return;
+        }
+        // Saldo atual: o que o servidor informou, senão relê o perfil.
+        final serverBalance = details['balance'];
+        if (serverBalance is num) {
+          balance = serverBalance.toDouble();
+        } else {
+          await _load();
+          balance = (_userData['balance'] as num? ?? 0).toDouble();
+        }
+        if (!mounted) return;
+        if (balance <= 0) {
+          // Releitura ainda sem o saldo novo: não exclui às cegas.
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text(friendlyError(e, serverLocalized: true))),
+          );
+          return;
+        }
+        if (!await _confirmDelete(balance)) return;
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(friendlyError(e))),
+        );
+        return;
+      }
     }
   }
 
@@ -234,7 +317,7 @@ class _ProfilePageState extends State<ProfilePage> {
         actions: [
           IconButton(
             icon: const Icon(Icons.edit_outlined),
-            tooltip: 'Editar perfil',
+            tooltip: I18n.tr('edit_profile'),
             onPressed: () async {
               final updated = await Navigator.push<bool>(
                 context,
@@ -397,6 +480,30 @@ class _ProfilePageState extends State<ProfilePage> {
             lockedBalance: lockedBalance,
           ),
           const SizedBox(height: 8),
+          // Depósito PayPal aberto (aba recarregada / volta pelo return_url):
+          // oferece concluir. Só no intl — no BR nunca aparece.
+          if (AppConfig.intl && PaypalPendingOrder.read() != null) ...[
+            Card(
+              margin: EdgeInsets.zero,
+              color: const Color(0xFFFFF8E1),
+              child: ListTile(
+                leading: const Icon(Icons.hourglass_top,
+                    color: Color(0xFFB26A00)),
+                title: Text(I18n.tr('paypal_pending_open'),
+                    style: const TextStyle(fontSize: 13)),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const PaypalTopUpPage()),
+                  );
+                  _load();
+                },
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
@@ -506,8 +613,14 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
             const SizedBox(height: 8),
             ElevatedButton(
-              onPressed: _requestWithdraw,
-              child: const Text('Solicitar saque'),
+              onPressed: _submittingWithdraw ? null : _requestWithdraw,
+              child: _submittingWithdraw
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Solicitar saque'),
             ),
           ] else ...[
             Text(
@@ -551,8 +664,14 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
             const SizedBox(height: 8),
             ElevatedButton(
-              onPressed: _requestCryptoWithdraw,
-              child: Text(I18n.tr('request_withdraw')),
+              onPressed: _submittingWithdraw ? null : _requestCryptoWithdraw,
+              child: _submittingWithdraw
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(I18n.tr('request_withdraw')),
             ),
           ],
           const Divider(height: 32),
@@ -581,9 +700,9 @@ class _ProfilePageState extends State<ProfilePage> {
           TextButton.icon(
             onPressed: _deleteAccount,
             icon: const Icon(Icons.delete_forever, color: Colors.red),
-            label: const Text(
-              'Excluir minha conta',
-              style: TextStyle(color: Colors.red),
+            label: Text(
+              I18n.tr('delete_account_btn'),
+              style: const TextStyle(color: Colors.red),
             ),
           ),
           const SizedBox(height: 16),

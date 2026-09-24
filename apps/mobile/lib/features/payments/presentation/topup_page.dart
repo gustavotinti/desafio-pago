@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/utils/friendly_error.dart';
 import '../../../core/widgets/web_frame.dart';
 import 'payment_page.dart';
 import '../infrastructure/payment_repository.dart';
@@ -53,7 +54,7 @@ class _TopUpPageState extends State<TopUpPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString())),
+          SnackBar(content: Text(friendlyError(e))),
         );
       }
     } finally {

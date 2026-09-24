@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../core/i18n/i18n.dart';
+import '../../../core/utils/friendly_error.dart';
 import '../../../core/widgets/web_frame.dart';
 import '../application/submit_entry.dart';
 import '../domain/entities/content_type.dart';
@@ -115,7 +116,7 @@ class _SubmitEntryPageState extends State<SubmitEntryPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(e.toString())));
+            .showSnackBar(SnackBar(content: Text(friendlyError(e))));
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);

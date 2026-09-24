@@ -24,6 +24,37 @@ void main() {
       expect(Fmt.usdToBrl(10), closeTo(55, 0.0001));
     });
 
+    test('parseTyped aceita vírgula decimal e zera o inválido', () {
+      expect(Fmt.parseTyped('10,50'), 10.5);
+      expect(Fmt.parseTyped(' 10.5 '), 10.5);
+      expect(Fmt.parseTyped(''), 0);
+      expect(Fmt.parseTyped('abc'), 0);
+      expect(Fmt.parseTyped('NaN'), 0);
+      expect(Fmt.parseTyped('Infinity'), 0);
+    });
+
+    test('typedToBrl no BR usa o valor digitado (já em R\$)', () {
+      Fmt.usdPerBrl = 0.20;
+      expect(Fmt.typedToBrl('50', intl: false), 50);
+      expect(Fmt.typedToBrl('10,50', intl: false), 10.5);
+    });
+
+    test('typedToBrl no intl converte US\$ → BRL do ledger', () {
+      Fmt.usdPerBrl = 0.20; // 1 USD = 5 BRL
+      expect(Fmt.typedToBrl('50', intl: true), closeTo(250, 0.0001));
+      expect(Fmt.typedToBrl('10,50', intl: true), closeTo(52.5, 0.0001));
+      expect(Fmt.typedToBrl('abc', intl: true), 0);
+    });
+
+    test('typedToBrl no intl arredonda ao centavo', () {
+      Fmt.usdPerBrl = 0.18; // 50 / 0,18 = 277,777...
+      expect(Fmt.typedToBrl('50', intl: true), 277.78);
+    });
+
+    test('typedToBrl sem intl explícito segue o build (BR nos testes)', () {
+      expect(Fmt.typedToBrl('50'), 50);
+    });
+
     test('xrp converte BRL pela cotação e mostra 2 casas', () {
       Fmt.xrpPerBrl = 0.08; // 1 BRL = 0,08 XRP
       expect(Fmt.xrp(100), '8.00');

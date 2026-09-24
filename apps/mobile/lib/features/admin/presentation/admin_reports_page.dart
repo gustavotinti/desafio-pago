@@ -63,7 +63,11 @@ class AdminReportsPage extends StatelessWidget {
                         color: Colors.black54),
                   ),
                 ),
-                ...list.map((g) => _ReportCard(group: g)),
+                // Key estável por participação: a lista reordena em tempo real
+                // (contagem de denúncias) e, sem key, o State de um card
+                // (conteúdo exibido) ficava preso à participação ERRADA.
+                ...list.map(
+                    (g) => _ReportCard(key: ValueKey(g.entryId), group: g)),
               ],
             );
           },
@@ -107,7 +111,7 @@ class _EmptyState extends StatelessWidget {
 
 class _ReportCard extends StatefulWidget {
   final _Group group;
-  const _ReportCard({required this.group});
+  const _ReportCard({super.key, required this.group});
 
   @override
   State<_ReportCard> createState() => _ReportCardState();
@@ -121,6 +125,17 @@ class _ReportCardState extends State<_ReportCard> {
   void initState() {
     super.initState();
     _future = _load();
+  }
+
+  // Defensivo: se o card passar a representar outra participação, recarrega
+  // o conteúdo — a ação (entryId) e o que o admin vê nunca divergem.
+  @override
+  void didUpdateWidget(covariant _ReportCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.group.entryId != widget.group.entryId) {
+      // (build roda logo após didUpdateWidget — setState é desnecessário)
+      _future = _load();
+    }
   }
 
   Future<_EntryInfo> _load() async {

@@ -3,6 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../core/i18n/i18n.dart';
+import '../../../core/utils/friendly_error.dart';
 import '../../entry/domain/entities/content_type.dart';
 
 class EntryRepository {
@@ -17,7 +19,7 @@ class EntryRepository {
     XFile? contentFile,
   }) async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) throw Exception('Usuário não logado');
+    if (user == null) throw Exception(I18n.tr('not_logged_in'));
 
     String? contentUrl;
     if (contentFile != null && contentType != ContentType.text) {
@@ -29,12 +31,12 @@ class EntryRepository {
           contentType == ContentType.image ? maxImageBytes : maxVideoBytes;
       final fileSize = await contentFile.length();
       if (fileSize > maxBytes) {
-        final limitMb = contentType == ContentType.image ? '10' : '50';
         final actualMb = (fileSize / (1024 * 1024)).toStringAsFixed(1);
-        throw Exception(
-          'Arquivo muito grande: $actualMb MB. '
-          'Limite para ${contentType == ContentType.image ? "imagens" : "vídeos"}: $limitMb MB.',
-        );
+        throw Exception(I18n.trp(
+            contentType == ContentType.image
+                ? 'file_too_big_image'
+                : 'file_too_big_video',
+            {'mb': actualMb}));
       }
 
       final ext = contentType == ContentType.image ? 'jpg' : 'mp4';
@@ -55,7 +57,7 @@ class EntryRepository {
         'contentUrl': ?contentUrl,
       });
     } on FirebaseFunctionsException catch (e) {
-      throw Exception(e.message ?? 'Erro ao submeter participação');
+      throw AppException.fromFunctions(e, 'Erro ao submeter participação');
     }
   }
 }

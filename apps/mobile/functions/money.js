@@ -50,6 +50,79 @@ function xrpFromBrl(brl, xrpBrl) {
   return Math.round((brl / xrpBrl) * 10000) / 10000;
 }
 
+// ─── Câmbio USD ↔ BRL (site internacional) ──────────────────────────────────
+// Convenção ÚNICA: brlPerUsd = quantos BRL vale 1 USD (~5,4). No Firestore
+// (config/rates e payments) o campo continua se chamando `usdBrl` por
+// compatibilidade com o que já está salvo — mesma semântica (BRL por 1 USD).
+
+// Faixa plausível de BRL por 1 USD. Fora dela a cotação é tratada como
+// inválida (ex.: valor invertido, USD por BRL ≈ 0,185).
+const BRL_PER_USD_MIN = 1;
+const BRL_PER_USD_MAX = 20;
+
+/**
+ * Diz se uma cotação BRL-por-USD é plausível (entre 1 e 20).
+ * @param {number} brlPerUsd BRL por 1 USD
+ * @return {boolean}
+ */
+function isSaneBrlPerUsd(brlPerUsd) {
+  const v = Number(brlPerUsd);
+  return Number.isFinite(v) && v > BRL_PER_USD_MIN && v < BRL_PER_USD_MAX;
+}
+
+/**
+ * Normaliza um conjunto de cotações {xrpUsd, xrpBrl, usdBrl}. Se `usdBrl`
+ * (BRL por 1 USD) não for plausível, recalcula como xrpBrl / xrpUsd; se nem
+ * isso for plausível, usa o `fallback` inteiro. Nunca devolve cotação inválida
+ * (o crédito do depósito depende dela).
+ * @param {object} rates cotações lidas (CoinGecko, config/rates ou fallback)
+ * @param {object} fallback cotações conservadoras (já consistentes)
+ * @return {{xrpUsd:number, xrpBrl:number, usdBrl:number}}
+ */
+function normalizeRates(rates, fallback) {
+  const r = rates || {};
+  const xrpUsd = Number(r.xrpUsd);
+  const xrpBrl = Number(r.xrpBrl);
+  if (xrpUsd > 0 && xrpBrl > 0) {
+    if (isSaneBrlPerUsd(r.usdBrl)) {
+      return {...r, xrpUsd, xrpBrl, usdBrl: Number(r.usdBrl)};
+    }
+    const derived = xrpBrl / xrpUsd;
+    if (isSaneBrlPerUsd(derived)) {
+      return {...r, xrpUsd, xrpBrl, usdBrl: derived};
+    }
+  }
+  if (fallback && fallback !== rates) return normalizeRates(fallback, null);
+  throw new Error("normalizeRates: cotação inválida e sem fallback");
+}
+
+/**
+ * Converte USD → BRL (ledger), arredondando a 2 casas.
+ * Lança se a cotação for implausível (nunca credita valor errado em silêncio).
+ * @param {number} usd valor em USD
+ * @param {number} brlPerUsd BRL por 1 USD
+ * @return {number} valor em BRL
+ */
+function brlFromUsd(usd, brlPerUsd) {
+  if (!isSaneBrlPerUsd(brlPerUsd)) {
+    throw new Error(`brlFromUsd: cotação implausível (${brlPerUsd})`);
+  }
+  return Math.round(Number(usd) * Number(brlPerUsd) * 100) / 100;
+}
+
+/**
+ * Converte BRL (ledger) → USD para EXIBIÇÃO, arredondando a 2 casas.
+ * Retorna 0 se a cotação for implausível (só texto — nunca lança).
+ * @param {number} brl valor em BRL
+ * @param {number} brlPerUsd BRL por 1 USD
+ * @return {number} valor em USD
+ */
+function usdFromBrl(brl, brlPerUsd) {
+  if (!isSaneBrlPerUsd(brlPerUsd)) return 0;
+  return Math.round((Number(brl) / Number(brlPerUsd)) * 100) / 100;
+}
+
 module.exports = {
   splitPrizeCents, withdrawalFee, withdrawalNet, xrpFromBrl,
+  isSaneBrlPerUsd, normalizeRates, brlFromUsd, usdFromBrl,
 };

@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../../../core/utils/friendly_error.dart';
+
 class FollowRepository {
   final _functions = FirebaseFunctions.instanceFor(region: 'us-central1');
   final _firestore = FirebaseFirestore.instance;
@@ -18,7 +20,7 @@ class FollowRepository {
         'follow': follow,
       });
     } on FirebaseFunctionsException catch (e) {
-      throw Exception(e.message ?? 'Erro ao seguir');
+      throw AppException.fromFunctions(e, 'Erro ao seguir');
     }
   }
 

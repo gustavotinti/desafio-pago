@@ -99,7 +99,13 @@ service cloud.firestore {
 
     // ── VOTES ─────────────────────────────────────────────────────────────────
     match /votes/{voteId} {
-      allow read: if signedIn() && resource.data.userId == uid();
+      // get do doc `uid_challengeId` para saber "já votei?": quando o voto
+      // ainda não existe, resource == null e a leitura precisa passar (senão
+      // hasVoted estoura permission-denied para quem ainda não votou).
+      allow get: if signedIn()
+        && (resource == null || resource.data.userId == uid());
+      // Listagem continua restrita aos próprios votos.
+      allow list: if signedIn() && resource.data.userId == uid();
 
       // Writes handled exclusively by Cloud Functions (Admin SDK)
     }
@@ -167,8 +173,10 @@ service cloud.firestore {
 
     // ── COMMENT LIKES ─────────────────────────────────────────────────────────
     match /commentLikes/{likeId} {
-      // Usuário logado consulta os próprios likes; escrita via Cloud Function.
-      allow read: if signedIn();
+      // Usuário logado consulta SÓ os próprios likes (a query do app sempre
+      // filtra por uid — comment_repository.loadMyLikedIds); escrita via
+      // Cloud Function (toggleCommentLike).
+      allow read: if signedIn() && resource.data.uid == uid();
       allow write: if false;
     }
 

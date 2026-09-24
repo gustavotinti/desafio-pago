@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../core/i18n/i18n.dart';
+import '../../../core/utils/friendly_error.dart';
 import '../../../core/widgets/safe_avatar.dart';
 import '../../auth/presentation/auth_guard.dart';
 import '../domain/entities/comment.dart';
@@ -35,34 +36,70 @@ class _CommentSectionState extends State<CommentSection> {
 
   // Fotos de perfil dos autores (publicProfiles) — cache por userId.
   final Map<String, String?> _photos = {};
+  // Falhas de leitura por userId — permite rebuscar (até _maxPhotoTries)
+  // sem refazer a leitura a cada rebuild enquanto o erro persistir.
+  final Map<String, int> _photoFails = {};
+  static const _maxPhotoTries = 3;
+
+  // Stream guardado no State: criado no build, cada setState (curtir,
+  // responder, fotos chegando) recriava o listener do Firestore.
+  late Stream<List<Comment>> _commentsStream;
 
   @override
   void initState() {
     super.initState();
+    _commentsStream = _repo.watchComments(widget.challengeId, widget.entryId);
     _loadLikes();
+  }
+
+  @override
+  void didUpdateWidget(covariant CommentSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.challengeId != widget.challengeId ||
+        oldWidget.entryId != widget.entryId) {
+      _commentsStream =
+          _repo.watchComments(widget.challengeId, widget.entryId);
+      if (oldWidget.challengeId != widget.challengeId) _loadLikes();
+    }
   }
 
   Future<void> _ensurePhotos(List<Comment> comments) async {
     final missing = comments
         .map((c) => c.userId)
         .toSet()
-        .where((id) => id.isNotEmpty && !_photos.containsKey(id))
+        .where((id) =>
+            id.isNotEmpty &&
+            !_photos.containsKey(id) &&
+            (_photoFails[id] ?? 0) < _maxPhotoTries)
         .toList();
     if (missing.isEmpty) return;
     for (final id in missing) {
       _photos[id] = null; // em andamento — evita busca duplicada
     }
-    try {
-      final db = FirebaseFirestore.instance;
-      final docs = await Future.wait(
-          missing.map((id) => db.collection('publicProfiles').doc(id).get()));
-      if (!mounted) return;
-      setState(() {
-        for (final d in docs) {
-          _photos[d.id] = d.data()?['photoUrl'] as String?;
-        }
-      });
-    } catch (_) {/* sem foto, o avatar mostra o ícone padrão */}
+    final db = FirebaseFirestore.instance;
+    // Leitura tolerante por id: uma falha não derruba o lote inteiro.
+    final results = await Future.wait(missing.map((id) async {
+      try {
+        final d = await db.collection('publicProfiles').doc(id).get();
+        return (id, true, d.data()?['photoUrl'] as String?);
+      } catch (_) {
+        return (id, false, null);
+      }
+    }));
+    if (!mounted) return;
+    var anyOk = false;
+    for (final (id, ok, url) in results) {
+      if (ok) {
+        _photos[id] = url;
+        anyOk = true;
+      } else {
+        // Sem foto por ora (ícone padrão); sai do cache para a próxima
+        // emissão do stream tentar de novo.
+        _photos.remove(id);
+        _photoFails[id] = (_photoFails[id] ?? 0) + 1;
+      }
+    }
+    if (anyOk) setState(() {});
   }
 
   @override
@@ -75,7 +112,7 @@ class _CommentSectionState extends State<CommentSection> {
   Future<void> _loadLikes() async {
     if (FirebaseAuth.instance.currentUser == null) return;
     try {
-      final ids = await _repo.loadMyLikedIds();
+      final ids = await _repo.loadMyLikedIds(widget.challengeId);
       if (mounted) setState(() => _liked = ids);
     } catch (_) {/* silencioso */}
   }
@@ -92,6 +129,7 @@ class _CommentSectionState extends State<CommentSection> {
         parentId: _replyToId ?? '',
       );
       _controller.clear();
+      if (!mounted) return;
       setState(() {
         _replyToId = null;
         _replyToName = null;
@@ -99,7 +137,7 @@ class _CommentSectionState extends State<CommentSection> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(e.toString())));
+            .showSnackBar(SnackBar(content: Text(friendlyError(e))));
       }
     } finally {
       if (mounted) setState(() => _sending = false);
@@ -301,7 +339,7 @@ class _CommentSectionState extends State<CommentSection> {
         ),
         const SizedBox(height: 4),
         StreamBuilder<List<Comment>>(
-          stream: _repo.watchComments(widget.challengeId, widget.entryId),
+          stream: _commentsStream,
           builder: (context, snapshot) {
             if (!snapshot.hasData) {
               return const Padding(

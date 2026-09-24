@@ -1,5 +1,7 @@
 import 'package:cloud_functions/cloud_functions.dart';
 
+import '../../../core/utils/friendly_error.dart';
+
 class WithdrawRepository {
   static const double minimumAmount = 100.0;
 
@@ -12,7 +14,7 @@ class WithdrawRepository {
           .httpsCallable('requestWithdraw')
           .call({'amount': amount});
     } on FirebaseFunctionsException catch (e) {
-      throw Exception(e.message ?? 'Erro ao solicitar saque');
+      throw AppException.fromFunctions(e, 'Erro ao solicitar saque');
     }
   }
 }

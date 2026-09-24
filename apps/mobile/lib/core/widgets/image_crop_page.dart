@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:crop_your_image/crop_your_image.dart';
 import 'package:flutter/material.dart';
 
+import '../i18n/i18n.dart';
 import '../utils/image_utils.dart';
 
 /// Editor de recorte de imagem compartilhado.
@@ -69,7 +70,7 @@ class _ImageCropPageState extends State<ImageCropPage> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         foregroundColor: Colors.white,
-        title: const Text('Recortar imagem'),
+        title: Text(I18n.tr('crop_title')),
       ),
       body: Column(
         children: [
@@ -98,10 +99,7 @@ class _ImageCropPageState extends State<ImageCropPage> {
                 } else if (result is CropFailure) {
                   setState(() => _cropping = false);
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                          'Não foi possível recortar. Tente outra imagem.'),
-                    ),
+                    SnackBar(content: Text(I18n.tr('crop_failed'))),
                   );
                 }
               },
@@ -115,9 +113,7 @@ class _ImageCropPageState extends State<ImageCropPage> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  showChips
-                      ? 'Arraste para enquadrar · escolha a proporção'
-                      : 'Arraste para enquadrar',
+                  I18n.tr(showChips ? 'crop_hint_ratio' : 'crop_hint'),
                   style: const TextStyle(color: Colors.white70, fontSize: 12),
                 ),
                 if (showChips) ...[
@@ -159,7 +155,8 @@ class _ImageCropPageState extends State<ImageCropPage> {
                                 strokeWidth: 2, color: Colors.white),
                           )
                         : const Icon(Icons.check),
-                    label: Text(_cropping ? 'Recortando...' : 'Cortar e usar'),
+                    label: Text(
+                        I18n.tr(_cropping ? 'cropping' : 'crop_use')),
                     style: FilledButton.styleFrom(
                       backgroundColor: const Color(0xFF0cc0df),
                       foregroundColor: Colors.black,

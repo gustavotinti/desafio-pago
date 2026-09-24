@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../../../core/utils/friendly_error.dart';
 import '../domain/entities/comment.dart';
 
 class CommentRepository {
@@ -35,7 +36,7 @@ class CommentRepository {
         'text': text,
       });
     } on FirebaseFunctionsException catch (e) {
-      throw Exception(e.message ?? 'Erro ao comentar');
+      throw AppException.fromFunctions(e, 'Erro ao comentar');
     }
   }
 
@@ -47,17 +48,24 @@ class CommentRepository {
           .call({'commentId': commentId});
       return (res.data as Map)['liked'] == true;
     } on FirebaseFunctionsException catch (e) {
-      throw Exception(e.message ?? 'Erro ao curtir');
+      throw AppException.fromFunctions(e, 'Erro ao curtir');
     }
   }
 
-  /// IDs dos comentários que o usuário logado já curtiu.
-  Future<Set<String>> loadMyLikedIds() async {
+  /// IDs dos comentários DESTE desafio que o usuário logado já curtiu.
+  ///
+  /// Filtra por uid (a regra do /commentLikes exige) + challengeId (gravado
+  /// por toggleCommentLike) — o custo não cresce com o histórico inteiro de
+  /// curtidas do usuário. Duas igualdades sem orderBy: o Firestore resolve
+  /// com os índices de campo único (sem índice composto).
+  Future<Set<String>> loadMyLikedIds(String challengeId) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return {};
     final snap = await _db
         .collection('commentLikes')
         .where('uid', isEqualTo: uid)
+        .where('challengeId', isEqualTo: challengeId)
+        .limit(500)
         .get();
     return snap.docs
         .map((d) => d.data()['commentId'] as String? ?? '')
@@ -77,7 +85,7 @@ class CommentRepository {
         'text': text,
       });
     } on FirebaseFunctionsException catch (e) {
-      throw Exception(e.message ?? 'Erro ao gerar comentário');
+      throw AppException.fromFunctions(e, 'Erro ao gerar comentário');
     }
   }
 
@@ -93,7 +101,7 @@ class CommentRepository {
     try {
       await _functions.httpsCallable('adminUpdateComment').call(payload);
     } on FirebaseFunctionsException catch (e) {
-      throw Exception(e.message ?? 'Erro ao editar comentário');
+      throw AppException.fromFunctions(e, 'Erro ao editar comentário');
     }
   }
 
@@ -104,7 +112,7 @@ class CommentRepository {
           .httpsCallable('adminDeleteComment')
           .call({'commentId': commentId});
     } on FirebaseFunctionsException catch (e) {
-      throw Exception(e.message ?? 'Erro ao excluir comentário');
+      throw AppException.fromFunctions(e, 'Erro ao excluir comentário');
     }
   }
 }

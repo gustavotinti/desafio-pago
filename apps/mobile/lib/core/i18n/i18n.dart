@@ -57,6 +57,11 @@ class I18n {
     return s;
   }
 
+  /// Texto canônico em PT (coluna pt), independente do idioma da tela —
+  /// para valores gravados no backend e lidos pelo admin (ex.: motivo de
+  /// denúncia).
+  static String pt(String key) => _t[key]?[0] ?? key;
+
   // ── Traduções: [pt, en, es, fr, it, de] ─────────────────────────────────
   static const Map<String, List<String>> _t = {
     // Abas
@@ -76,6 +81,64 @@ class I18n {
     'send': ['Enviar', 'Send', 'Enviar', 'Envoyer', 'Invia', 'Senden'],
     'invalid_value': ['Valor inválido', 'Invalid amount', 'Valor no válido',
       'Montant non valide', 'Importo non valido', 'Ungültiger Betrag'],
+
+    // Erros amigáveis (core/utils/friendly_error.dart)
+    'error_try_again': [
+      'Não foi possível concluir agora. Tente de novo em instantes.',
+      'Something went wrong. Please try again in a moment.',
+      'No se pudo completar ahora. Inténtalo de nuevo en un momento.',
+      "Impossible de terminer maintenant. Réessayez dans un instant.",
+      'Impossibile completare ora. Riprova tra un momento.',
+      'Das hat gerade nicht geklappt. Bitte gleich noch einmal versuchen.'],
+    'error_login_again': [
+      'Sua sessão expirou. Entre novamente.',
+      'Your session expired. Please sign in again.',
+      'Tu sesión expiró. Inicia sesión de nuevo.',
+      'Votre session a expiré. Reconnectez-vous.',
+      'La sessione è scaduta. Accedi di nuovo.',
+      'Deine Sitzung ist abgelaufen. Bitte erneut anmelden.'],
+    'error_generic': [
+      'Não foi possível concluir a ação.',
+      "We couldn't complete that action.",
+      'No se pudo completar la acción.',
+      "Impossible d'effectuer cette action.",
+      "Impossibile completare l'azione.",
+      'Die Aktion konnte nicht abgeschlossen werden.'],
+    'error_already_exists': [
+      'Isso já foi feito.',
+      'This was already done.',
+      'Esto ya se hizo.',
+      'Cela a déjà été fait.',
+      'È già stato fatto.',
+      'Das wurde bereits erledigt.'],
+    'error_not_allowed': [
+      'Você não tem permissão para isso.',
+      "You're not allowed to do that.",
+      'No tienes permiso para hacer esto.',
+      "Vous n'êtes pas autorisé à faire cela.",
+      'Non hai il permesso di farlo.',
+      'Dazu bist du nicht berechtigt.'],
+    'error_not_available_now': [
+      'Essa ação não está disponível agora.',
+      "This action isn't available right now.",
+      'Esta acción no está disponible ahora.',
+      "Cette action n'est pas disponible pour le moment.",
+      'Questa azione non è disponibile ora.',
+      'Diese Aktion ist gerade nicht verfügbar.'],
+    'error_invalid_data': [
+      'Confira os dados informados.',
+      'Please check the information you entered.',
+      'Revisa los datos ingresados.',
+      'Vérifiez les informations saisies.',
+      'Controlla i dati inseriti.',
+      'Bitte überprüfe deine Angaben.'],
+    'error_not_found': [
+      'Não encontrado.',
+      'Not found.',
+      'No encontrado.',
+      'Introuvable.',
+      'Non trovato.',
+      'Nicht gefunden.'],
 
     // Home / feed
     'create_challenge': ['Criar desafio', 'Create challenge', 'Crear reto',
@@ -680,5 +743,194 @@ class I18n {
           'prezzo di mercato.',
       'Der Betrag wird bei der Auszahlung zum Marktkurs in XRP '
           'umgerechnet.'],
+
+    // ── Frente G4: login, recorte, denúncia, exclusão de conta, PayPal ─────
+    // (coluna pt = texto original do app — o build BR não muda)
+    // Folha de login (auth_guard.dart)
+    'sign_in_google': ['Entrar com Google', 'Sign in with Google',
+      'Iniciar sesión con Google', 'Se connecter avec Google',
+      'Accedi con Google', 'Mit Google anmelden'],
+    'login_default': ['Entre para participar', 'Sign in to join',
+      'Inicia sesión para participar', 'Connectez-vous pour participer',
+      'Accedi per partecipare', 'Zum Mitmachen anmelden'],
+    'login_sheet_sub': [
+      'Crie sua conta com o Google para participar dos desafios, votar, '
+          'comentar e acessar seu perfil.',
+      'Create your account with Google to join challenges, vote, comment '
+          'and access your profile.',
+      'Crea tu cuenta con Google para participar en retos, votar, comentar '
+          'y acceder a tu perfil.',
+      'Créez votre compte avec Google pour participer aux défis, voter, '
+          'commenter et accéder à votre profil.',
+      'Crea il tuo account con Google per partecipare alle sfide, votare, '
+          'commentare e accedere al tuo profilo.',
+      'Erstelle dein Konto mit Google, um an Challenges teilzunehmen, '
+          'abzustimmen, zu kommentieren und dein Profil zu nutzen.'],
+    'login_error': ['Erro ao entrar: {e}', 'Sign-in error: {e}',
+      'Error al iniciar sesión: {e}', 'Erreur de connexion : {e}',
+      'Errore di accesso: {e}', 'Anmeldefehler: {e}'],
+
+    // Editor de recorte (core/widgets/image_crop_page.dart)
+    'crop_title': ['Recortar imagem', 'Crop image', 'Recortar imagen',
+      'Recadrer l\'image', 'Ritaglia immagine', 'Bild zuschneiden'],
+    'crop_failed': ['Não foi possível recortar. Tente outra imagem.',
+      'Could not crop. Try another image.',
+      'No se pudo recortar. Prueba con otra imagen.',
+      'Recadrage impossible. Essayez une autre image.',
+      'Impossibile ritagliare. Prova un\'altra immagine.',
+      'Zuschneiden fehlgeschlagen. Versuche ein anderes Bild.'],
+    'crop_hint_ratio': ['Arraste para enquadrar · escolha a proporção',
+      'Drag to frame · choose the ratio',
+      'Arrastra para encuadrar · elige la proporción',
+      'Faites glisser pour cadrer · choisissez le format',
+      'Trascina per inquadrare · scegli il formato',
+      'Zum Ausrichten ziehen · Format wählen'],
+    'crop_hint': ['Arraste para enquadrar', 'Drag to frame',
+      'Arrastra para encuadrar', 'Faites glisser pour cadrer',
+      'Trascina per inquadrare', 'Zum Ausrichten ziehen'],
+    'cropping': ['Recortando...', 'Cropping...', 'Recortando...',
+      'Recadrage...', 'Ritaglio...', 'Wird zugeschnitten...'],
+    'crop_use': ['Cortar e usar', 'Crop and use', 'Recortar y usar',
+      'Recadrer et utiliser', 'Ritaglia e usa', 'Zuschneiden und verwenden'],
+
+    // Denúncia (challenge_entries_page.dart). O backend recebe SEMPRE a
+    // coluna pt (I18n.pt) — o painel de denúncias do admin é PT.
+    'report_reason_title': ['Motivo da denúncia', 'Reason for report',
+      'Motivo de la denuncia', 'Motif du signalement',
+      'Motivo della segnalazione', 'Grund der Meldung'],
+    'report_offensive': ['Conteúdo ofensivo ou inadequado',
+      'Offensive or inappropriate content',
+      'Contenido ofensivo o inapropiado', 'Contenu offensant ou inapproprié',
+      'Contenuto offensivo o inappropriato',
+      'Beleidigender oder unangemessener Inhalt'],
+    'report_spam': ['Spam ou propaganda', 'Spam or advertising',
+      'Spam o publicidad', 'Spam ou publicité', 'Spam o pubblicità',
+      'Spam oder Werbung'],
+    'report_violence': ['Violência ou automutilação', 'Violence or self-harm',
+      'Violencia o autolesión', 'Violence ou automutilation',
+      'Violenza o autolesionismo', 'Gewalt oder Selbstverletzung'],
+    'report_harassment': ['Assédio ou bullying', 'Harassment or bullying',
+      'Acoso o bullying', 'Harcèlement ou intimidation',
+      'Molestie o bullismo', 'Belästigung oder Mobbing'],
+    'report_other': ['Outro', 'Other', 'Otro', 'Autre', 'Altro', 'Sonstiges'],
+    'report_sent': ['Denúncia enviada. Obrigado!', 'Report sent. Thank you!',
+      'Denuncia enviada. ¡Gracias!', 'Signalement envoyé. Merci !',
+      'Segnalazione inviata. Grazie!', 'Meldung gesendet. Danke!'],
+    'report': ['Denunciar', 'Report', 'Denunciar', 'Signaler', 'Segnala',
+      'Melden'],
+    'share_ask_votes': ['Compartilhar e pedir votos', 'Share and ask for votes',
+      'Compartir y pedir votos', 'Partager et demander des votes',
+      'Condividi e chiedi voti', 'Teilen und um Stimmen bitten'],
+
+    // Exclusão de conta (profile_page.dart)
+    'delete_account_title': ['Excluir conta', 'Delete account',
+      'Eliminar cuenta', 'Supprimer le compte', 'Elimina account',
+      'Konto löschen'],
+    'delete_account_warning': [
+      'Esta ação é permanente e não pode ser desfeita.\n\n'
+          'Seus dados pessoais serão removidos. '
+          'Suas participações em desafios serão anonimizadas.',
+      'This action is permanent and cannot be undone.\n\n'
+          'Your personal data will be removed. '
+          'Your challenge entries will be anonymized.',
+      'Esta acción es permanente y no se puede deshacer.\n\n'
+          'Se eliminarán tus datos personales. '
+          'Tus participaciones en retos se anonimizarán.',
+      'Cette action est définitive et irréversible.\n\n'
+          'Vos données personnelles seront supprimées. '
+          'Vos participations aux défis seront anonymisées.',
+      'Questa azione è permanente e non può essere annullata.\n\n'
+          'I tuoi dati personali verranno rimossi. '
+          'Le tue partecipazioni alle sfide saranno anonimizzate.',
+      'Diese Aktion ist endgültig und kann nicht rückgängig gemacht '
+          'werden.\n\n'
+          'Deine persönlichen Daten werden gelöscht. '
+          'Deine Challenge-Beiträge werden anonymisiert.'],
+    'delete_account_balance': [
+      'Você ainda tem {v} em créditos. Ao excluir a conta, esse saldo será '
+          'PERDIDO — não há reembolso. Se preferir, saque antes (saque '
+          'mínimo: {min}).',
+      'You still have {v} in credits. If you delete your account, this '
+          'balance will be LOST — there are no refunds. You may want to '
+          'withdraw first (minimum payout: {min}).',
+      'Aún tienes {v} en créditos. Si eliminas la cuenta, ese saldo se '
+          'PERDERÁ — no hay reembolsos. Quizás prefieras retirarlo antes '
+          '(retiro mínimo: {min}).',
+      'Il vous reste {v} de crédits. Si vous supprimez le compte, ce solde '
+          'sera PERDU — aucun remboursement. Vous pouvez d\'abord le retirer '
+          '(retrait minimum : {min}).',
+      'Hai ancora {v} di crediti. Eliminando l\'account questo saldo andrà '
+          'PERSO — nessun rimborso. Puoi prelevarlo prima (prelievo minimo: '
+          '{min}).',
+      'Du hast noch {v} Guthaben. Wenn du dein Konto löschst, geht dieses '
+          'Guthaben VERLOREN — keine Erstattung. Du kannst es vorher '
+          'auszahlen lassen (Mindestauszahlung: {min}).'],
+    'delete_account_confirm': ['Excluir permanentemente', 'Delete permanently',
+      'Eliminar definitivamente', 'Supprimer définitivement',
+      'Elimina definitivamente', 'Endgültig löschen'],
+    'delete_account_btn': ['Excluir minha conta', 'Delete my account',
+      'Eliminar mi cuenta', 'Supprimer mon compte', 'Elimina il mio account',
+      'Mein Konto löschen'],
+
+    // Envio de participação (entry_repository.dart)
+    'not_logged_in': ['Usuário não logado', 'You are not signed in',
+      'No has iniciado sesión', 'Vous n\'êtes pas connecté',
+      'Non hai effettuato l\'accesso', 'Du bist nicht angemeldet'],
+    'file_too_big_image': [
+      'Arquivo muito grande: {mb} MB. Limite para imagens: 10 MB.',
+      'File too large: {mb} MB. Image limit: 10 MB.',
+      'Archivo demasiado grande: {mb} MB. Límite para imágenes: 10 MB.',
+      'Fichier trop volumineux : {mb} Mo. Limite pour les images : 10 Mo.',
+      'File troppo grande: {mb} MB. Limite per le immagini: 10 MB.',
+      'Datei zu groß: {mb} MB. Limit für Bilder: 10 MB.'],
+    'file_too_big_video': [
+      'Arquivo muito grande: {mb} MB. Limite para vídeos: 50 MB.',
+      'File too large: {mb} MB. Video limit: 50 MB.',
+      'Archivo demasiado grande: {mb} MB. Límite para videos: 50 MB.',
+      'Fichier trop volumineux : {mb} Mo. Limite pour les vidéos : 50 Mo.',
+      'File troppo grande: {mb} MB. Limite per i video: 50 MB.',
+      'Datei zu groß: {mb} MB. Limit für Videos: 50 MB.'],
+
+    // PayPal: ordem aberta persistida (paypal_topup_page.dart — só intl)
+    'paypal_pending_open': [
+      'Você tem um pagamento em aberto — confirmar',
+      'You have an open payment — confirm it',
+      'Tienes un pago pendiente — confírmalo',
+      'Vous avez un paiement en attente — confirmez-le',
+      'Hai un pagamento in sospeso — confermalo',
+      'Du hast eine offene Zahlung — jetzt bestätigen'],
+    'paypal_reopen': ['Abrir o PayPal de novo', 'Open PayPal again',
+      'Abrir PayPal de nuevo', 'Rouvrir PayPal', 'Riapri PayPal',
+      'PayPal erneut öffnen'],
+    'paypal_order_expired': [
+      'Esse pagamento expirou ou foi cancelado no PayPal. Crie um novo.',
+      'This payment expired or was cancelled on PayPal. Please start a new '
+          'one.',
+      'Este pago expiró o se canceló en PayPal. Crea uno nuevo.',
+      'Ce paiement a expiré ou a été annulé sur PayPal. Créez-en un nouveau.',
+      'Questo pagamento è scaduto o è stato annullato su PayPal. Creane uno '
+          'nuovo.',
+      'Diese Zahlung ist abgelaufen oder wurde bei PayPal storniert. Bitte '
+          'neu starten.'],
+
+    // Feed, aporte e comentarios
+    'create_login': ['Entre para criar um desafio',
+      'Sign in to create a challenge', 'Inicia sesión para crear un reto',
+      'Connectez-vous pour créer un défi', 'Accedi per creare una sfida',
+      'Melde dich an, um eine Challenge zu erstellen'],
+    'add_prize_login': ['Entre para aumentar o prêmio',
+      'Sign in to boost the prize', 'Inicia sesión para aumentar el premio',
+      'Connectez-vous pour augmenter le prix',
+      'Accedi per aumentare il premio',
+      'Melde dich an, um den Preis zu erhöhen'],
+    'add_prize_title': ['Aumentar prêmio', 'Boost the prize',
+      'Aumentar el premio', 'Augmenter le prix', 'Aumenta il premio',
+      'Preis erhöhen'],
+    'add_prize_label': ['Valor a adicionar (R\$)', 'Amount to add (US\$)',
+      'Monto a añadir (US\$)', 'Montant à ajouter (US\$)',
+      'Importo da aggiungere (US\$)', 'Betrag zum Hinzufügen (US\$)'],
+    'add_prize_done': ['{v} adicionados ao prêmio!', '{v} added to the prize!',
+      '¡{v} añadidos al premio!', '{v} ajoutés au prix !',
+      '{v} aggiunti al premio!', '{v} zum Preis hinzugefügt!'],
   };
 }

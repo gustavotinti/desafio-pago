@@ -40,6 +40,10 @@ const _winTemplateKeys = [
 ];
 
 class _ActivityTickerState extends State<ActivityTicker> {
+  // challengeIds com participação de texto/vídeo — conjunto legado (envio
+  // hoje é só imagem), então basta ler uma vez por sessão.
+  static Set<String>? _excludeCache;
+
   List<_WinItem> _items = [];
   int _index = 0;
   Timer? _timer;
@@ -66,35 +70,26 @@ class _ActivityTickerState extends State<ActivityTicker> {
           .limit(40)
           .get();
 
-      // Só desafios de IMAGEM entram no ticker (texto e vídeo desativados por
-      // enquanto). O tipo não fica no doc do desafio, só nas participações
-      // (contentType). Buscamos os challengeIds com participação de texto/vídeo
-      // e os excluímos.
-      final excludeIds = <String>{};
-      try {
-        final xSnap = await db
-            .collection('entries')
-            .where('contentType', whereIn: ['text', 'video'])
-            .get();
-        for (final e in xSnap.docs) {
-          final cid = e.data()['challengeId'] as String?;
-          if (cid != null) excludeIds.add(cid);
-        }
-      } catch (_) {/* erro/sem índice: segue sem filtrar */}
-
       final region = AppConfig.intl ? 'INTL' : 'BR';
       final winners = <String, String>{}; // uid -> @/nome (cache)
       final raw = <_WinItem>[];
-      final rows = snap.docs.where((d) {
+      final candidates = snap.docs.where((d) {
         final data = d.data();
         final w = data['winnerIds'];
         // Só a região deste site (legado sem region = BR).
         final r = (data['region'] as String?) ?? 'BR';
-        return w is List &&
-            w.isNotEmpty &&
-            r == region &&
-            !excludeIds.contains(d.id);
+        return w is List && w.isNotEmpty && r == region;
       }).toList();
+      // Sem encerrados nesta região (ex.: intl): nem lê as participações.
+      if (candidates.isEmpty) return;
+
+      // Só desafios de IMAGEM entram no ticker (texto e vídeo desativados por
+      // enquanto). O tipo não fica no doc do desafio, só nas participações
+      // (contentType). Buscamos os challengeIds com participação de texto/vídeo
+      // e os excluímos — uma vez por sessão (cache estático).
+      final excludeIds = await _loadExcludeIds(db);
+      final rows =
+          candidates.where((d) => !excludeIds.contains(d.id)).toList();
       if (rows.isEmpty) return;
 
       // Busca os perfis dos vencedores (uids distintos), em paralelo.
@@ -140,6 +135,25 @@ class _ActivityTickerState extends State<ActivityTicker> {
     } catch (_) {
       // silencioso — sem vitórias, o ticker simplesmente não aparece
     }
+  }
+
+  static Future<Set<String>> _loadExcludeIds(FirebaseFirestore db) async {
+    final cached = _excludeCache;
+    if (cached != null) return cached;
+    final ids = <String>{};
+    try {
+      final xSnap = await db
+          .collection('entries')
+          .where('contentType', whereIn: ['text', 'video'])
+          .limit(300)
+          .get();
+      for (final e in xSnap.docs) {
+        final cid = e.data()['challengeId'] as String?;
+        if (cid != null) ids.add(cid);
+      }
+      _excludeCache = ids;
+    } catch (_) {/* erro/sem índice: segue sem filtrar (tenta de novo depois) */}
+    return ids;
   }
 
   // Monta os spans da frase a partir do template ({who}/{amt}/{t} com estilo).

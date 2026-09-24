@@ -15,7 +15,9 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const {getSecret} = require("./secrets");
-const {xrpFromBrl} = require("./money");
+const {
+  xrpFromBrl, normalizeRates, brlFromUsd, usdFromBrl, isSaneBrlPerUsd,
+} = require("./money");
 
 // ─── Mensagens localizadas (pt no BR, en no internacional) ───────────────────
 const langOf = (data) => (data && data.lang === "en" ? "en" : "pt");
@@ -34,11 +36,25 @@ const MSG = {
   xrpInvalid: {pt: "Endereço XRP inválido.", en: "Invalid XRP address."},
   tagInvalid: {pt: "Destination tag inválida.", en: "Invalid destination tag."},
   orderIdRequired: {pt: "orderId obrigatório.", en: "orderId is required."},
+  banned: {pt: "Sua conta está suspensa", en: "Your account is suspended."},
 };
 const t = (lang, key) => (MSG[key] && MSG[key][lang]) || MSG[key].pt;
-const minWithdrawMsg = (lang, minBrl, usdBrl) => lang === "en" ?
-  `Minimum withdrawal is about $${(minBrl * usdBrl).toFixed(2)}.` :
-  `Valor mínimo de saque: R$${minBrl} (≈ US$ ${(minBrl * usdBrl).toFixed(2)}).`;
+// brlPerUsd = BRL por 1 USD (~5,4): R$ → US$ é DIVISÃO (R$100 ≈ US$ 18,52).
+const minWithdrawMsg = (lang, minBrl, brlPerUsd) => {
+  const usd = usdFromBrl(minBrl, brlPerUsd).toFixed(2);
+  return lang === "en" ?
+    `Minimum withdrawal is about $${usd}.` :
+    `Valor mínimo de saque: R$${minBrl} (≈ US$ ${usd}).`;
+};
+
+// Usuário banido não deposita nem saca (o bloqueio do app é só visual).
+// Mesma regra do _assertNotBanned do index.js, com mensagem localizada.
+const _assertNotBanned = async (db, uid, lang) => {
+  const u = await db.collection("users").doc(uid).get();
+  if (u.exists && u.data().isBanned === true) {
+    throw new functions.https.HttpsError("permission-denied", t(lang, "banned"));
+  }
+};
 
 const _paypalBase = async () =>
   ((await getSecret("PAYPAL_MODE")) === "sandbox" ?
@@ -75,12 +91,13 @@ const _paypalToken = async (lang) => {
 };
 
 // Fallback conservador (só usado se CoinGecko E o último valor salvo falharem).
-const _FALLBACK_RATES = {xrpUsd: 2.5, xrpBrl: 13.5, usdBrl: 0.185};
+// usdBrl = BRL por 1 USD (mesma convenção do caminho feliz: xrpBrl / xrpUsd).
+const _FALLBACK_RATES = {xrpUsd: 2.5, xrpBrl: 13.5, usdBrl: 13.5 / 2.5};
 
 // Cotações de mercado (CoinGecko) com timeout + cache do último bom valor em
 // config/rates. NUNCA lança: crédito de pagamento não pode travar por causa
 // de uma API de cotação fora do ar (o dinheiro já foi cobrado no PayPal).
-const _rates = async () => {
+const _rawRates = async () => {
   try {
     const r = await fetch(
         "https://api.coingecko.com/api/v3/simple/price" +
@@ -89,7 +106,8 @@ const _rates = async () => {
     const j = await r.json();
     const xrpUsd = Number(j.ripple && j.ripple.usd);
     const xrpBrl = Number(j.ripple && j.ripple.brl);
-    if (xrpUsd > 0 && xrpBrl > 0) {
+    // Só aceita (e só salva) cotação plausível — senão tenta o último salvo.
+    if (xrpUsd > 0 && xrpBrl > 0 && isSaneBrlPerUsd(xrpBrl / xrpUsd)) {
       const rates = {xrpUsd, xrpBrl, usdBrl: xrpBrl / xrpUsd,
         at: new Date().toISOString()};
       admin.firestore().collection("config").doc("rates")
@@ -110,6 +128,10 @@ const _rates = async () => {
   return _FALLBACK_RATES;
 };
 
+// Sempre passa por normalizeRates: usdBrl (BRL por 1 USD) fora de 1..20 é
+// recalculado como xrpBrl / xrpUsd (ou cai no fallback).
+const _rates = async () => normalizeRates(await _rawRates(), _FALLBACK_RATES);
+
 // ─── DEPÓSITO: criar ordem PayPal ────────────────────────────────────────────
 
 exports.paypalCreateOrder = functions.https.onCall(async (data, context) => {
@@ -123,6 +145,9 @@ exports.paypalCreateOrder = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError(
         "invalid-argument", t(lang, "amountRange"));
   }
+  // Banido não abre ordem nova. A CAPTURA não é bloqueada: se o pagamento já
+  // foi aprovado no PayPal, creditar é o seguro (senão fica em limbo).
+  await _assertNotBanned(admin.firestore(), context.auth.uid, lang);
   const token = await _paypalToken(lang);
   const r = await fetch(`${await _paypalBase()}/v2/checkout/orders`, {
     method: "POST",
@@ -212,9 +237,10 @@ exports.paypalCaptureOrder = functions.https.onCall(async (data, context) => {
     return {success: false, status: status || "PENDING"};
   }
 
-  const {usdBrl, xrpBrl} = await _rates();
+  // usdBrl (campo salvo) = BRL por 1 USD → US$ → R$ é multiplicação.
+  const {usdBrl: brlPerUsd, xrpBrl, xrpUsd} = await _rates();
   const amountUsd = Number(payDoc.data().amountUsd);
-  const amountBrl = Math.round(amountUsd * usdBrl * 100) / 100;
+  const amountBrl = brlFromUsd(amountUsd, brlPerUsd);
 
   // Credita com transação (revalida idempotência dentro dela).
   const userRef = db.collection("users").doc(context.auth.uid);
@@ -239,7 +265,9 @@ exports.paypalCaptureOrder = functions.https.onCall(async (data, context) => {
     tx.update(payRef, {
       status: "completed",
       amountBrl,
-      usdBrl,
+      usdBrl: brlPerUsd, // BRL por 1 USD (nome do campo mantido)
+      xrpBrl,
+      xrpUsd,
       completedAt: new Date().toISOString(),
     });
   });
@@ -273,11 +301,11 @@ exports.requestCryptoWithdraw =
             "invalid-argument", t(lang, "tagInvalid"));
       }
 
-      const {xrpBrl, usdBrl} = await _rates();
+      const {xrpBrl, usdBrl: brlPerUsd} = await _rates();
       const minWithdrawal = Number(process.env.MIN_WITHDRAWAL || 100);
       if (!isFinite(amount) || amount < minWithdrawal) {
         throw new functions.https.HttpsError("invalid-argument",
-            minWithdrawMsg(lang, minWithdrawal, usdBrl));
+            minWithdrawMsg(lang, minWithdrawal, brlPerUsd));
       }
       const fee = Math.round(amount * 0.10 * 100) / 100;
       const netAmount = Math.round((amount - fee) * 100) / 100;
@@ -292,7 +320,12 @@ exports.requestCryptoWithdraw =
         const u = await tx.get(userRef);
         if (!u.exists) {
           throw new functions.https.HttpsError(
-              "not-found", "Usuário não encontrado");
+              "not-found", t(lang, "userNotFound"));
+        }
+        // Banido não saca (checado dentro da transação: atômico com o débito).
+        if (u.data().isBanned === true) {
+          throw new functions.https.HttpsError(
+              "permission-denied", t(lang, "banned"));
         }
         const balance = Number(u.data().balance || 0);
         if (balance < amount) {

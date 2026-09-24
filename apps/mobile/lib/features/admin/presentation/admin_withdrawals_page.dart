@@ -75,57 +75,123 @@ class _WithdrawalListState extends State<_WithdrawalList> {
     return doc.exists ? doc.data() : null;
   }
 
-  Future<void> _approve(
-      BuildContext context, String id, Map<String, dynamic> data) async {
+  // Saques com aprovação/rejeição em andamento (desabilita os botões do card).
+  // A transação do client não tem latency compensation: o card continua em
+  // "Pendentes" até o servidor confirmar — é a janela do duplo toque.
+  final Set<String> _busy = {};
+
+  void _setBusy(String id, bool busy) {
+    if (!mounted) return;
+    setState(() => busy ? _busy.add(id) : _busy.remove(id));
+  }
+
+  void _snack(BuildContext context, String msg) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  String _alreadyProcessedMsg(String status) =>
+      'Este saque já foi processado (status atual: $status). '
+      'Nada foi alterado.';
+
+  /// Aprova/rejeita dentro de uma transação que LÊ o saque antes de escrever:
+  /// só age se ainda estiver 'pending' e usa userId/amount do snapshot da
+  /// transação (não o map capturado pela UI). A leitura cria read-set, então
+  /// duas transações concorrentes no mesmo saque não commitam as duas.
+  /// Retorna null se aplicou, ou o status atual se o saque já foi processado.
+  Future<String?> _processPending(
+    String id,
+    void Function(Transaction tx, DocumentReference wRef, String userId,
+            double amount)
+        write,
+  ) async {
     final firestore = FirebaseFirestore.instance;
-    final userId = data['userId'] as String;
-    final amount = (data['amount'] ?? 0).toDouble();
+    final wRef = firestore.collection('withdrawals').doc(id);
+    String? skippedStatus;
+    await firestore.runTransaction((tx) async {
+      skippedStatus = null; // a transação pode ser re-executada
+      final w = await tx.get(wRef);
+      final d = w.data();
+      final status = d?['status'] as String? ?? 'inexistente';
+      final userId = d?['userId'] as String?;
+      if (!w.exists || status != 'pending' || userId == null) {
+        // Sem escrita: sai limpo (lançar dentro do handler vira erro
+        // genérico no web).
+        skippedStatus = status;
+        return;
+      }
+      final amount = (d?['amount'] as num? ?? 0).toDouble();
+      write(tx, wRef, userId, amount);
+    });
+    return skippedStatus;
+  }
+
+  Future<void> _approve(BuildContext context, String id) async {
+    if (_busy.contains(id)) return;
+    _setBusy(id, true);
     try {
-      await firestore.runTransaction((tx) async {
-        tx.update(firestore.collection('withdrawals').doc(id), {
+      final skipped = await _processPending(id, (tx, wRef, userId, amount) {
+        tx.update(wRef, {
           'status': 'approved',
           'approvedAt': FieldValue.serverTimestamp(),
           'approvedBy': FirebaseAuth.instance.currentUser?.uid,
         });
-        tx.update(firestore.collection('users').doc(userId), {
+        tx.update(FirebaseFirestore.instance.collection('users').doc(userId), {
           'lockedBalance': FieldValue.increment(-amount),
         });
       });
-      if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Saque aprovado')));
-      }
+      if (!context.mounted) return;
+      _snack(context,
+          skipped == null ? 'Saque aprovado' : _alreadyProcessedMsg(skipped));
     } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(e.toString())));
-      }
+      if (context.mounted) _snack(context, e.toString());
+    } finally {
+      _setBusy(id, false);
     }
   }
 
   Future<void> _reject(
       BuildContext context, String id, Map<String, dynamic> data) async {
-    final firestore = FirebaseFirestore.instance;
-    final userId = data['userId'] as String;
-    final amount = (data['amount'] ?? 0).toDouble();
+    if (_busy.contains(id)) return;
+    // Rejeitar devolve o valor ao saldo — confirma antes (o valor exibido é
+    // só informativo; o que vale é o lido dentro da transação).
+    final shown = (data['amount'] as num? ?? 0).toDouble();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rejeitar saque?'),
+        content: Text(
+            'O valor bruto de ${Fmt.brl(shown)} volta para os créditos do '
+            'usuário. Essa ação não pode ser desfeita.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Rejeitar'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted || _busy.contains(id)) return;
+    _setBusy(id, true);
     try {
-      await firestore.runTransaction((tx) async {
-        tx.update(firestore.collection('users').doc(userId), {
+      final skipped = await _processPending(id, (tx, wRef, userId, amount) {
+        tx.update(FirebaseFirestore.instance.collection('users').doc(userId), {
           'balance': FieldValue.increment(amount),
           'lockedBalance': FieldValue.increment(-amount),
         });
-        tx.update(
-            firestore.collection('withdrawals').doc(id), {'status': 'rejected'});
+        tx.update(wRef, {'status': 'rejected'});
       });
-      if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Saque rejeitado')));
-      }
+      if (!context.mounted) return;
+      _snack(context,
+          skipped == null ? 'Saque rejeitado' : _alreadyProcessedMsg(skipped));
     } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(e.toString())));
-      }
+      if (context.mounted) _snack(context, e.toString());
+    } finally {
+      _setBusy(id, false);
     }
   }
 
@@ -475,18 +541,29 @@ class _WithdrawalListState extends State<_WithdrawalList> {
                                   backgroundColor: Colors.green,
                                   foregroundColor: Colors.white,
                                 ),
-                                onPressed: () =>
-                                    _approve(context, doc.id, data),
+                                onPressed: _busy.contains(doc.id)
+                                    ? null
+                                    : () => _approve(context, doc.id),
                                 child: const Text('Aprovar'),
                               ),
                               const SizedBox(width: 10),
                               OutlinedButton(
                                 style: OutlinedButton.styleFrom(
                                     foregroundColor: Colors.red),
-                                onPressed: () =>
-                                    _reject(context, doc.id, data),
+                                onPressed: _busy.contains(doc.id)
+                                    ? null
+                                    : () => _reject(context, doc.id, data),
                                 child: const Text('Rejeitar'),
                               ),
+                              if (_busy.contains(doc.id)) ...[
+                                const SizedBox(width: 12),
+                                const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2),
+                                ),
+                              ],
                             ],
                           ),
                         if (widget.status == 'approved')

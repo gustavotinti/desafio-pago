@@ -76,6 +76,13 @@ async function _maybeScheduleInstagramPost(db, challengeId, oldAmount, newAmount
   }
   if (!enabled) return;
   if (oldAmount < threshold && newAmount >= threshold) {
+    // A conta do Instagram é BRASILEIRA (legenda PT, R$, marca Desafio
+    // Pago): só enfileira desafio do BR (region 'BR' ou ausente = legado).
+    // Desafio INTL (trialspaid) não vai para a conta BR. 1 leitura, só no
+    // cruzamento do threshold.
+    const ch = await db.collection("challenges").doc(challengeId).get();
+    const region = ch.exists ? (ch.data().region || "BR") : "BR";
+    if (region !== "BR") return;
     const postRef = db.collection("instagram_posts").doc(challengeId);
     const existing = await postRef.get();
     if (!existing.exists) {
@@ -101,6 +108,9 @@ exports.createChallenge = functions.https.onCall(async (data, context) => {
   console.log("createChallenge: invoked by userId:", userId, "data:", JSON.stringify(data));
 
   try {
+    // Banido não movimenta dinheiro (o bloqueio do app é só visual).
+    await _assertNotBanned(db, userId);
+
     const {title, description, amount, durationDays} = data;
 
     if (!title || !description || !amount || amount <= 0 ||
@@ -221,6 +231,7 @@ exports.addAmount = functions.https.onCall(async (data, context) => {
   }
 
   const db = admin.firestore();
+  await _assertNotBanned(db, userId);
   const challengeDoc = await db.collection("challenges").doc(challengeId).get();
 
   if (!challengeDoc.exists) {
@@ -268,8 +279,14 @@ exports.addAmount = functions.https.onCall(async (data, context) => {
     });
   });
 
-  await _maybeScheduleInstagramPost(
-      db, challengeId, challenge.amount, challenge.amount + value);
+  // O débito já foi feito: falha no agendamento do Instagram não pode virar
+  // erro na tela (o usuário aportaria de novo). Mesmo padrão do createChallenge.
+  try {
+    await _maybeScheduleInstagramPost(
+        db, challengeId, challenge.amount, challenge.amount + value);
+  } catch (igErr) {
+    console.error("Instagram scheduling failed (non-fatal):", igErr);
+  }
   return {success: true};
 });
 
@@ -292,6 +309,7 @@ exports.requestWithdraw = functions.https.onCall(async (data, context) => {
   }
 
   const db = admin.firestore();
+  await _assertNotBanned(db, userId);
   const userRef = db.collection("users").doc(userId);
   const withdrawalRef = db.collection("withdrawals").doc();
   const fee = withdrawalFee(amount);
@@ -479,9 +497,43 @@ exports.vote = functions.https.onCall(async (data, context) => {
   const voteRef = db.collection("votes").doc(voteId);
   const entryRef = db.collection("entries").doc(entryId);
   const challengeRef = db.collection("challenges").doc(challengeId);
-  const entryDoc = await entryRef.get();
 
+  let entryOwnerId = null;
+  let ownerExists = false;
   await db.runTransaction(async (tx) => {
+    // Leituras ANTES das escritas (exigência do Firestore).
+    // A participação tem que existir, ser DESTE desafio e estar ativa — vale
+    // também pro admin (senão dá pra empilhar votos de vários desafios numa
+    // única participação, já que o voteId é por desafio).
+    const entryDoc = await tx.get(entryRef);
+    if (!entryDoc.exists) {
+      throw new functions.https.HttpsError("not-found", "Participação não encontrada");
+    }
+    const entry = entryDoc.data();
+    if (entry.challengeId !== challengeId) {
+      throw new functions.https.HttpsError(
+          "invalid-argument", "Participação não pertence a este desafio");
+    }
+    if (entry.isActive === false) {
+      throw new functions.https.HttpsError(
+          "failed-precondition", "Participação indisponível");
+    }
+    if (!isAdmin) {
+      // Rechecagem dentro da transação (fecha a corrida de dois toques).
+      const voteDoc = await tx.get(voteRef);
+      if (voteDoc.exists) {
+        throw new functions.https.HttpsError("already-exists", "Você já votou neste desafio");
+      }
+    }
+    entryOwnerId = entry.userId || null;
+    // Dono sem doc em /users (conta excluída/demo): não incrementa (o update
+    // em doc inexistente derrubaria o voto inteiro).
+    ownerExists = false;
+    if (!isAdmin && entryOwnerId && entryOwnerId !== "deleted") {
+      const ownerDoc = await tx.get(db.collection("users").doc(entryOwnerId));
+      ownerExists = ownerDoc.exists;
+    }
+
     tx.set(voteRef, {
       userId, challengeId, entryId,
       ...(isAdmin ? {isAdminVote: true} : {}),
@@ -489,14 +541,13 @@ exports.vote = functions.https.onCall(async (data, context) => {
     });
     tx.update(entryRef, {voteCount: admin.firestore.FieldValue.increment(1)});
     tx.update(challengeRef, {voteCount: admin.firestore.FieldValue.increment(1)});
-    if (!isAdmin) {
-      const entryOwnerRef = db.collection("users").doc(entryDoc.data().userId);
+    if (!isAdmin && ownerExists) {
+      const entryOwnerRef = db.collection("users").doc(entryOwnerId);
       tx.update(entryOwnerRef, {totalVotesReceived: admin.firestore.FieldValue.increment(1)});
     }
   });
 
-  if (!isAdmin) {
-    const entryOwnerId = entryDoc.data().userId;
+  if (!isAdmin && ownerExists) {
     if (entryOwnerId !== userId) {
       await _sendNotification(
           db, entryOwnerId,
@@ -531,9 +582,11 @@ exports.finalizeChallenges = functions.pubsub
 
 // ─── AUTO-VOTOS EM PARTICIPAÇÕES DE USUÁRIOS REAIS (cron 3min) ───────────────
 // A cada 3 minutos, +1 voto em CADA participação de usuário REAL (não virtual,
-// não demo) em desafios ativos. Mantém os contadores consistentes: entry,
-// challenge e users.totalVotesReceived (o mirror espelha pro ranking) — o
-// trigger syncChallengeTopEntries atualiza as prévias do feed sozinho.
+// não demo) em desafios ativos. Lê só as entries dos desafios ativos (blocos
+// de 30) e filtra virtual/demo antes de ler /users. Mantém os contadores
+// consistentes: entry, challenge e users.totalVotesReceived (o mirror espelha
+// pro ranking) — o trigger syncChallengeTopEntries atualiza as prévias do
+// feed sozinho.
 // Kill-switch: config/engagement.autoVotes == false desliga.
 exports.autoVoteRealEntries = functions.pubsub
     .schedule("every 3 minutes")
@@ -546,15 +599,28 @@ exports.autoVoteRealEntries = functions.pubsub
       const challSnap = await db.collection("challenges")
           .where("status", "==", "active").get();
       if (challSnap.empty) return null;
-      const activeIds = new Set(challSnap.docs.map((d) => d.id));
+      const activeIds = challSnap.docs.map((d) => d.id);
 
-      // Participações ativas de desafios ativos (filtro em memória —
-      // conjunto pequeno; evita índice composto).
-      const entriesSnap = await db.collection("entries")
-          .where("isActive", "==", true).get();
-      const candidates = entriesSnap.docs.filter((d) => {
+      // CUSTO: só as participações dos desafios ATIVOS — em blocos de 30
+      // (limite do "in"). challengeId in + isActive == são duas igualdades:
+      // o Firestore resolve com os índices de campo único (sem índice
+      // composto). Antes varria TODAS as entries ativas da base, inclusive
+      // as de desafios já encerrados, a cada 3 minutos.
+      const chunks = [];
+      for (let i = 0; i < activeIds.length; i += 30) {
+        chunks.push(activeIds.slice(i, i + 30));
+      }
+      const snaps = await Promise.all(chunks.map((ids) =>
+        db.collection("entries")
+            .where("challengeId", "in", ids)
+            .where("isActive", "==", true)
+            .get()));
+      // Descarta virtuais/demo EM MEMÓRIA, antes do getAll de /users (os
+      // seeds gravam isVirtual: true na própria entry) — o getAll fica só
+      // com os poucos autores que podem ser reais.
+      const candidates = snaps.flatMap((s) => s.docs).filter((d) => {
         const e = d.data();
-        return activeIds.has(e.challengeId) && e.isDemo !== true &&
+        return e.isVirtual !== true && e.isDemo !== true &&
             e.userId && !String(e.userId).startsWith("demo_");
       });
       if (candidates.length === 0) return null;
@@ -609,6 +675,22 @@ async function finalizeChallenge(db, challengeDoc) {
       .get();
   const entries = entriesSnapshot.docs.map((d) => ({id: d.id, ...d.data()}));
 
+  // Elegibilidade ao prêmio: participação de conta excluída ('deleted'),
+  // demo, ou cujo dono não tem doc em /users NÃO concorre — é tratada como
+  // retirada (senão o tx.update no /users inexistente aborta a transação e o
+  // desafio nunca encerra). maxVotes/empate saem SÓ das elegíveis.
+  const shaped = entries.filter((e) => e.userId &&
+      e.userId !== "deleted" && e.isDemo !== true &&
+      !String(e.userId).startsWith("demo_"));
+  const ownerIds = [...new Set(shaped.map((e) => e.userId))];
+  const existingOwners = new Set();
+  for (let i = 0; i < ownerIds.length; i += 300) {
+    const docs = await db.getAll(...ownerIds.slice(i, i + 300)
+        .map((id) => db.collection("users").doc(id)));
+    docs.filter((d) => d.exists).forEach((d) => existingOwners.add(d.id));
+  }
+  const eligible = shaped.filter((e) => existingOwners.has(e.userId));
+
   let winnersToNotify = [];
   let prizePerWinner = 0;
   let challengeTitle = "";
@@ -616,6 +698,7 @@ async function finalizeChallenge(db, challengeDoc) {
   // Transação idempotente: só finaliza se ainda estiver ativo (evita pagar
   // o prêmio em dobro se o cron sobrepuser ou o admin encerrar junto).
   await db.runTransaction(async (tx) => {
+    winnersToNotify = []; // a transação pode reexecutar
     const cDoc = await tx.get(challengeRef);
     if (!cDoc.exists || cDoc.data().status !== "active") return;
     const challenge = cDoc.data();
@@ -623,15 +706,32 @@ async function finalizeChallenge(db, challengeDoc) {
     const prizeAmount = challenge.amount || 0;
     const creatorContribution = challenge.creatorContribution || 0;
 
-    if (creatorContribution > 0) {
-      tx.update(db.collection("users").doc(challenge.createdBy), {
+    // entries já vem ordenado por voteCount desc.
+    const maxVotes = eligible.length > 0 ? (eligible[0].voteCount || 0) : 0;
+    const winners = maxVotes > 0 ?
+      eligible.filter((e) => (e.voteCount || 0) === maxVotes) : [];
+
+    // Todas as leituras ANTES das escritas: relê os vencedores (e o criador)
+    // — se algum /users sumiu no meio (corrida rara), não é pago.
+    const creatorRef = creatorContribution > 0 && challenge.createdBy ?
+      db.collection("users").doc(challenge.createdBy) : null;
+    const readUids = new Set(winners.map((w) => w.userId));
+    if (creatorRef) readUids.add(creatorRef.id);
+    const readRefs = [...readUids].map((id) => db.collection("users").doc(id));
+    const readDocs = readRefs.length > 0 ? await tx.getAll(...readRefs) : [];
+    const aliveUids = new Set(
+        readDocs.filter((d) => d.exists).map((d) => d.id));
+
+    if (creatorRef && aliveUids.has(creatorRef.id)) {
+      tx.update(creatorRef, {
         pendingBalance:
             admin.firestore.FieldValue.increment(-creatorContribution),
       });
     }
 
-    const maxVotes = entries.length > 0 ? entries[0].voteCount : 0;
-    if (entries.length === 0 || maxVotes === 0) {
+    if (winners.length === 0) {
+      // Ninguém elegível (sem participações, sem votos, ou só retiradas):
+      // encerra normalmente e o prêmio fica retido na plataforma.
       tx.update(challengeRef, {
         status: "finished",
         winnerIds: [],
@@ -640,10 +740,12 @@ async function finalizeChallenge(db, challengeDoc) {
       return;
     }
 
-    const winners = entries.filter((e) => e.voteCount === maxVotes);
-    const winnerIds = winners.map((e) => e.userId);
+    // Denominador = todos os empatados elegíveis; se algum sumiu no meio da
+    // transação, a cota dele fica na plataforma (como o centavo indivisível).
+    const payable = winners.filter((w) => aliveUids.has(w.userId));
+    const winnerIds = payable.map((e) => e.userId);
     const prizeCents = Math.round(prizeAmount * 100);
-    const {perWinnerCents} = splitPrizeCents(prizeCents, winnerIds.length);
+    const {perWinnerCents} = splitPrizeCents(prizeCents, winners.length);
     prizePerWinner = perWinnerCents / 100;
 
     tx.update(challengeRef, {
@@ -652,7 +754,7 @@ async function finalizeChallenge(db, challengeDoc) {
       finishedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    for (const winner of winners) {
+    for (const winner of payable) {
       tx.update(db.collection("users").doc(winner.userId), {
         balance: admin.firestore.FieldValue.increment(prizePerWinner),
         totalEarned: admin.firestore.FieldValue.increment(prizePerWinner),
@@ -666,7 +768,7 @@ async function finalizeChallenge(db, challengeDoc) {
         createdAt: new Date().toISOString(),
       });
     }
-    winnersToNotify = winners;
+    winnersToNotify = payable;
   });
 
   if (winnersToNotify.length > 0) {
@@ -693,6 +795,7 @@ exports.createPixPayment = functions.https.onCall(async (data, context) => {
   const userId = context.auth.uid;
 
   const db = admin.firestore();
+  await _assertNotBanned(db, userId);
 
   let txAmount;
   let description;
@@ -1356,10 +1459,26 @@ exports.acceptTerms = functions.https.onCall(async (data, context) => {
   }
 
   const uid = context.auth.uid;
-  const phoneDigits = String(data.phone || "").replace(/\D/g, "");
-  if (phoneDigits.length < 10 || phoneDigits.length > 11) {
-    throw new functions.https.HttpsError(
-        "invalid-argument", "Telefone inválido (informe com DDD)");
+  const payload = data || {};
+  const phoneDigits = String(payload.phone || "").replace(/\D/g, "");
+  // O app manda {region, lang}. BR (ou region ausente = app antigo): DDD
+  // brasileiro, 10-11 dígitos. INTL (trialspaid): 7-15 dígitos (E.164), a
+  // mesma faixa que o terms_page.dart valida no intl.
+  const intl = payload.region === "INTL";
+  const en = payload.lang === "en";
+  const phoneOk = intl ?
+    phoneDigits.length >= 7 && phoneDigits.length <= 15 :
+    phoneDigits.length >= 10 && phoneDigits.length <= 11;
+  if (!phoneOk) {
+    let msg = "Telefone inválido (informe com DDD)";
+    if (intl) {
+      msg = en ?
+        "Invalid phone number (7 to 15 digits, with country code)" :
+        "Telefone inválido (7 a 15 dígitos, com código do país)";
+    } else if (en) {
+      msg = "Invalid phone number (10 or 11 digits, with area code)";
+    }
+    throw new functions.https.HttpsError("invalid-argument", msg);
   }
 
   const db = admin.firestore();
@@ -2114,34 +2233,113 @@ exports.deleteAccount = functions.https.onCall(async (data, context) => {
   const db = admin.firestore();
   const userDoc = await db.collection("users").doc(userId).get();
   const userData = userDoc.data() || {};
+  // Contrato (app novo): {forfeitBalance: true, lang} só depois que o usuário
+  // confirmou que perde o saldo. App antigo não manda nada → pede confirmação.
+  const en = data?.lang === "en";
+  const forfeitBalance = data?.forfeitBalance === true;
 
   if ((userData.pendingBalance || 0) > 0) {
     throw new functions.https.HttpsError(
         "failed-precondition",
-        "Você tem créditos em desafios ativos. Aguarde o encerramento antes de excluir a conta.",
+        en ?
+          "You have credits in active challenges. Wait until they end before deleting your account." :
+          "Você tem créditos em desafios ativos. Aguarde o encerramento antes de excluir a conta.",
     );
   }
   if ((userData.lockedBalance || 0) > 0) {
     throw new functions.https.HttpsError(
         "failed-precondition",
-        "Você tem um saque pendente. Aguarde a conclusão antes de excluir a conta.",
+        en ?
+          "You have a pending withdrawal. Wait until it completes before deleting your account." :
+          "Você tem um saque pendente. Aguarde a conclusão antes de excluir a conta.",
+    );
+  }
+  // Saldo NÃO bloqueia a exclusão (LGPD: direito de excluir; abaixo de R$100
+  // nem dá pra sacar) — só exige confirmação explícita de que ele é perdido.
+  const balance = Number(userData.balance || 0);
+  if (balance > 0 && !forfeitBalance) {
+    throw new functions.https.HttpsError(
+        "failed-precondition",
+        en ?
+          "You still have credits in your balance. Deleting your account forfeits them — confirm to continue." :
+          `Você ainda tem R$${balance.toFixed(2)} em créditos. Ao excluir a conta, ` +
+          "esse saldo será perdido — confirme para continuar.",
+        {reason: "balance", balance},
     );
   }
 
-  // Anonymiza entries para preservar integridade dos desafios
+  // Escritas em lotes (limite de 500 operações por batch).
+  const ops = [];
+  const commitOps = async (list) => {
+    for (let i = 0; i < list.length; i += 400) {
+      const batch = db.batch();
+      list.slice(i, i + 400).forEach((op) => op(batch));
+      await batch.commit();
+    }
+  };
+
+  // Anonymiza entries para preservar integridade dos desafios. As de desafios
+  // AINDA ATIVOS saem da disputa (isActive:false); as de encerrados ficam
+  // ativas para o histórico.
   const entries = await db.collection("entries").where("userId", "==", userId).get();
-  const batch = db.batch();
-  entries.docs.forEach((d) => batch.update(d.ref, {userId: "deleted", contentText: "[removido]"}));
+  const challengeIds = [...new Set(entries.docs
+      .map((d) => d.data().challengeId).filter(Boolean))];
+  const activeChallenges = new Set();
+  for (let i = 0; i < challengeIds.length; i += 300) {
+    const docs = await db.getAll(...challengeIds.slice(i, i + 300)
+        .map((id) => db.collection("challenges").doc(id)));
+    docs.filter((d) => d.exists && d.data().status === "active")
+        .forEach((d) => activeChallenges.add(d.id));
+  }
+  entries.docs.forEach((d) => {
+    const patch = {userId: "deleted", contentText: "[removido]"};
+    if (activeChallenges.has(d.data().challengeId)) patch.isActive = false;
+    ops.push((b) => b.update(d.ref, patch));
+  });
 
   // Remove follows
   const following = await db.collection("follows").where("followerId", "==", userId).get();
   const followers = await db.collection("follows").where("followedId", "==", userId).get();
-  following.docs.forEach((d) => batch.delete(d.ref));
-  followers.docs.forEach((d) => batch.delete(d.ref));
+  following.docs.forEach((d) => ops.push((b) => b.delete(d.ref)));
+  followers.docs.forEach((d) => ops.push((b) => b.delete(d.ref)));
+  await commitOps(ops);
+
+  // Notificações in-app (subcoleção — o delete do doc pai não a apaga).
+  const notifRef = db.collection("users").doc(userId).collection("notifications");
+  for (;;) {
+    const page = await notifRef.limit(400).get();
+    if (page.empty) break;
+    await commitOps(page.docs.map((d) => (b) => b.delete(d.ref)));
+    if (page.size < 400) break;
+  }
+
+  // Último lote: PII da verificação (CPF/telefone), @username liberado (se
+  // ainda for deste uid), log do saldo perdido e o doc do usuário.
+  const last = [];
+  last.push((b) => b.delete(db.collection("verificationRequests").doc(userId)));
+  const uname = String(userData.username || "").trim();
+  for (const handle of new Set([uname, uname.toLowerCase()].filter(Boolean))) {
+    const uRef = db.collection("usernames").doc(handle);
+    const uDoc = await uRef.get();
+    if (uDoc.exists && uDoc.data().uid === userId) {
+      last.push((b) => b.delete(uRef));
+    }
+  }
+  if (balance > 0) {
+    const at = new Date().toISOString();
+    last.push((b) => b.set(db.collection("audit_logs").doc(), {
+      type: "account_deleted_forfeit",
+      action: "account_deleted_forfeit",
+      userId,
+      amount: balance,
+      at,
+      createdAt: at,
+    }));
+  }
 
   // Deleta documento do usuário
-  batch.delete(db.collection("users").doc(userId));
-  await batch.commit();
+  last.push((b) => b.delete(db.collection("users").doc(userId)));
+  await commitOps(last);
 
   // Deleta conta no Firebase Auth
   await admin.auth().deleteUser(userId);
@@ -4432,81 +4630,79 @@ exports.diagCounts = functions.https.onRequest(async (req, res) => {
 
 // ─── PRÉVIA DE LINK (Open Graph) PARA COMPARTILHAMENTO ────────────────────────
 
-let _indexCache = null;
-const _getIndexHtml = async () => {
-  if (_indexCache) return _indexCache;
-  const r = await fetch("https://desafiopago.web.app/index.html");
-  _indexCache = await r.text();
-  return _indexCache;
+// Host-aware: /challenges/** existe nos dois targets (desafiopago e
+// trialspaid). Cache do index.html POR SITE (senão a 1ª requisição
+// "envenena" a instância com o HTML do outro domínio), com validade de 30min
+// para pegar deploys novos; se o fetch falhar, segue com a última cópia boa.
+// Lógica pura (host → site, reescrita do <head>) em site_ctx.js.
+const siteCtx = require("./site_ctx");
+const _INDEX_TTL_MS = 30 * 60 * 1000;
+const _indexCache = {}; // {br|intl: {html, at}}
+const _getIndexHtml = async (site) => {
+  const hit = _indexCache[site.key];
+  if (hit && Date.now() - hit.at < _INDEX_TTL_MS) return hit.html;
+  try {
+    const r = await fetch(site.indexUrl);
+    const html = r.ok ? await r.text() : "";
+    if (siteCtx.isAppShell(html)) {
+      _indexCache[site.key] = {html, at: Date.now()};
+      return html;
+    }
+  } catch (e) {
+    console.error("entryPreview: falha ao buscar index.html:", e.message);
+  }
+  if (hit) return hit.html; // expirado, mas melhor que nada
+  throw new Error(`index.html indisponível (${site.key})`);
 };
 
 exports.entryPreview = functions.https.onRequest(async (req, res) => {
+  const site = siteCtx.siteForRequest(req);
+  const parts = (req.path || "").split("/").filter(Boolean);
+  const challengeId = parts.length > 1 ? parts[1] : "";
+  const entryId = req.query.entry ? String(req.query.entry) : "";
   try {
     const db = admin.firestore();
-    const parts = (req.path || "").split("/").filter(Boolean);
-    const challengeId = parts.length > 1 ? parts[1] : "";
-    const entryId = req.query.entry ? String(req.query.entry) : "";
 
-    const esc = (s) => String(s == null ? "" : s)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;");
-
-    let title = "Desafio Pago";
-    let desc = "Participe de desafios e vote nas melhores participações!";
-    const image = "https://desafiopago.web.app/og-default.png";
-
+    let found = false;
+    let challengeTitle = "";
+    let author = "";
     if (challengeId) {
       const cDoc = await db.collection("challenges").doc(challengeId).get();
       if (cDoc.exists) {
-        const chTitle = cDoc.data().title || "um desafio";
-        let author = "";
+        found = true;
+        challengeTitle = cDoc.data().title || "";
         if (entryId) {
           const eDoc = await db.collection("entries").doc(entryId).get();
-          if (eDoc.exists) {
+          // Só a participação DESTE desafio dá nome à prévia.
+          if (eDoc.exists && eDoc.data().userId &&
+              eDoc.data().challengeId === challengeId) {
             const pp = await db.collection("publicProfiles")
                 .doc(eDoc.data().userId).get();
             author = pp.exists ? (pp.data().name || "") : "";
           }
         }
-        if (entryId && author) {
-          title = `${author} quer o seu voto! 🗳️`;
-          desc = `Participação no desafio "${chTitle}". ` +
-              "Toque e vote no Desafio Pago.";
-        } else if (entryId) {
-          title = "Vote nesta participação! 🗳️";
-          desc = `Desafio "${chTitle}" no Desafio Pago. Toque e vote.`;
-        } else {
-          title = chTitle;
-          desc = "Participe e vote no Desafio Pago!";
-        }
       }
     }
 
-    let url = `https://desafiopago.com.br/challenges/${challengeId}`;
-    if (entryId) url += `?entry=${encodeURIComponent(entryId)}`;
-
-    const og = "\n" +
-      `<meta property="og:type" content="website">\n` +
-      `<meta property="og:site_name" content="Desafio Pago">\n` +
-      `<meta property="og:title" content="${esc(title)}">\n` +
-      `<meta property="og:description" content="${esc(desc)}">\n` +
-      `<meta property="og:image" content="${image}">\n` +
-      `<meta property="og:image:width" content="1200">\n` +
-      `<meta property="og:image:height" content="630">\n` +
-      `<meta property="og:url" content="${esc(url)}">\n` +
-      `<meta name="twitter:card" content="summary_large_image">\n` +
-      `<meta name="twitter:title" content="${esc(title)}">\n` +
-      `<meta name="twitter:description" content="${esc(desc)}">\n` +
-      `<meta name="twitter:image" content="${image}">\n`;
-
-    let html = await _getIndexHtml();
-    html = html.replace("</head>", `${og}</head>`);
+    const meta = siteCtx.previewMeta(site,
+        {challengeId, found, challengeTitle, entryId, author});
+    // Cópia local reescrita — o cache nunca é alterado.
+    const html = siteCtx.rewriteHead(await _getIndexHtml(site), meta);
     res.set("Cache-Control", "public, max-age=600, s-maxage=600");
-    return res.status(200).send(html);
+    // Desafio inexistente: 404 (+ noindex) com o app normal no corpo — o
+    // humano vê a tela do app; o Google não indexa nem manda para a home.
+    return res.status(found ? 200 : 404).send(html);
   } catch (e) {
-    return res.redirect("https://desafiopago.web.app/");
+    // Erro transitório: 503 + Retry-After (o Google tenta de novo sem mexer
+    // no índice — antes era um redirect para a home = soft 404). Se houver
+    // index.html em cache, o humano recebe o app normal (a rota
+    // /challenges/{id} é resolvida no cliente).
+    console.error("entryPreview:", e.message);
+    res.set("Cache-Control", "no-store");
+    res.set("Retry-After", "120");
+    const hit = _indexCache[site.key];
+    return res.status(503).send(hit ?
+      hit.html : siteCtx.unavailableHtml(site));
   }
 });
 

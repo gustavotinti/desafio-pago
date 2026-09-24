@@ -63,4 +63,22 @@ class Fmt {
   /// Converte USD digitado pelo usuário para o ledger (BRL interno).
   static double usdToBrl(num usd) =>
       usdPerBrl > 0 ? usd / usdPerBrl : usd * 5.5;
+
+  /// Valor digitado num campo de moeda → número (aceita vírgula decimal,
+  /// "10,50" = 10.5). Inválido/vazio (inclui "NaN"/"Infinity") → 0.
+  static double parseTyped(String text) {
+    final v = double.tryParse(text.trim().replaceAll(',', '.'));
+    return (v == null || !v.isFinite) ? 0 : v;
+  }
+
+  /// Valor digitado → BRL do ledger. No BR o usuário digita R$; no intl
+  /// digita US$ e convertemos aqui — ponto único usado por criar desafio e
+  /// aporte. A conversão é arredondada ao centavo (o ledger não guarda
+  /// frações de centavo). [intl] só existe para os testes (padrão:
+  /// AppConfig.intl).
+  static double typedToBrl(String text, {bool? intl}) {
+    final typed = parseTyped(text);
+    if (!(intl ?? AppConfig.intl)) return typed;
+    return (usdToBrl(typed) * 100).roundToDouble() / 100;
+  }
 }

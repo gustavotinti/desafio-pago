@@ -24,6 +24,7 @@ import '../../../core/i18n/i18n.dart';
 import '../../../core/i18n/language_selector.dart';
 import '../../../core/i18n/region_banner.dart';
 import '../../../core/utils/format.dart';
+import '../../../core/utils/friendly_error.dart';
 import '../../../core/widgets/web_frame.dart';
 import 'auth_guard.dart';
 
@@ -38,7 +39,8 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  int _reloadTick = 0;
+  // Acesso ao State do feed para atualizá-lo sem recriar (mantém a rolagem).
+  final _feedKey = GlobalKey<_FeedTabState>();
 
   final String? _currentUserId =
       FirebaseAuth.instance.currentUser?.uid;
@@ -66,9 +68,10 @@ class _HomePageState extends State<HomePage> {
     if (mounted) setState(() => _isAdmin = doc.exists);
   }
 
-  // Recarrega o feed do início (recria o _FeedTab pela key).
+  // Atualiza o feed no lugar (sem spinner e sem voltar ao topo) — chamado ao
+  // voltar de um desafio, criar, participar, aportar ou editar como admin.
   void _reload() {
-    setState(() => _reloadTick++);
+    _feedKey.currentState?.refreshKeepingPosition();
   }
 
   @override
@@ -113,7 +116,7 @@ class _HomePageState extends State<HomePage> {
           const ActivityTicker(),
           Expanded(
             child: _FeedTab(
-              key: ValueKey(_reloadTick),
+              key: _feedKey,
               currentUserId: _currentUserId,
               isAdmin: _isAdmin,
               isSuperAdmin: _isSuperAdmin,
@@ -125,7 +128,7 @@ class _HomePageState extends State<HomePage> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
           if (!await ensureLoggedIn(context,
-              message: 'Entre para criar um desafio')) {
+              message: I18n.tr('create_login'))) {
             return;
           }
           if (!context.mounted) return;
@@ -151,7 +154,7 @@ Future<void> _showAddAmountDialog(
   VoidCallback onSuccess,
 ) async {
   if (!await ensureLoggedIn(context,
-      message: 'Entre para aumentar o prêmio')) {
+      message: I18n.tr('add_prize_login'))) {
     return;
   }
   if (!context.mounted) return;
@@ -161,24 +164,26 @@ Future<void> _showAddAmountDialog(
     builder: (ctx) => AlertDialog(
       shape:
           RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      title: const Text('Aumentar prêmio'),
+      title: Text(I18n.tr('add_prize_title')),
       content: TextField(
         controller: controller,
         keyboardType:
             const TextInputType.numberWithOptions(decimal: true),
         autofocus: true,
-        decoration: const InputDecoration(
-          labelText: 'Valor a adicionar (R\$)',
+        decoration: InputDecoration(
+          // BR digita em R$; intl digita em US$ (convertido p/ o ledger).
+          prefixText: AppConfig.intl ? '\$ ' : 'R\$ ',
+          labelText: I18n.tr('add_prize_label'),
         ),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(ctx, false),
-          child: const Text('Cancelar'),
+          child: Text(I18n.tr('cancel')),
         ),
         FilledButton(
           onPressed: () => Navigator.pop(ctx, true),
-          child: const Text('Confirmar'),
+          child: Text(I18n.tr('confirm')),
         ),
       ],
     ),
@@ -186,27 +191,31 @@ Future<void> _showAddAmountDialog(
 
   if (confirmed != true || !context.mounted) return;
 
-  final value = double.tryParse(controller.text.trim()) ?? 0;
-  if (value <= 0) {
+  // Valor SEMPRE em BRL (ledger) — no intl converte o US$ digitado, igual ao
+  // criar desafio. Aceita vírgula decimal ("10,50").
+  final amountBrl = Fmt.typedToBrl(controller.text);
+  if (amountBrl <= 0) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Valor inválido')),
+      SnackBar(content: Text(I18n.tr('invalid_value'))),
     );
     return;
   }
 
   try {
-    await AddAmountRepository().addAmount(challenge.id, value);
+    await AddAmountRepository().addAmount(challenge.id, amountBrl);
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('${Fmt.brl(value)} adicionados ao prêmio!'),
+        // Fmt.brl recebe o valor do ledger (no intl exibe em US$).
+        content: Text(
+            I18n.trp('add_prize_done', {'v': Fmt.brl(amountBrl)})),
       ),
     );
     onSuccess();
   } catch (e) {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(e.toString())));
+        .showSnackBar(SnackBar(content: Text(friendlyError(e))));
   }
 }
 
@@ -232,12 +241,17 @@ class _FeedTab extends StatefulWidget {
 
 class _FeedTabState extends State<_FeedTab> {
   static const _pageSize = 12;
+  // Máximo relido de uma vez ao atualizar no lugar (5 páginas); o que estiver
+  // carregado além disso é mantido como está.
+  static const _refreshCap = _pageSize * 5;
   final _scroll = ScrollController();
   final List<Challenge> _items = [];
   // Ids fixados como "novo" — filtrados das páginas normais pra não duplicar.
   Set<String> _pinnedIds = {};
   DocumentSnapshot<Map<String, dynamic>>? _cursor;
   bool _initialLoading = true;
+  // Atualização silenciosa em andamento (não troca a lista por spinner).
+  bool _refreshing = false;
   bool _loadingMore = false;
   bool _hasMore = true;
   // Rodapé "alta demanda" — ligado por padrão; admin controla em config/feed.
@@ -311,8 +325,60 @@ class _FeedTabState extends State<_FeedTab> {
     }
   }
 
+  /// Atualiza o feed SEM spinner e sem perder a rolagem: relê numa query só
+  /// a mesma janela já carregada (até [_refreshCap]) e substitui `_items` no
+  /// lugar, com a ListView montada (mesmo ScrollController). Usado ao voltar
+  /// de um desafio/criar/participar/aportar — votos, prévias e prêmios
+  /// atualizam sem o usuário perder o lugar.
+  Future<void> refreshKeepingPosition() async {
+    if (_initialLoading || _refreshing) return;
+    // Nada na tela a preservar (erro/vazio): recarga normal.
+    if (_error != null || _items.isEmpty) return _loadFirst();
+    _refreshing = true;
+    try {
+      final loadedRest =
+          _items.where((c) => !_pinnedIds.contains(c.id)).toList();
+      final window = loadedRest.length.clamp(_pageSize, _refreshCap);
+      final pinnedFuture = GetChallenges().pinnedActive();
+      final pageFuture = GetChallenges()
+          .page(status: ChallengeStatus.active, limit: window);
+      final pinned = await pinnedFuture;
+      final (items, cursor) = await pageFuture;
+      if (!mounted) return;
+      final pinnedIds = pinned.map((c) => c.id).toSet();
+      final fresh =
+          items.where((c) => !pinnedIds.contains(c.id)).toList();
+      // Além da janela relida: mantém o que já estava carregado (sem duplicar)
+      // e o cursor da última página, pra paginação continuar de onde parou.
+      final keepTail = loadedRest.length > window;
+      final seen = {...pinnedIds, ...fresh.map((c) => c.id)};
+      final tail = keepTail
+          ? loadedRest
+              .skip(window)
+              .where((c) => !seen.contains(c.id))
+              .toList()
+          : const <Challenge>[];
+      setState(() {
+        _pinnedIds = pinnedIds;
+        _items
+          ..clear()
+          ..addAll(pinned) // fixados sempre no topo
+          ..addAll(fresh)
+          ..addAll(tail);
+        if (!keepTail) {
+          _cursor = cursor;
+          _hasMore = items.length == window;
+        }
+      });
+    } catch (_) {
+      // Falhou a atualização silenciosa: mantém a lista atual na tela.
+    } finally {
+      _refreshing = false;
+    }
+  }
+
   Future<void> _loadMore() async {
-    if (_loadingMore || !_hasMore || _cursor == null) return;
+    if (_loadingMore || _refreshing || !_hasMore || _cursor == null) return;
     setState(() => _loadingMore = true);
     try {
       final (items, cursor) = await GetChallenges().page(
@@ -321,8 +387,12 @@ class _FeedTabState extends State<_FeedTab> {
         limit: _pageSize,
       );
       if (!mounted) return;
-      final rest =
-          items.where((c) => !_pinnedIds.contains(c.id)).toList();
+      // Sem duplicar o que já está na tela (a ordem por prêmio pode mudar
+      // entre uma atualização no lugar e a próxima página).
+      final have = _items.map((c) => c.id).toSet();
+      final rest = items
+          .where((c) => !_pinnedIds.contains(c.id) && !have.contains(c.id))
+          .toList();
       setState(() {
         _items.addAll(rest);
         _cursor = cursor ?? _cursor;
@@ -348,7 +418,8 @@ class _FeedTabState extends State<_FeedTab> {
       return const Center(child: CircularProgressIndicator());
     }
     if (_error != null) {
-      return Center(child: Text('Erro: $_error'));
+      return Center(
+          child: Text('${I18n.tr('terms_error')}: ${friendlyError(_error!)}'));
     }
     if (_items.isEmpty) {
       return RefreshIndicator(
