@@ -175,3 +175,36 @@ test("web/index.html real: sai com 1 de cada tag após a reescrita", () => {
   }
   assert.ok(out.includes("application/ld+json"));
 });
+
+test("vídeo por link: prévia com a capa vertical e VideoObject seguro", () => {
+  const video = {
+    thumbUrl: "https://i.ytimg.com/vi/il_MMI2MOYM/oar2.jpg",
+    name: "Pôr do sol </script><b>x</b>",
+    uploadDate: "2026-10-21T10:00:00.000Z",
+    embedUrl: "https://www.youtube-nocookie.com/embed/il_MMI2MOYM",
+  };
+  const m = previewMeta(SITES.br, {challengeId: "c1", found: true,
+    challengeTitle: "Sol", entryId: "e1", author: "Ana", video});
+  assert.strictEqual(m.image, video.thumbUrl);
+  assert.strictEqual(m.imageW, 1080);
+  assert.strictEqual(m.imageH, 1920);
+  const html = rewriteHead(BASE, m);
+  assert.ok(html.includes("\"@type\":\"VideoObject\""));
+  assert.ok(html.includes("content=\"1920\""));
+  // O título do vídeo não pode fechar o <script> do JSON-LD.
+  assert.ok(!html.includes("</script><b>"));
+  const ld = JSON.parse(html.match(
+      /<script type="application\/ld\+json">(\{"@context[^<]*VideoObject[^<]*)<\/script>/)[1]);
+  assert.strictEqual(ld.name, video.name);
+  assert.strictEqual(ld.embedUrl, video.embedUrl);
+});
+
+test("vídeo sem capa (Instagram) ou sem entry: prévia padrão, sem VideoObject", () => {
+  const ig = previewMeta(SITES.br, {challengeId: "c1", found: true,
+    entryId: "e1", author: "Ana", video: {thumbUrl: null}});
+  assert.ok(ig.image.endsWith("/og-default.png"));
+  assert.strictEqual(ig.videoLd, null);
+  const noEntry = previewMeta(SITES.br, {challengeId: "c1", found: true,
+    video: {thumbUrl: "https://i.ytimg.com/vi/x/oar2.jpg"}});
+  assert.strictEqual(noEntry.videoLd, null);
+});

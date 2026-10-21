@@ -11,6 +11,15 @@ class Entry {
   final bool isActive;
   final DateTime createdAt;
 
+  // Vídeo por link (só quando contentType == videoLink).
+  final String? videoProvider; // 'youtube' | 'instagram'
+  final String? videoEmbed;
+  final String? videoThumb;
+
+  /// 'verified' | 'pending' (Instagram, aguardando o admin) | 'rejected' |
+  /// 'unavailable' (sumiu/ficou privado antes do encerramento).
+  final String? videoCheck;
+
   Entry({
     required this.id,
     required this.challengeId,
@@ -21,5 +30,11 @@ class Entry {
     required this.createdAt,
     this.contentUrl,
     this.contentText,
+    this.videoProvider,
+    this.videoEmbed,
+    this.videoThumb,
+    this.videoCheck,
   });
+
+  bool get isVideoLink => contentType == ContentType.videoLink;
 }

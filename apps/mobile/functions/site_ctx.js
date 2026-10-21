@@ -73,7 +73,7 @@ const esc = (s) => String(s == null ? "" : s)
 // compartilhada ser a da participação ("{autor} quer o seu voto").
 const previewMeta = (site, {
   challengeId = "", found = false, challengeTitle = "", entryId = "",
-  author = "",
+  author = "", video = null,
 } = {}) => {
   const t = site.t;
   const chTitle = challengeTitle || t.someChallenge;
@@ -96,13 +96,30 @@ const previewMeta = (site, {
     `${site.site}/`;
   let ogUrl = canonical;
   if (found && entryId) ogUrl += `?entry=${encodeURIComponent(entryId)}`;
+  // Participação em vídeo por link (YouTube): a prévia usa a capa vertical
+  // do próprio vídeo e o Google recebe um VideoObject (chance de aparecer na
+  // aba "Vídeos"). Sem capa (Instagram), fica a imagem padrão do site.
+  const hasVideo = !!(found && entryId && video && video.thumbUrl);
+  const videoLd = hasVideo ? JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "VideoObject",
+    "name": video.name || title,
+    "description": desc,
+    "thumbnailUrl": [video.thumbUrl],
+    "uploadDate": video.uploadDate || undefined,
+    "embedUrl": video.embedUrl || undefined,
+    "url": ogUrl,
+  }).replace(/</g, "\\u003c") : null; // nunca fecha o <script> por engano
   return {
     title,
     desc,
     htmlTitle: found ? `${chTitle} · ${site.brand}` : site.brand,
     canonical,
     ogUrl,
-    image: `${site.site}/og-default.png`,
+    image: hasVideo ? video.thumbUrl : `${site.site}/og-default.png`,
+    imageW: hasVideo ? 1080 : 1200,
+    imageH: hasVideo ? 1920 : 630,
+    videoLd,
     siteName: site.brand,
     locale: site.locale,
     // Desafio inexistente: não indexar (e sem canonical para a home).
@@ -137,13 +154,15 @@ const headTags = (m) => "\n" +
   `<meta property="og:title" content="${esc(m.title)}">\n` +
   `<meta property="og:description" content="${esc(m.desc)}">\n` +
   `<meta property="og:image" content="${esc(m.image)}">\n` +
-  `<meta property="og:image:width" content="1200">\n` +
-  `<meta property="og:image:height" content="630">\n` +
+  `<meta property="og:image:width" content="${m.imageW || 1200}">\n` +
+  `<meta property="og:image:height" content="${m.imageH || 630}">\n` +
   `<meta property="og:url" content="${esc(m.ogUrl)}">\n` +
   `<meta name="twitter:card" content="summary_large_image">\n` +
   `<meta name="twitter:title" content="${esc(m.title)}">\n` +
   `<meta name="twitter:description" content="${esc(m.desc)}">\n` +
-  `<meta name="twitter:image" content="${esc(m.image)}">\n`;
+  `<meta name="twitter:image" content="${esc(m.image)}">\n` +
+  (m.videoLd ?
+    `<script type="application/ld+json">${m.videoLd}</script>\n` : "");
 
 // Devolve uma NOVA string (strings são imutáveis — o cache do index.html
 // nunca é alterado). Replacement por função: título com "$&"/"$1" entra

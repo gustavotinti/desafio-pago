@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/widgets/safe_avatar.dart';
 import '../../../core/widgets/safe_image.dart';
+import '../../../core/widgets/video_link_view.dart';
 import '../../../core/widgets/web_frame.dart';
 
 final _functions = FirebaseFunctions.instanceFor(region: 'us-central1');
@@ -161,6 +162,9 @@ class _ReportCardState extends State<_ReportCard> {
       contentType: e['contentType'] as String? ?? 'image',
       contentUrl: e['contentUrl'] as String?,
       contentText: e['contentText'] as String?,
+      videoProvider: e['videoProvider'] as String?,
+      videoThumb: e['videoThumb'] as String?,
+      videoEmbed: e['videoEmbed'] as String?,
       authorName: author?['name'] as String? ?? '—',
       authorUsername: author?['username'] as String? ?? '',
       authorPhoto: author?['photoUrl'] as String?,
@@ -298,7 +302,33 @@ class _ReportCardState extends State<_ReportCard> {
                   ),
                   const SizedBox(height: 10),
                   // Conteúdo denunciado
-                  if (info.contentType == 'image' && info.contentUrl != null)
+                  if (info.contentType == 'videoLink' &&
+                      info.videoEmbed != null)
+                    // Vídeo por link: capa + player oficial (com legenda no
+                    // Instagram) — o admin assiste antes de decidir.
+                    Center(
+                      child: SizedBox(
+                        width: 140,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: AspectRatio(
+                            aspectRatio: 9 / 16,
+                            child: VideoLinkCover(
+                              provider: info.videoProvider ?? 'youtube',
+                              thumbUrl: info.videoThumb,
+                              onTap: () => showVideoLinkPlayer(context,
+                                  provider: info.videoProvider ?? 'youtube',
+                                  embedUrl: info.videoProvider == 'instagram'
+                                      ? '${info.videoEmbed}captioned/'
+                                      : info.videoEmbed!,
+                                  url: info.contentUrl ?? ''),
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                  else if (info.contentType == 'image' &&
+                      info.contentUrl != null)
                     ClipRRect(
                       borderRadius: BorderRadius.circular(10),
                       child: ConstrainedBox(
@@ -403,6 +433,9 @@ class _EntryInfo {
   final String contentType;
   final String? contentUrl;
   final String? contentText;
+  final String? videoProvider;
+  final String? videoThumb;
+  final String? videoEmbed;
   final String authorName;
   final String authorUsername;
   final String? authorPhoto;
@@ -413,6 +446,9 @@ class _EntryInfo {
     required this.contentType,
     required this.contentUrl,
     required this.contentText,
+    this.videoProvider,
+    this.videoThumb,
+    this.videoEmbed,
     required this.authorName,
     required this.authorUsername,
     required this.authorPhoto,

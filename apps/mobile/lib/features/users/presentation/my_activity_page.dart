@@ -196,6 +196,7 @@ class _EntriesTab extends StatelessWidget {
         ContentType.text => Icons.notes,
         ContentType.image => Icons.image_outlined,
         ContentType.video => Icons.videocam_outlined,
+        ContentType.videoLink => Icons.smart_display_outlined,
       };
 
   @override
@@ -210,8 +211,11 @@ class _EntriesTab extends StatelessWidget {
       itemBuilder: (_, i) {
         final e = entries[i];
         final c = byId[e.challengeId];
-        final hasImage =
-            e.contentType == ContentType.image && (e.contentUrl ?? '').isNotEmpty;
+        // Miniatura: a imagem enviada, ou a capa do vídeo por link (YouTube).
+        final thumb = e.contentType == ContentType.image
+            ? e.contentUrl
+            : (e.isVideoLink ? e.videoThumb : null);
+        final hasImage = (thumb ?? '').isNotEmpty;
         return Card(
           margin: EdgeInsets.zero,
           child: ListTile(
@@ -224,7 +228,7 @@ class _EntriesTab extends StatelessWidget {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: hasImage
-                    ? SafeImage(url: e.contentUrl!)
+                    ? SafeImage(url: thumb!)
                     : Container(
                         color: const Color(0xFFEDF1F8),
                         child: Icon(_icon(e.contentType),

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/i18n.dart';
 import '../../../core/widgets/safe_image.dart';
+import '../../../core/widgets/video_link_view.dart';
 import 'auto_video.dart';
 
 /// Faixa com as 3 participações mais votadas de um desafio, em 4:5.
@@ -37,11 +39,11 @@ class EntryPreviewStrip extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.only(bottom: 6),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
             child: Text(
-              'Mais votados',
-              style: TextStyle(
+              I18n.tr('preview_top'),
+              style: const TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
                   color: Colors.black45),
@@ -70,6 +72,14 @@ class _Tile extends StatelessWidget {
       child = SafeImage(url: url);
     } else if (type == 'video' && url != null && url.isNotEmpty) {
       child = AutoVideo(url: url, hoverToPlay: true);
+    } else if (type == 'videoLink') {
+      // Vídeo por link: só a capa (o toque no card abre o desafio, onde o
+      // player oficial carrega).
+      child = VideoLinkCover(
+        provider: data['videoProvider'] as String? ?? 'youtube',
+        thumbUrl: data['videoThumb'] as String?,
+        compact: true,
+      );
     } else {
       child = Container(
         color: const Color(0xFFEDF1F8),
@@ -110,7 +120,7 @@ class _RankBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const medals = [Color(0xFFF5B301), Color(0xFF9AA7B4), Color(0xFFC07A33)];
-    const labels = ['Vencendo', '2º', '3º'];
+    final labels = [I18n.tr('preview_winning'), '2º', '3º'];
     if (rank < 0 || rank > 2) return const SizedBox.shrink();
     final color = medals[rank];
     return Container(

@@ -55,6 +55,10 @@ class GetEntries {
       voteCount: data['voteCount'] ?? 0,
       isActive: data['isActive'] ?? true,
       createdAt: DateTime.parse(data['createdAt']),
+      videoProvider: data['videoProvider'] as String?,
+      videoEmbed: data['videoEmbed'] as String?,
+      videoThumb: data['videoThumb'] as String?,
+      videoCheck: data['videoCheck'] as String?,
     );
   }
 }

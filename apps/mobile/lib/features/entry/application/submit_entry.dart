@@ -8,16 +8,18 @@ class SubmitEntry {
 
   SubmitEntry(this._repository);
 
-  Future<void> call({
+  Future<String?> call({
     required String challengeId,
     required ContentType contentType,
     String? contentText,
     XFile? contentFile,
+    String? videoUrl,
   }) =>
       _repository.submitEntry(
         challengeId: challengeId,
         contentType: contentType,
         contentText: contentText,
         contentFile: contentFile,
+        videoUrl: videoUrl,
       );
 }

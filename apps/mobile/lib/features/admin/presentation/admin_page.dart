@@ -15,6 +15,7 @@ import 'admin_seo_page.dart';
 import 'admin_keys_page.dart';
 import 'admin_reports_page.dart';
 import 'admin_instagram_page.dart';
+import 'admin_videos_page.dart';
 
 const _superAdminEmail = 'gustavo.a.tinti3@gmail.com';
 
@@ -33,6 +34,7 @@ class _AdminPageState extends State<AdminPage> {
   int? _pendingWithdrawals;
   int? _pendingVerifications;
   int? _pendingReports;
+  int? _pendingVideos;
   double? _prizePool;
 
   @override
@@ -59,6 +61,7 @@ class _AdminPageState extends State<AdminPage> {
           .collection('verificationRequests')
           .where('status', isEqualTo: 'pending')),
       count(db.collection('reports').where('status', isEqualTo: 'pending')),
+      count(db.collection('entries').where('videoCheck', isEqualTo: 'pending')),
     ]);
     double? prize;
     try {
@@ -76,6 +79,7 @@ class _AdminPageState extends State<AdminPage> {
       _pendingWithdrawals = results[1];
       _pendingVerifications = results[2];
       _pendingReports = results[3];
+      _pendingVideos = results[4];
       _prizePool = prize;
     });
   }
@@ -169,6 +173,14 @@ class _AdminPageState extends State<AdminPage> {
                         gradient: const [Color(0xFFC62828), Color(0xFFEF5350)],
                         badge: _pendingBadge(_pendingReports),
                         page: const AdminReportsPage(),
+                      ),
+                      card(
+                        icon: Icons.smart_display_rounded,
+                        title: 'Vídeos para verificar',
+                        subtitle: 'Reels do Instagram: conferir o código na legenda',
+                        gradient: const [Color(0xFF833AB4), Color(0xFFE1306C)],
+                        badge: _pendingBadge(_pendingVideos),
+                        page: const AdminVideosPage(),
                       ),
                     ],
                   ),

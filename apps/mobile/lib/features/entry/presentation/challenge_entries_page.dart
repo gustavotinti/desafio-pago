@@ -13,6 +13,7 @@ import '../../../core/utils/format.dart';
 import '../../../core/utils/friendly_error.dart';
 import '../../../core/widgets/safe_avatar.dart';
 import '../../../core/widgets/safe_image.dart';
+import '../../../core/widgets/video_link_view.dart';
 import '../../../core/widgets/web_frame.dart';
 import '../../auth/presentation/auth_guard.dart';
 import '../../challenge/domain/entities/challenge.dart';
@@ -905,7 +906,7 @@ class _EntryCard extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 8),
-            _buildContent(),
+            _buildContent(context),
             const SizedBox(height: 8),
             Row(
               children: [
@@ -959,7 +960,7 @@ class _EntryCard extends StatelessWidget {
     );
   }
 
-  Widget _buildContent() {
+  Widget _buildContent(BuildContext context) {
     switch (entry.contentType) {
       case ContentType.text:
         return Text(entry.contentText ?? '');
@@ -989,6 +990,55 @@ class _EntryCard extends StatelessWidget {
                 aspectRatio: 4 / 5,
                 child: AutoVideo(url: entry.contentUrl!),
               ),
+            ),
+          ),
+        );
+      case ContentType.videoLink:
+        final url = entry.contentUrl;
+        final embed = entry.videoEmbed;
+        if (url == null || embed == null) return const SizedBox.shrink();
+        final provider = entry.videoProvider ?? 'youtube';
+        final unavailable = entry.videoCheck == 'unavailable';
+        // Capa 9:16 — o player oficial só carrega ao tocar (diálogo).
+        return Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 300),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: AspectRatio(
+                    aspectRatio: 9 / 16,
+                    child: VideoLinkCover(
+                      provider: provider,
+                      thumbUrl: entry.videoThumb,
+                      onTap: unavailable
+                          ? null
+                          : () => showVideoLinkPlayer(context,
+                              provider: provider, embedUrl: embed, url: url),
+                    ),
+                  ),
+                ),
+                if (entry.videoCheck == 'pending' || unavailable)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Chip(
+                      visualDensity: VisualDensity.compact,
+                      avatar: Icon(
+                          unavailable
+                              ? Icons.videocam_off_outlined
+                              : Icons.hourglass_top,
+                          size: 16),
+                      label: Text(
+                        I18n.tr(unavailable
+                            ? 'video_unavailable'
+                            : 'video_pending'),
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         );

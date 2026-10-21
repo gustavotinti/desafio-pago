@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../core/config/app_config.dart';
 import '../../../core/i18n/i18n.dart';
 import '../../../core/utils/friendly_error.dart';
 import '../../entry/domain/entities/content_type.dart';
@@ -12,17 +13,23 @@ class EntryRepository {
       FirebaseFunctions.instanceFor(region: 'us-central1');
   final _storage = FirebaseStorage.instance;
 
-  Future<void> submitEntry({
+  /// Envia a participação. Para [ContentType.videoLink], [videoUrl] é o link
+  /// colado (YouTube Shorts / Reels) — nada é enviado ao Storage. Devolve o
+  /// estado da verificação do vídeo ('verified' | 'pending') ou null.
+  Future<String?> submitEntry({
     required String challengeId,
     required ContentType contentType,
     String? contentText,
     XFile? contentFile,
+    String? videoUrl,
   }) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) throw Exception(I18n.tr('not_logged_in'));
 
-    String? contentUrl;
-    if (contentFile != null && contentType != ContentType.text) {
+    String? contentUrl = contentType == ContentType.videoLink ? videoUrl : null;
+    if (contentFile != null &&
+        contentType != ContentType.text &&
+        contentType != ContentType.videoLink) {
       // ── Limite de tamanho ANTES de ler os bytes ───────────────────────────
       // Imagem: 10 MB  |  Vídeo: 50 MB
       const maxImageBytes = 10 * 1024 * 1024;
@@ -50,12 +57,16 @@ class EntryRepository {
     }
 
     try {
-      await _functions.httpsCallable('submitEntry').call({
+      final res = await _functions.httpsCallable('submitEntry').call({
         'challengeId': challengeId,
         'contentType': contentType.name,
         'contentText': ?contentText,
         'contentUrl': ?contentUrl,
+        // Mensagens do servidor no idioma do site (a function antiga ignora).
+        'lang': AppConfig.intl ? 'en' : 'pt',
       });
+      final data = res.data;
+      return data is Map ? data['videoCheck'] as String? : null;
     } on FirebaseFunctionsException catch (e) {
       throw AppException.fromFunctions(e, 'Erro ao submeter participação');
     }

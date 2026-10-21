@@ -62,19 +62,43 @@ outros participam com conteúdo (texto/imagem/vídeo), e o mais votado vence o p
 - Retry automático em falha
 - Status: pending | posted | failed
 
-## Estado atual (v3.8.0 — setembro/2026)
+## Estado atual (v3.9.0 — outubro/2026)
 No ar: https://desafiopago.com.br (e https://desafiopago.web.app)
 **Internacional: https://trialspaid.web.app** (mesmo projeto/DB)
 Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
 
-> 🚨 **Desde ~07/09/2026 o projeto está SEM faturamento (Blaze off):** functions
-> em 503, Storage em 402. Só o dono religa. A v3.8.0 está no repo e **não foi
-> deployada**. O passo a passo do dono e a ordem de deploy estão em
-> [`PENDENCIAS.md`](PENDENCIAS.md). Antes de qualquer deploy, confira
+> ⚠️ **v3.8.0 + v3.9.0 estão no repo e NÃO foram deployadas.** O faturamento
+> (Blaze) caiu em 07/09 e voltou em 28/09/2026. O deploy em produção é
+> **bloqueado pelo modo automático do Claude Code** até o dono liberar (ou ele
+> mesmo roda). Os comandos estão em [`PENDENCIAS.md`](PENDENCIAS.md), item 3.
+> Antes de deployar, confira se o faturamento está ativo com
 > `curl -s -o /dev/null -w "%{http_code}" https://desafiopago.com.br/sitemap.xml`
-> (503 = ainda sem billing). Não deploye peças soltas: app novo e functions
+> (503 = sem faturamento). Não deploye peças soltas: o app novo e as functions
 > antigas precisam ser compatíveis. Ordem: functions → rules/storage →
 > `node build_sites.js` → hosting.
+
+### 🎬 Vídeo por link (v3.9.0 — out/2026, aguardando deploy)
+- Participação em vídeo **sem custo de nuvem**: o participante cola um link de
+  **YouTube Shorts** ou **Reels do Instagram**; o vídeo fica hospedado lá e o
+  app mostra a CAPA (feed/lista) e o **player oficial em iframe** só ao tocar
+  (`core/widgets/video_link_view.dart` + `embed_iframe_web.dart`).
+- `contentType: 'videoLink'` (o 'video' .mp4 legado segue para os seeds).
+  Campos na entry: `videoProvider`, `videoId`, `videoEmbed`, `videoThumb`
+  (YouTube `oar2.jpg` = capa vertical 1080×1920), `videoTitle`, `videoCode`,
+  `videoCheck` (`verified` | `pending` | `rejected` | `unavailable`).
+  `contentText` = o link (fallback: o app antigo em cache mostra como texto).
+- **Código obrigatório** `DPxxxxx` por usuário+desafio
+  (`functions/video_link.js` ≡ `lib/core/utils/video_link.dart`, mesmos
+  vetores de teste). **YouTube: verificado sozinho no envio** via oEmbed
+  público (sem chave): título contém o código, vertical (Short responde
+  113×200) e público/incorporável. **Instagram: entra `pending`** → Admin →
+  "Vídeos para verificar" (embed com legenda) → `adminReviewVideoEntry`.
+- Só vídeo `verified` concorre ao prêmio. No encerramento, YouTube que sumiu ou
+  ficou privado vira `unavailable` e sai da disputa (falha de rede NÃO
+  desclassifica). Moderação por IA: título + capa.
+- Só vertical (regra do app). `submitEntry` agora aceita só `image` (URL do
+  NOSSO Storage em `entries/{challengeId}/{uid}_…`) e `videoLink`, e recebe
+  `lang`. Prévia de link usa a capa do vídeo + JSON-LD `VideoObject`.
 
 ### 🔧 Hardening (v3.8.0 — auditoria de 24/09, aguardando deploy)
 - **Dinheiro:** `vote` valida entry∈desafio e ativa (inclusive admin);
@@ -116,7 +140,7 @@ Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
   permissão Storage→Firestore).
 - **Build:** `node build_sites.js` gera BR (`build/web`) e intl (`build/web_intl`,
   rebrand + asserções). Substitui o sed manual.
-- Testes: 59 JS + 16 Dart. `functions/test/money_flows.test.js` roda o
+- Testes: 78 JS + 24 Dart (inclui vídeo por link e widget do player). `functions/test/money_flows.test.js` roda o
   `index.js` REAL sobre um Firestore em memória (`functions/test_support/
   fakefire.js`: update em doc inexistente falha, leitura depois de escrita
   na transação falha) — cobre voto, encerramento, exclusão de conta,

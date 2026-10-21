@@ -250,3 +250,154 @@ test("auto-votos: desafio com prazo vencido não recebe +1", async () => {
   assert.strictEqual(F.read("entries/e1").voteCount, 1);
   assert.strictEqual(F.read("entries/e2").voteCount, 0);
 });
+
+// ── VÍDEO POR LINK ────────────────────────────────────────────────────────
+const {verificationCode} = require("../video_link");
+
+// oEmbed falso: id → resposta. Sem entrada = 404.
+const withOembed = async (map, fn) => {
+  const orig = global.fetch;
+  global.fetch = async (url) => {
+    const id = decodeURIComponent(String(url)).match(/v=([A-Za-z0-9_-]{11})/);
+    const r = id && map[id[1]];
+    if (!r) return {status: 404, ok: false, json: async () => ({})};
+    if (r.status) return {status: r.status, ok: false, json: async () => ({})};
+    return {status: 200, ok: true, json: async () => r};
+  };
+  try {
+    return await fn();
+  } finally {
+    global.fetch = orig;
+  }
+};
+const YT = "il_MMI2MOYM";
+const YT2 = "wXSbAW0B2FQ";
+const submit = (uid, url, chId = "c1") => fx.submitEntry(
+    {challengeId: chId, contentType: "videoLink", contentUrl: url}, ctx(uid));
+
+test("vídeo YouTube: código no título + vertical → verificado na hora", async () => {
+  user("creator"); user("ana");
+  challenge("c1");
+  const code = verificationCode("ana", "c1");
+  const r = await withOembed({[YT]: {title: `Meu sol #${code}`, width: 113, height: 200}},
+      () => submit("ana", `https://youtube.com/shorts/${YT}?si=x`));
+  assert.strictEqual(r.videoCheck, "verified");
+  const e = F.read(`entries/${r.entryId}`);
+  assert.strictEqual(e.contentType, "videoLink");
+  assert.strictEqual(e.contentUrl, `https://www.youtube.com/shorts/${YT}`);
+  assert.strictEqual(e.contentText, e.contentUrl, "fallback do app antigo");
+  assert.strictEqual(e.videoThumb, `https://i.ytimg.com/vi/${YT}/oar2.jpg`);
+  assert.strictEqual(F.read("challenges/c1").entryCount, 1);
+});
+
+test("vídeo YouTube: sem código, horizontal, privado e inexistente são recusados", async () => {
+  user("creator"); user("ana");
+  challenge("c1");
+  const expected = verificationCode("ana", "c1");
+  const map = {
+    [YT]: {title: "sem código", width: 113, height: 200},
+    [YT2]: {title: `#${expected}`, width: 200, height: 113},
+    AAAAAAAAAAA: {status: 401},
+  };
+  await withOembed(map, async () => {
+    let err;
+    try {
+      await submit("ana", `youtu.be/${YT}`);
+    } catch (e) {
+      err = e;
+    }
+    assert.strictEqual(err.code, "failed-precondition");
+    assert.deepStrictEqual(err.details, {reason: "code", code: expected});
+    assert.strictEqual(await code(submit("ana", `youtu.be/${YT2}`)), "invalid-argument");
+    assert.strictEqual(await code(submit("ana", "youtu.be/AAAAAAAAAAA")), "failed-precondition");
+    assert.strictEqual(await code(submit("ana", "youtu.be/BBBBBBBBBBB")), "invalid-argument");
+    assert.strictEqual(await code(submit("ana", "https://vimeo.com/1")), "invalid-argument");
+  });
+  assert.strictEqual(F.read("challenges/c1").entryCount, 0);
+});
+
+test("vídeo: o mesmo vídeo não entra 2x no mesmo desafio", async () => {
+  user("creator"); user("ana"); user("bob");
+  challenge("c1");
+  F.put("entries/x", {challengeId: "c1", userId: "ana", contentType: "videoLink",
+    videoId: YT, isActive: true, voteCount: 0});
+  assert.strictEqual(await code(submit("bob", `youtu.be/${YT}`)), "already-exists");
+});
+
+test("vídeo Instagram: entra como 'pending' (admin confere a legenda)", async () => {
+  user("creator"); user("ana");
+  challenge("c1");
+  const r = await submit("ana", "https://www.instagram.com/reel/DAz1J3gNVgI/?igsh=1");
+  assert.strictEqual(r.videoCheck, "pending");
+  assert.strictEqual(F.read(`entries/${r.entryId}`).videoCode, verificationCode("ana", "c1"));
+});
+
+test("imagem: só aceita arquivo do nosso Storage, do próprio usuário e desafio", async () => {
+  user("creator"); user("ana");
+  challenge("c1");
+  const img = (url) => fx.submitEntry(
+      {challengeId: "c1", contentType: "image", contentUrl: url}, ctx("ana"));
+  assert.strictEqual(await code(img("https://evil.com/x.jpg")), "invalid-argument");
+  const base = "https://firebasestorage.googleapis.com/v0/b/desafio-app-b8665." +
+      "firebasestorage.app/o/";
+  assert.strictEqual(await code(img(base + "entries%2Fc1%2Fbob_1.jpg?alt=media")),
+      "invalid-argument", "arquivo de outro usuário");
+  assert.strictEqual(await code(img(base + "entries%2Fc1%2Fana_1.jpg?alt=media&token=t")), "ok");
+});
+
+test("encerramento: vídeo pendente não ganha; vídeo que sumiu sai da disputa", async () => {
+  user("creator", {pendingBalance: 10}); user("ana"); user("bob"); user("cris");
+  challenge("c1", {expiresAt: iso(-60 * 1000), amount: 10});
+  entry("eIg", "c1", "ana", 9, {contentType: "videoLink", videoProvider: "instagram",
+    videoId: "DAz1J3gNVgI", videoCheck: "pending"});
+  entry("eYtGone", "c1", "bob", 7, {contentType: "videoLink", videoProvider: "youtube",
+    videoId: YT2, videoCheck: "verified"});
+  entry("eImg", "c1", "cris", 2);
+  await withOembed({}, () => fx.finalizeChallenges()); // YT2 → 404
+  assert.deepStrictEqual(F.read("challenges/c1").winnerIds, ["cris"]);
+  assert.strictEqual(F.read("users/cris").balance, 10);
+  assert.strictEqual(F.read("entries/eYtGone").videoCheck, "unavailable");
+});
+
+test("encerramento: falha de rede NÃO desclassifica o vídeo verificado", async () => {
+  user("creator", {pendingBalance: 10}); user("bob"); user("cris");
+  challenge("c1", {expiresAt: iso(-60 * 1000), amount: 10});
+  entry("eYt", "c1", "bob", 7, {contentType: "videoLink", videoProvider: "youtube",
+    videoId: YT, videoCheck: "verified"});
+  entry("eImg", "c1", "cris", 2);
+  const orig = global.fetch;
+  global.fetch = async () => {
+    throw new Error("rede caiu");
+  };
+  try {
+    await fx.finalizeChallenges();
+  } finally {
+    global.fetch = orig;
+  }
+  assert.deepStrictEqual(F.read("challenges/c1").winnerIds, ["bob"]);
+});
+
+test("admin aprova o vídeo do Instagram → passa a concorrer; recusar oculta", async () => {
+  user("creator", {pendingBalance: 10}); user("ana"); user("bob"); user("adm");
+  F.put("admins/adm", {});
+  challenge("c1", {expiresAt: iso(-60 * 1000), amount: 10});
+  entry("eIg", "c1", "ana", 9, {contentType: "videoLink", videoProvider: "instagram",
+    videoCheck: "pending", videoCode: "DPX"});
+  entry("eIg2", "c1", "bob", 5, {contentType: "videoLink", videoProvider: "instagram",
+    videoCheck: "pending", videoCode: "DPY"});
+  assert.strictEqual(await code(fx.adminReviewVideoEntry({entryId: "eIg", approve: true},
+      ctx("ana"))), "permission-denied");
+  await fx.adminReviewVideoEntry({entryId: "eIg", approve: true}, ctx("adm"));
+  await fx.adminReviewVideoEntry({entryId: "eIg2", approve: false}, ctx("adm"));
+  assert.strictEqual(F.read("entries/eIg").videoCheck, "verified");
+  assert.strictEqual(F.read("entries/eIg2").isActive, false);
+  await fx.finalizeChallenges();
+  assert.deepStrictEqual(F.read("challenges/c1").winnerIds, ["ana"]);
+});
+
+test("vídeo pendente pode receber voto (só não ganha sem verificação)", async () => {
+  user("creator"); user("ana"); user("bob");
+  challenge("c1");
+  entry("eIg", "c1", "ana", 0, {contentType: "videoLink", videoCheck: "pending"});
+  assert.strictEqual(await code(fx.vote({challengeId: "c1", entryId: "eIg"}, ctx("bob"))), "ok");
+});

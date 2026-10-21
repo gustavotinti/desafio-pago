@@ -932,5 +932,106 @@ class I18n {
     'add_prize_done': ['{v} adicionados ao prêmio!', '{v} added to the prize!',
       '¡{v} añadidos al premio!', '{v} ajoutés au prix !',
       '{v} aggiunti al premio!', '{v} zum Preis hinzugefügt!'],
+
+    // Prévia do feed (top 3)
+    'preview_top': ['Mais votados', 'Most voted', 'Más votados',
+      'Les plus votés', 'I più votati', 'Meiste Stimmen'],
+    'preview_winning': ['Vencendo', 'Winning', 'Ganando', 'En tête',
+      'In testa', 'Vorne'],
+
+    // Vídeo por link (YouTube Shorts / Reels do Instagram)
+    'entry_kind_image': ['Imagem', 'Image', 'Imagen', 'Image', 'Immagine',
+      'Bild'],
+    'entry_kind_video': ['Vídeo (link)', 'Video (link)', 'Video (enlace)',
+      'Vidéo (lien)', 'Video (link)', 'Video (Link)'],
+    'video_rules_title': ['Como participar com vídeo:',
+      'How to enter with a video:', 'Cómo participar con video:',
+      'Comment participer avec une vidéo :', 'Come partecipare con un video:',
+      'So machst du mit einem Video mit:'],
+    'video_rule_vertical': [
+      'Vídeo VERTICAL: Shorts do YouTube ou Reels do Instagram',
+      'VERTICAL video: YouTube Shorts or Instagram Reels',
+      'Video VERTICAL: Shorts de YouTube o Reels de Instagram',
+      'Vidéo VERTICALE : YouTube Shorts ou Reels Instagram',
+      'Video VERTICALE: YouTube Shorts o Reels di Instagram',
+      'HOCHKANT-Video: YouTube Shorts oder Instagram Reels'],
+    'video_rule_public': ['O vídeo precisa estar PÚBLICO',
+      'The video must be PUBLIC', 'El video debe ser PÚBLICO',
+      'La vidéo doit être PUBLIQUE', 'Il video deve essere PUBBLICO',
+      'Das Video muss ÖFFENTLICH sein'],
+    'video_rule_code': [
+      'Coloque o código abaixo no TÍTULO (YouTube) ou na LEGENDA (Instagram)',
+      'Put the code below in the TITLE (YouTube) or CAPTION (Instagram)',
+      'Pon el código de abajo en el TÍTULO (YouTube) o la DESCRIPCIÓN '
+          '(Instagram)',
+      'Mettez le code ci-dessous dans le TITRE (YouTube) ou la LÉGENDE '
+          '(Instagram)',
+      'Metti il codice qui sotto nel TITOLO (YouTube) o nella DIDASCALIA '
+          '(Instagram)',
+      'Setze den Code unten in den TITEL (YouTube) oder die '
+          'BILDUNTERSCHRIFT (Instagram)'],
+    'video_rule_why': [
+      'O código prova que o vídeo é seu. Ele vale só para este desafio.',
+      'The code proves the video is yours. It only works for this challenge.',
+      'El código demuestra que el video es tuyo. Solo vale para este reto.',
+      'Le code prouve que la vidéo est à vous. Il ne vaut que pour ce défi.',
+      'Il codice dimostra che il video è tuo. Vale solo per questa sfida.',
+      'Der Code beweist, dass das Video dir gehört. Er gilt nur für diese '
+          'Challenge.'],
+    'video_your_code': ['Seu código', 'Your code', 'Tu código', 'Votre code',
+      'Il tuo codice', 'Dein Code'],
+    'video_code_copied': ['Código copiado!', 'Code copied!', '¡Código copiado!',
+      'Code copié !', 'Codice copiato!', 'Code kopiert!'],
+    'video_link_label': ['Link do vídeo', 'Video link', 'Enlace del video',
+      'Lien de la vidéo', 'Link del video', 'Video-Link'],
+    'video_link_invalid': [
+      'Link não reconhecido. Use um Shorts do YouTube ou um Reels do '
+          'Instagram.',
+      'Link not recognized. Use a YouTube Shorts or an Instagram Reels link.',
+      'Enlace no reconocido. Usa un Shorts de YouTube o un Reels de '
+          'Instagram.',
+      'Lien non reconnu. Utilisez un YouTube Shorts ou un Reels Instagram.',
+      'Link non riconosciuto. Usa uno YouTube Shorts o un Reels di Instagram.',
+      'Link nicht erkannt. Nutze einen YouTube-Short oder ein Instagram-Reel.'],
+    'video_detected_youtube': ['YouTube reconhecido', 'YouTube link detected',
+      'Enlace de YouTube reconocido', 'Lien YouTube reconnu',
+      'Link YouTube riconosciuto', 'YouTube-Link erkannt'],
+    'video_detected_instagram': ['Instagram reconhecido',
+      'Instagram link detected', 'Enlace de Instagram reconocido',
+      'Lien Instagram reconnu', 'Link Instagram riconosciuto',
+      'Instagram-Link erkannt'],
+    'video_ig_review_note': [
+      'Vídeos do Instagram são conferidos pela equipe antes de concorrer ao '
+          'prêmio.',
+      'Instagram videos are checked by our team before competing for the '
+          'prize.',
+      'Los videos de Instagram los revisa el equipo antes de competir por el '
+          'premio.',
+      "Les vidéos Instagram sont vérifiées par l'équipe avant de concourir "
+          'pour le prix.',
+      'I video di Instagram vengono controllati dal team prima di concorrere '
+          'al premio.',
+      'Instagram-Videos werden vom Team geprüft, bevor sie um den Preis '
+          'antreten.'],
+    'video_sent_pending': [
+      'Enviado! A equipe vai conferir o código na legenda do seu vídeo.',
+      'Sent! Our team will check the code in your video caption.',
+      '¡Enviado! El equipo revisará el código en la descripción de tu video.',
+      "Envoyé ! L'équipe vérifiera le code dans la légende de votre vidéo.",
+      'Inviato! Il team controllerà il codice nella didascalia del tuo video.',
+      'Gesendet! Das Team prüft den Code in deiner Bildunterschrift.'],
+    'video_pending': ['Aguardando verificação', 'Awaiting verification',
+      'Pendiente de verificación', 'En attente de vérification',
+      'In attesa di verifica', 'Wartet auf Prüfung'],
+    'video_unavailable': ['Vídeo indisponível', 'Video unavailable',
+      'Video no disponible', 'Vidéo indisponible', 'Video non disponibile',
+      'Video nicht verfügbar'],
+    'video_open_youtube': ['Abrir no YouTube', 'Open on YouTube',
+      'Abrir en YouTube', 'Ouvrir sur YouTube', 'Apri su YouTube',
+      'Auf YouTube öffnen'],
+    'video_open_instagram': ['Abrir no Instagram', 'Open on Instagram',
+      'Abrir en Instagram', 'Ouvrir sur Instagram', 'Apri su Instagram',
+      'Auf Instagram öffnen'],
+    'close': ['Fechar', 'Close', 'Cerrar', 'Fermer', 'Chiudi', 'Schließen'],
   };
 }

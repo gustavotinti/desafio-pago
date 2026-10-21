@@ -1,17 +1,18 @@
 # Pendências do Desafio Pago / TrialsPaid — o que só você pode fazer
 
-> Atualizado em **24/09/2026**. Cada item tem o **porquê**, o **passo a passo** e o
-> que **eu faço depois**. A ordem importa: o item 1 destrava todo o resto.
+> Atualizado em **21/10/2026**. Cada item tem o **porquê**, o **passo a passo** e o
+> que **eu faço depois**.
 >
-> 🔴 urgente · 🟡 importante · 🟢 quando puder
+> 🔴 urgente · 🟡 importante · 🟢 quando puder · ✅ feito
 
 ## Resumo em 30 segundos
 
 | # | O quê | Tempo | Prioridade |
 |---|---|---|---|
-| 1 | Religar o faturamento (Blaze) do Firebase | 5 min | 🔴 **tudo depende disso** |
+| 1 | ~~Religar o faturamento (Blaze)~~ — **resolvido em 28/09** | — | ✅ |
 | 2 | Criar alerta de orçamento (para não ser pego de surpresa de novo) | 2 min | 🔴 |
-| 3 | Me avisar "billing ok" → **eu** faço deploy + Search Console por API | 1 min | 🔴 |
+| 3 | **Publicar a v3.8.0 + vídeo por link** (o deploy precisa da sua liberação) | 10 min | 🔴 |
+| 3b | Testar o vídeo por link (YouTube e Instagram) | 10 min | 🟡 |
 | 4 | Colar a chave do Gemini (grátis) no painel | 3 min | 🟡 |
 | 5 | Conferir o Search Console + importar no Bing | 3 min | 🟡 |
 | 6 | Criar o app Live do PayPal e colar as chaves (depósitos do TrialsPaid) | 15 min | 🟡 |
@@ -22,7 +23,11 @@
 
 ---
 
-## 1. 🔴 Religar o faturamento (plano Blaze) — 5 min
+## 1. ✅ Religar o faturamento (plano Blaze) — resolvido em 28/09/2026
+
+Mantido abaixo só como registro do que aconteceu.
+
+### (registro) Religar o faturamento — 5 min
 
 **Por quê.** Desde **07/09/2026** o projeto `desafio-app-b8665` está **sem conta de
 faturamento** (`billingEnabled: false`). Sem ela o Google desliga tudo que é pago:
@@ -71,22 +76,64 @@ descobrir quando o site cai.
 > O alerta **não desliga nada**, só avisa. É o comportamento certo para um site com
 > dinheiro de usuário: cortar o serviço automaticamente seria pior.
 
-## 3. 🔴 Me avisar "billing ok" — e eu faço o resto
+## 3. 🔴 Publicar a v3.8.0 + vídeo por link — precisa da sua liberação
 
-Assim que você me disser, **eu executo** (você não precisa fazer nada disto):
+**Por quê.** Tudo está pronto, testado e salvo no repositório (correções de dinheiro e
+segurança, SEO e vídeo por link). Mas o **modo automático do Claude Code bloqueia
+deploy em produção** sem uma liberação explícita sua. Isso é uma trava de segurança
+da ferramenta, e eu não posso contorná-la. Escolha **uma** das opções:
 
-1. Confirmo que as funções voltaram (`/sitemap.xml` e `/novidades` com 200).
-2. Deploy das funções com as correções desta rodada (dinheiro, segurança, custo, SEO).
-3. Deploy das regras do Firestore e do Storage.
-4. Build e deploy dos **dois sites** com o novo script `build_sites.js`.
-5. **Search Console 100% por API** (`gscSetup`, o que você pediu):
-   habilito as APIs → gero o token de verificação dos 2 sites → coloco no `<head>` →
-   publico → verifico a posse → **adiciono seu e-mail como proprietário** → envio os
-   2 sitemaps.
-6. Encho a fila de temas de SEO (hoje está **vazia**: a publicação diária não tem o que
-   publicar; existem só 6 artigos).
-7. Rodo o `gscSyncQueries` uma vez para já puxar as buscas do Google para a fila.
-8. Te mando o relatório com os links conferidos.
+**Opção A: você roda (4 comandos, ~10 min).** No terminal, dentro de
+`C:\Users\Jessica\desafio_project\apps\mobile`, **nesta ordem** (functions primeiro:
+o app novo depende delas):
+
+```bash
+firebase deploy --only functions --project desafio-app-b8665
+```
+
+```bash
+firebase deploy --only firestore:rules,storage --project desafio-app-b8665
+```
+
+Se aparecer uma pergunta sobre dar ao Storage permissão de ler o Firestore, responda
+**Y (sim)**. A regra nova de uploads do admin depende disso.
+
+```bash
+node build_sites.js
+```
+
+```bash
+firebase deploy --only hosting --project desafio-app-b8665
+```
+
+**Opção B: me liberar para fazer.** Abra as configurações de permissão do Claude Code e
+adicione uma regra que permita `Bash(firebase deploy:*)`. Depois me diga "pode
+publicar".
+
+**Depois do deploy, eu faço** (você não precisa fazer nada disto):
+1. Confiro ao vivo os dois sites, o `/sitemap.xml`, o `/novidades` e uma prévia de link.
+2. **Search Console 100% por API** (`gscSetup`): habilito as APIs, gero o token dos 2
+   sites, coloco no `<head>`, publico, verifico a posse, **adiciono seu e-mail como
+   proprietário** e envio os 2 sitemaps.
+3. Encho a fila de temas de SEO (hoje está **vazia**; existem só 6 artigos).
+4. Rodo o `gscSyncQueries` uma vez para puxar as buscas do Google para a fila.
+
+## 3b. 🟡 Testar o vídeo por link — 10 min (depois do deploy)
+
+1. Abra um desafio → **Participar** → **Vídeo (link)**. Aparece **o seu código**
+   (ex.: `DPK7M2Q`, um por desafio).
+2. **YouTube:** publique um **Shorts** (vertical) **público** com o código no
+   **título** → cole o link → **Enviar**. A verificação é automática: se faltar o
+   código, o vídeo for horizontal ou privado, a mensagem diz exatamente o que corrigir.
+   Se você acabou de editar o título, espere 1–2 min (o YouTube demora para atualizar).
+3. **Instagram:** publique um **Reels** com o código na **legenda** → cole o link →
+   **Enviar**. Ele entra como "Aguardando verificação".
+4. **Admin → Vídeos para verificar:** toque na capa (abre o vídeo **com a legenda**),
+   confira o código e clique **Aprovar** ou **Recusar**.
+5. **Regras de prêmio:** só vídeo **verificado** concorre. Vídeo do Instagram que não
+   for aprovado **antes do fim do prazo** não ganha (o card mostra o prazo em vermelho
+   nas últimas 24h). Se um vídeo do YouTube for apagado ou ficar privado antes do
+   encerramento, ele sai da disputa e vence o próximo.
 
 ## 4. 🟡 Chave do Gemini (grátis) — 3 min
 

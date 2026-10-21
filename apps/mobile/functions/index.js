@@ -6,6 +6,9 @@ const {splitPrizeCents, withdrawalFee, withdrawalNet} = require("./money");
 admin.initializeApp();
 
 const {getSecret} = require("./secrets");
+const {
+  parseVideoLink, verificationCode, hasCode, checkYouTube, isVertical,
+} = require("./video_link");
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -45,6 +48,14 @@ function _isExpired(v, nowMs = Date.now()) {
 function _entryCanWin(e) {
   return !!e && !!e.userId && e.userId !== "deleted" &&
       e.isDemo !== true && !String(e.userId).startsWith("demo_");
+}
+
+// Vídeo por link só ganha prêmio se o código foi conferido ('verified') e o
+// vídeo segue no ar (`unavailable` = ids que sumiram/ficaram privados).
+// Outros tipos passam direto.
+function _videoCanWin(e, unavailable) {
+  if (!e || e.contentType !== "videoLink") return true;
+  return e.videoCheck === "verified" && !(unavailable && unavailable.has(e.id));
 }
 
 // Arredonda ao centavo ANTES das validações (o app antigo em cache não
@@ -402,7 +413,9 @@ exports.submitEntry = functions.https.onCall(async (data, context) => {
   const db = admin.firestore();
   await _assertNotBanned(db, userId);
 
-  const {challengeId, contentType, contentText, contentUrl} = data;
+  const {challengeId, contentType, contentUrl} = data;
+  // Mensagens no idioma do site (o app intl manda lang:'en'; o antigo nada).
+  const tr = (pt, en) => (data.lang === "en" ? en : pt);
 
   if (!challengeId || !contentType) {
     throw new functions.https.HttpsError(
@@ -411,20 +424,33 @@ exports.submitEntry = functions.https.onCall(async (data, context) => {
   }
 
   // ── Validação de conteúdo ─────────────────────────────────────────────────
-  if (contentType === "text") {
-    if (!contentText || contentText.trim().length === 0) {
-      throw new functions.https.HttpsError("invalid-argument", "Conteúdo de texto é obrigatório");
-    }
-    if (contentText.length > 5000) {
+  // Aceitos: imagem (enviada ao NOSSO Storage) e vídeo por link (YouTube
+  // Shorts / Reels). Texto e vídeo enviado como arquivo estão desativados.
+  let video = null;
+  if (contentType === "image") {
+    // Só o arquivo que o próprio usuário subiu para este desafio — antes
+    // qualquer URL externa era aceita como "imagem".
+    const prefix =
+        "https://firebasestorage.googleapis.com/v0/b/desafio-app-b8665." +
+        "firebasestorage.app/o/" +
+        encodeURIComponent(`entries/${challengeId}/${userId}_`);
+    if (!contentUrl || !String(contentUrl).startsWith(prefix)) {
       throw new functions.https.HttpsError(
-          "invalid-argument",
-          `Texto muito longo: ${contentText.length} caracteres (máximo 5000)`,
-      );
+          "invalid-argument", tr("Imagem inválida. Envie de novo.",
+              "Invalid image. Please upload it again."));
+    }
+  } else if (contentType === "videoLink") {
+    video = parseVideoLink(contentUrl);
+    if (!video) {
+      throw new functions.https.HttpsError("invalid-argument", tr(
+          "Link inválido. Cole o link de um Shorts do YouTube ou de um " +
+          "Reels do Instagram.",
+          "Invalid link. Paste a YouTube Shorts or Instagram Reels link."));
     }
   } else {
-    if (!contentUrl) {
-      throw new functions.https.HttpsError("invalid-argument", "URL do arquivo é obrigatória");
-    }
+    throw new functions.https.HttpsError(
+        "invalid-argument", tr("Tipo de participação não aceito.",
+            "This entry type isn't accepted."));
   }
 
   const challengeDoc = await db.collection("challenges").doc(challengeId).get();
@@ -441,8 +467,9 @@ exports.submitEntry = functions.https.onCall(async (data, context) => {
     );
   }
 
-  if (challenge.status !== "active") {
-    throw new functions.https.HttpsError("failed-precondition", "Desafio não está ativo");
+  if (challenge.status !== "active" || _isExpired(challenge.expiresAt)) {
+    throw new functions.https.HttpsError("failed-precondition",
+        tr("Desafio encerrado", "This challenge has ended"));
   }
 
   const existing = await db.collection("entries")
@@ -454,6 +481,74 @@ exports.submitEntry = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError("already-exists", "Você já participou deste desafio");
   }
 
+  // ── Vídeo por link: verificação ─────────────────────────────────────────
+  let videoFields = {};
+  if (video) {
+    const dup = await db.collection("entries")
+        .where("challengeId", "==", challengeId)
+        .where("videoId", "==", video.id)
+        .limit(1).get();
+    if (!dup.empty) {
+      throw new functions.https.HttpsError("already-exists", tr(
+          "Esse vídeo já está participando deste desafio.",
+          "This video is already entered in this challenge."));
+    }
+    const code = verificationCode(userId, challengeId);
+    let check = "pending"; // Instagram: o admin confere a legenda
+    let title = null;
+    let author = null;
+    if (video.provider === "youtube") {
+      // YouTube: confere sozinho, sem chave (oEmbed público).
+      const r = await checkYouTube(video.id);
+      if (r.status === "not_found") {
+        throw new functions.https.HttpsError("invalid-argument", tr(
+            "Vídeo não encontrado. Confira o link.",
+            "Video not found. Please check the link."));
+      }
+      if (r.status === "private") {
+        throw new functions.https.HttpsError("failed-precondition", tr(
+            "O vídeo precisa ser PÚBLICO e permitir incorporação (YouTube " +
+            "Studio → Detalhes → Permitir incorporação).",
+            "The video must be PUBLIC and allow embedding (YouTube Studio " +
+            "→ Details → Allow embedding)."));
+      }
+      if (r.status !== "ok") {
+        throw new functions.https.HttpsError("unavailable", tr(
+            "Não conseguimos conferir o vídeo agora. Tente de novo em " +
+            "instantes.",
+            "We couldn't check the video right now. Please try again " +
+            "in a moment."));
+      }
+      if (!isVertical(r)) {
+        throw new functions.https.HttpsError("invalid-argument", tr(
+            "Envie um vídeo VERTICAL (YouTube Shorts).",
+            "Please send a VERTICAL video (YouTube Shorts)."));
+      }
+      if (!hasCode(r.title, code)) {
+        throw new functions.https.HttpsError("failed-precondition", tr(
+            `Coloque o código ${code} no TÍTULO do vídeo no YouTube e envie ` +
+            "de novo (a mudança pode levar alguns minutos para aparecer).",
+            `Add the code ${code} to the video TITLE on YouTube and send it ` +
+            "again (it may take a few minutes to update)."),
+        {reason: "code", code});
+      }
+      check = "verified";
+      title = r.title.slice(0, 200);
+      author = (r.author || "").slice(0, 100);
+    }
+    videoFields = {
+      videoProvider: video.provider,
+      videoId: video.id,
+      videoEmbed: video.embedUrl,
+      videoThumb: video.thumbUrl,
+      videoTitle: title,
+      videoAuthor: author,
+      videoCode: code,
+      videoCheck: check,
+      videoCheckAt: new Date().toISOString(),
+    };
+  }
+
   const entryRef = db.collection("entries").doc();
   const challengeRef = db.collection("challenges").doc(challengeId);
 
@@ -462,8 +557,11 @@ exports.submitEntry = functions.https.onCall(async (data, context) => {
       challengeId,
       userId,
       contentType,
-      contentText: contentText || null,
-      contentUrl: contentUrl || null,
+      // Vídeo por link: o link também vai no contentText — o app antigo (em
+      // cache) desconhece 'videoLink' e mostra a participação como texto.
+      contentText: video ? video.url : null,
+      contentUrl: video ? video.url : contentUrl,
+      ...videoFields,
       voteCount: 0,
       isActive: true,
       createdAt: new Date().toISOString(),
@@ -471,7 +569,7 @@ exports.submitEntry = functions.https.onCall(async (data, context) => {
     tx.update(challengeRef, {entryCount: admin.firestore.FieldValue.increment(1)});
   });
 
-  return {entryId: entryRef.id};
+  return {entryId: entryRef.id, videoCheck: videoFields.videoCheck || null};
 });
 
 // ─── VOTE (updated: entry-level) ─────────────────────────────────────────────
@@ -733,6 +831,26 @@ async function finalizeChallenge(db, challengeDoc) {
       .where("isActive", "==", true)
       .orderBy("voteCount", "desc");
 
+  // Vídeo por link (YouTube): antes de pagar, confere se o vídeo continua
+  // no ar e público — apagado/privado depois do envio sai da disputa. Fica
+  // FORA da transação (é rede). Falha de rede não desclassifica ninguém (a
+  // falha seria nossa, não do participante).
+  const unavailable = new Set();
+  const videoSnap = await db.collection("entries")
+      .where("challengeId", "==", challengeId)
+      .where("contentType", "==", "videoLink")
+      .get();
+  await Promise.all(videoSnap.docs.map(async (d) => {
+    const e = d.data();
+    if (e.isActive !== true || e.videoProvider !== "youtube" || !e.videoId) {
+      return;
+    }
+    const r = await checkYouTube(e.videoId);
+    if (r.status === "not_found" || r.status === "private") {
+      unavailable.add(d.id);
+    }
+  }));
+
   let winnersToNotify = [];
   let prizePerWinner = 0;
   let challengeTitle = "";
@@ -758,7 +876,9 @@ async function finalizeChallenge(db, challengeDoc) {
     // demo, ou cujo dono não tem doc em /users NÃO concorre — é tratada como
     // retirada (senão o tx.update no /users inexistente aborta a transação e
     // o desafio nunca encerra). maxVotes/empate saem SÓ das elegíveis.
-    const shaped = entries.filter(_entryCanWin);
+    // Vídeo por link só concorre VERIFICADO (código conferido) e no ar.
+    const shaped = entries.filter((e) => _entryCanWin(e) &&
+        _videoCanWin(e, unavailable));
     const creatorRef = creatorContribution > 0 && challenge.createdBy ?
       db.collection("users").doc(challenge.createdBy) : null;
     const readUids = new Set(shaped.map((e) => e.userId));
@@ -775,6 +895,16 @@ async function finalizeChallenge(db, challengeDoc) {
     const maxVotes = eligible.length > 0 ? (eligible[0].voteCount || 0) : 0;
     const winners = maxVotes > 0 ?
       eligible.filter((e) => (e.voteCount || 0) === maxVotes) : [];
+
+    // Registra na participação por que ela saiu da disputa.
+    for (const e of entries) {
+      if (unavailable.has(e.id)) {
+        tx.update(db.collection("entries").doc(e.id), {
+          videoCheck: "unavailable",
+          videoCheckAt: new Date().toISOString(),
+        });
+      }
+    }
 
     if (creatorRef && aliveUids.has(creatorRef.id)) {
       tx.update(creatorRef, {
@@ -1348,7 +1478,16 @@ exports.moderateEntry = functions.firestore
 
       try {
         let flaggedCats = null;
-        if (entry.contentText) {
+        if (entry.contentType === "videoLink") {
+          // contentText é só o link (fallback do app antigo): modera o
+          // título e a capa do vídeo. Instagram sem capa → revisão humana.
+          if (entry.videoTitle) {
+            flaggedCats = await _moderateText(entry.videoTitle);
+          }
+          if (!flaggedCats && entry.videoThumb) {
+            flaggedCats = await _moderateImage(entry.videoThumb);
+          }
+        } else if (entry.contentText) {
           flaggedCats = await _moderateText(entry.contentText);
         } else if (entry.contentType === "image" && entry.contentUrl) {
           flaggedCats = await _moderateImage(entry.contentUrl);
@@ -1530,6 +1669,68 @@ exports.adminResolveReport = functions.https.onCall(async (data, context) => {
   });
 
   return {success: true, resolved: reps.size};
+});
+
+// ─── ADMIN: VERIFICAR VÍDEO POR LINK (Instagram) ─────────────────────────────
+// O YouTube é conferido sozinho no envio; o Instagram não tem consulta pública
+// — o admin abre o vídeo no painel, confere o código na legenda e aprova ou
+// recusa. Só vídeo aprovado ('verified') concorre ao prêmio. Recusar oculta a
+// participação (mesmo efeito do "ocultar" das denúncias).
+exports.adminReviewVideoEntry = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Não autenticado");
+  }
+  const db = admin.firestore();
+  const adminDoc = await db.collection("admins").doc(context.auth.uid).get();
+  if (!adminDoc.exists) {
+    throw new functions.https.HttpsError("permission-denied", "Acesso negado");
+  }
+  const entryId = String((data && data.entryId) || "");
+  const approve = data && data.approve === true;
+  if (!entryId) {
+    throw new functions.https.HttpsError("invalid-argument", "entryId obrigatório");
+  }
+  const entryRef = db.collection("entries").doc(entryId);
+  const now = new Date().toISOString();
+
+  let entry = null;
+  await db.runTransaction(async (tx) => {
+    const doc = await tx.get(entryRef);
+    if (!doc.exists || doc.data().contentType !== "videoLink") {
+      throw new functions.https.HttpsError(
+          "not-found", "Participação em vídeo não encontrada");
+    }
+    entry = doc.data();
+    tx.update(entryRef, approve ?
+      {videoCheck: "verified", videoCheckAt: now,
+        videoCheckBy: context.auth.uid} :
+      {videoCheck: "rejected", videoCheckAt: now,
+        videoCheckBy: context.auth.uid, isActive: false});
+    tx.set(db.collection("audit_logs").doc(), {
+      type: approve ? "video_verified" : "video_rejected",
+      entryId,
+      targetUserId: entry.userId || null,
+      challengeId: entry.challengeId || null,
+      adminId: context.auth.uid,
+      createdAt: now,
+    });
+  });
+
+  if (entry && entry.userId && entry.userId !== "deleted") {
+    const owner = await db.collection("users").doc(entry.userId).get();
+    if (owner.exists) {
+      await _sendNotification(db, entry.userId,
+          approve ? "✅ Vídeo verificado!" : "❌ Vídeo recusado",
+          approve ?
+            "Seu vídeo foi conferido e já concorre ao prêmio." :
+            `Não encontramos o código ${entry.videoCode || ""} na legenda ` +
+            "do seu vídeo (ou ele não é vertical/público). Você pode " +
+            "participar de novo com outro link.",
+          {type: approve ? "video_verified" : "video_rejected",
+            challengeId: entry.challengeId, entryId});
+    }
+  }
+  return {success: true};
 });
 
 // ─── ACCEPT TERMS ────────────────────────────────────────────────────────────
@@ -4658,6 +4859,12 @@ async function _recomputeTopEntries(db, challengeId) {
       contentUrl: x.contentUrl || null,
       contentText: x.contentText || null,
       voteCount: x.voteCount || 0,
+      // Vídeo por link: o feed mostra a capa (sem query por card).
+      ...(x.contentType === "videoLink" ? {
+        videoProvider: x.videoProvider || null,
+        videoThumb: x.videoThumb || null,
+        videoEmbed: x.videoEmbed || null,
+      } : {}),
     };
   });
   await db.collection("challenges").doc(challengeId)
@@ -4798,6 +5005,7 @@ exports.entryPreview = functions.https.onRequest(async (req, res) => {
     let found = false;
     let challengeTitle = "";
     let author = "";
+    let video = null;
     if (challengeId) {
       const cDoc = await db.collection("challenges").doc(challengeId).get();
       if (cDoc.exists) {
@@ -4811,13 +5019,22 @@ exports.entryPreview = functions.https.onRequest(async (req, res) => {
             const pp = await db.collection("publicProfiles")
                 .doc(eDoc.data().userId).get();
             author = pp.exists ? (pp.data().name || "") : "";
+            const ed = eDoc.data();
+            if (ed.contentType === "videoLink" && ed.isActive !== false) {
+              video = {
+                thumbUrl: ed.videoThumb || null,
+                name: ed.videoTitle || null,
+                uploadDate: ed.createdAt || null,
+                embedUrl: ed.videoEmbed || null,
+              };
+            }
           }
         }
       }
     }
 
     const meta = siteCtx.previewMeta(site,
-        {challengeId, found, challengeTitle, entryId, author});
+        {challengeId, found, challengeTitle, entryId, author, video});
     // Cópia local reescrita — o cache nunca é alterado.
     const html = siteCtx.rewriteHead(await _getIndexHtml(site), meta);
     res.set("Cache-Control", "public, max-age=600, s-maxage=600");
