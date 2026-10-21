@@ -59,5 +59,31 @@ void main() {
       Fmt.xrpPerBrl = 0.08; // 1 BRL = 0,08 XRP
       expect(Fmt.xrp(100), '8.00');
     });
+
+    test('typedToBrl no BR também arredonda ao centavo', () {
+      // O ledger não guarda fração de centavo ("10,555" não vira 10,555).
+      expect(Fmt.typedToBrl('10,555', intl: false), 10.56);
+      expect(Fmt.typedToBrl('150,50', intl: false), 150.5);
+    });
+
+    test('ceilCents sobe ao centavo sem pular por ruído', () {
+      expect(Fmt.ceilCents(99.991), 100.0);
+      expect(Fmt.ceilCents(100.0), 100.0);
+      expect(Fmt.ceilCents(100.0000000001), 100.0);
+    });
+
+    test('saque em US\$: o mínimo anunciado nunca vira menos de R\$100', () {
+      // O servidor anuncia o mínimo arredondado para cima (+1%); o app
+      // converte de volta arredondando para cima. Com qualquer cotação do
+      // app perto da do servidor, o resultado fica ≥ R$100.
+      for (var r = 4.0; r <= 7.0; r += 0.05) {
+        Fmt.usdPerBrl = 1 / r;
+        final minUsd = ((100 / r) * 1.01 * 100).ceil() / 100;
+        expect(Fmt.ceilCents(Fmt.usdToBrl(minUsd)),
+            greaterThanOrEqualTo(100.0),
+            reason: 'cotação $r');
+      }
+      Fmt.usdPerBrl = 0.18;
+    });
   });
 }

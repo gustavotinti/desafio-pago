@@ -10,6 +10,8 @@ const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const {getSecret} = require("./secrets");
 const {slugify, sanitizeHtml} = require("./text_utils");
+const {usdFromBrl} = require("./money");
+const {getRates} = require("./rates");
 
 const SITE = "https://desafiopago.com.br";
 const BRAND = "Desafio Pago";
@@ -324,11 +326,28 @@ const challengesBlock = async (db, c) => {
         .where("region", "==", c.region)
         .orderBy("amount", "desc").limit(3).get();
     if (snap.empty) return "";
+    // O ledger é BRL; o site internacional EXIBE em US$ — na mesma cotação
+    // do PayPal (rates.js). Sem cotação boa, omite o valor (nunca R$ nem
+    // "$0.00" numa página em inglês).
+    let brlPerUsd = 0;
+    if (c.region === "INTL") {
+      try {
+        brlPerUsd = (await getRates()).usdBrl;
+      } catch (e) {
+        brlPerUsd = 0;
+      }
+    }
+    const prizeOf = (amount) => {
+      if (c.region !== "INTL") return fmtBrl(amount);
+      const usd = usdFromBrl(amount, brlPerUsd);
+      return usd > 0 ? `$${usd.toFixed(2)}` : "";
+    };
     const rows = snap.docs.map((d) => {
       const ch = d.data();
+      const prize = prizeOf(ch.amount);
       return `<div class="chal">
 <a href="${c.site}/challenges/${d.id}">${esc(ch.title)}</a>
-<span class="prize">${fmtBrl(ch.amount)}</span></div>`;
+${prize ? `<span class="prize">${prize}</span>` : ""}</div>`;
     }).join("");
     return `<div class="card">
 <strong>${c.openNow} ${c.brand}:</strong>

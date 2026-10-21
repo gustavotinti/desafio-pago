@@ -79,7 +79,8 @@ class _ProfilePageState extends State<ProfilePage> {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
 
-    final amount = double.tryParse(_amountController.text.trim()) ?? 0;
+    // Aceita vírgula decimal ("150,50") e arredonda ao centavo.
+    final amount = Fmt.roundCents(Fmt.parseTyped(_amountController.text));
     if (amount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(I18n.tr('invalid_value'))),
@@ -116,9 +117,7 @@ class _ProfilePageState extends State<ProfilePage> {
   /// Saque internacional: valor em USD → ledger (BRL) → recebido em XRP.
   Future<void> _requestCryptoWithdraw() async {
     if (_submittingWithdraw) return;
-    final usd = double.tryParse(
-            _amountController.text.trim().replaceAll(',', '.')) ??
-        0;
+    final usd = Fmt.parseTyped(_amountController.text);
     final address = _xrpAddressController.text.trim();
     if (usd <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -135,7 +134,9 @@ class _ProfilePageState extends State<ProfilePage> {
       final res = await FirebaseFunctions.instanceFor(region: 'us-central1')
           .httpsCallable('requestCryptoWithdraw')
           .call({
-        'amount': Fmt.usdToBrl(usd),
+        // Arredonda PARA CIMA: quem digita exatamente o mínimo anunciado em
+        // US$ não pode cair em R$99,99 na conversão (o servidor recusaria).
+        'amount': Fmt.ceilCents(Fmt.usdToBrl(usd)),
         'xrpAddress': address,
         'xrpTag': _xrpTagController.text.trim(),
         'lang': 'en',
@@ -212,19 +213,26 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _deleteAccount() async {
+    // Saldo FRESCO antes do aviso: o perfil pode estar aberto há horas e um
+    // prêmio ou Pix ter caído desde então.
+    await _load();
+    if (!mounted) return;
     var balance = (_userData['balance'] as num? ?? 0).toDouble();
     if (!await _confirmDelete(balance)) return;
 
     // Contrato com deleteAccount: com saldo, o app manda forfeitBalance:true
-    // (o usuário VIU o aviso do valor perdido). Se o saldo mudou entre a
-    // leitura e a chamada, o servidor responde failed-precondition com
-    // details.reason == 'balance' → avisa de novo e pede nova confirmação.
-    // A function antiga ignora os dois campos.
+    // + confirmedBalance (o valor em BRL que o usuário VIU no aviso). Se o
+    // saldo real for maior que o confirmado (crédito caiu no meio), o
+    // servidor recusa com details.reason == 'balance' e o saldo atual → o
+    // app avisa o valor novo e pede nova confirmação. A function antiga
+    // ignora esses campos.
     final lang = AppConfig.intl ? 'en' : 'pt';
     for (var attempt = 0; attempt < 3; attempt++) {
       try {
         await FirebaseFunctions.instance.httpsCallable('deleteAccount').call({
           if (balance > 0) 'forfeitBalance': true,
+          // BRL cru do ledger (nunca o valor formatado — no intl é US$).
+          if (balance > 0) 'confirmedBalance': balance,
           'lang': lang,
         });
         await FirebaseAuth.instance.signOut();

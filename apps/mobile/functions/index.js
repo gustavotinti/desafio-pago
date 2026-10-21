@@ -22,6 +22,38 @@ async function _assertNotBanned(db, userId) {
   }
 }
 
+// Prazo do desafio em ms. expiresAt é gravado como string ISO (createChallenge,
+// seeds, adminEditChallenge); aceita também Timestamp/Date por robustez.
+// Retorna NaN se ausente/ilegível — quem chama decide (não trata como vencido).
+function _expiresMs(v) {
+  if (!v) return NaN;
+  if (typeof v === "string") return Date.parse(v);
+  if (typeof v.toMillis === "function") return v.toMillis();
+  if (v instanceof Date) return v.getTime();
+  return NaN;
+}
+
+// Prazo vencido (expiresAt <= agora). Sem prazo legível → não vencido.
+function _isExpired(v, nowMs = Date.now()) {
+  const ms = _expiresMs(v);
+  return Number.isFinite(ms) && ms <= nowMs;
+}
+
+// Participação que PODE ganhar prêmio: tem dono, não é demo e não é de conta
+// excluída. (O dono também precisa ter doc em /users — conferido à parte,
+// dentro da transação de quem chama.) Mesmo critério no vote e no finalize.
+function _entryCanWin(e) {
+  return !!e && !!e.userId && e.userId !== "deleted" &&
+      e.isDemo !== true && !String(e.userId).startsWith("demo_");
+}
+
+// Arredonda ao centavo ANTES das validações (o app antigo em cache não
+// arredonda; "10,555" não pode virar 10.555 no ledger). NaN se inválido.
+function _cents(x) {
+  const n = Number(x);
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : NaN;
+}
+
 async function _sendNotification(db, userId, title, body, data = {}) {
   // Histórico in-app (funciona mesmo sem push autorizado — sininho no app).
   // Subcoleção users/{uid}/notifications → sem índice composto.
@@ -111,9 +143,10 @@ exports.createChallenge = functions.https.onCall(async (data, context) => {
     // Banido não movimenta dinheiro (o bloqueio do app é só visual).
     await _assertNotBanned(db, userId);
 
-    const {title, description, amount, durationDays} = data;
+    const {title, description, durationDays} = data;
+    const amount = _cents(data.amount);
 
-    if (!title || !description || !amount || amount <= 0 ||
+    if (!title || !description || !(amount > 0) ||
         !durationDays || durationDays < 1 || durationDays > 30) {
       throw new functions.https.HttpsError("invalid-argument", "Dados inválidos");
     }
@@ -224,9 +257,10 @@ exports.addAmount = functions.https.onCall(async (data, context) => {
   }
 
   const userId = context.auth.uid;
-  const {challengeId, value} = data;
+  const {challengeId} = data;
+  const value = _cents(data.value);
 
-  if (!challengeId || !value || value <= 0) {
+  if (!challengeId || !(value > 0)) {
     throw new functions.https.HttpsError("invalid-argument", "Dados inválidos");
   }
 
@@ -298,12 +332,12 @@ exports.requestWithdraw = functions.https.onCall(async (data, context) => {
   }
 
   const userId = context.auth.uid;
-  const {amount} = data;
+  const amount = _cents(data.amount);
 
   // Mínimo de saque configurável via env (default R$100). Para reduzir,
   // defina MIN_WITHDRAWAL em functions/.env (ex.: MIN_WITHDRAWAL=1).
   const minWithdrawal = Number(process.env.MIN_WITHDRAWAL || 100);
-  if (!amount || amount < minWithdrawal) {
+  if (!(amount >= minWithdrawal)) {
     throw new functions.https.HttpsError(
         "invalid-argument", `Valor mínimo para saque é R$${minWithdrawal}`);
   }
@@ -481,6 +515,12 @@ exports.vote = functions.https.onCall(async (data, context) => {
   if (challenge.status !== "active") {
     throw new functions.https.HttpsError("failed-precondition", "Desafio não está ativo");
   }
+  // Vence quem tem mais votos AO FINAL DO PRAZO: entre o prazo e o cron de
+  // encerramento (até 5 min) o desafio ainda está 'active', mas não vota.
+  if (_isExpired(challenge.expiresAt)) {
+    throw new functions.https.HttpsError(
+        "failed-precondition", "Votação encerrada: o prazo deste desafio terminou");
+  }
 
   // Admin gets a unique vote ID per vote so they can cast multiple demo votes
   const voteId = isAdmin ?
@@ -502,6 +542,15 @@ exports.vote = functions.https.onCall(async (data, context) => {
   let ownerExists = false;
   await db.runTransaction(async (tx) => {
     // Leituras ANTES das escritas (exigência do Firestore).
+    // O desafio é relido aqui dentro: fecha a corrida com o encerramento
+    // (um voto que passou na checagem lá fora não pode cair depois do
+    // 'finished' nem depois do prazo) — vale também pro admin.
+    const chDoc = await tx.get(challengeRef);
+    if (!chDoc.exists || chDoc.data().status !== "active" ||
+        _isExpired(chDoc.data().expiresAt)) {
+      throw new functions.https.HttpsError(
+          "failed-precondition", "Votação encerrada para este desafio");
+    }
     // A participação tem que existir, ser DESTE desafio e estar ativa — vale
     // também pro admin (senão dá pra empilhar votos de vários desafios numa
     // única participação, já que o voteId é por desafio).
@@ -526,12 +575,21 @@ exports.vote = functions.https.onCall(async (data, context) => {
       }
     }
     entryOwnerId = entry.userId || null;
-    // Dono sem doc em /users (conta excluída/demo): não incrementa (o update
-    // em doc inexistente derrubaria o voto inteiro).
     ownerExists = false;
-    if (!isAdmin && entryOwnerId && entryOwnerId !== "deleted") {
-      const ownerDoc = await tx.get(db.collection("users").doc(entryOwnerId));
-      ownerExists = ownerDoc.exists;
+    if (!isAdmin) {
+      // Mesmo critério de elegibilidade do finalizeChallenge: o voto único do
+      // usuário não pode ser gasto numa participação que nunca pode ganhar
+      // (demo, conta excluída, dono sem /users).
+      const ineligible = !_entryCanWin(entry);
+      if (!ineligible) {
+        const ownerDoc =
+            await tx.get(db.collection("users").doc(entryOwnerId));
+        ownerExists = ownerDoc.exists;
+      }
+      if (ineligible || !ownerExists) {
+        throw new functions.https.HttpsError(
+            "failed-precondition", "Participação indisponível");
+      }
     }
 
     tx.set(voteRef, {
@@ -598,8 +656,12 @@ exports.autoVoteRealEntries = functions.pubsub
 
       const challSnap = await db.collection("challenges")
           .where("status", "==", "active").get();
-      if (challSnap.empty) return null;
-      const activeIds = challSnap.docs.map((d) => d.id);
+      // Prazo vencido = votação fechada, mesmo antes do encerramento rodar
+      // (senão o +1 do cron podia desempatar depois do fim do prazo).
+      const activeIds = challSnap.docs
+          .filter((d) => !_isExpired(d.data().expiresAt))
+          .map((d) => d.id);
+      if (activeIds.length === 0) return null;
 
       // CUSTO: só as participações dos desafios ATIVOS — em blocos de 30
       // (limite do "in"). challengeId in + isActive == são duas igualdades:
@@ -665,31 +727,11 @@ exports.autoVoteRealEntries = functions.pubsub
 async function finalizeChallenge(db, challengeDoc) {
   const challengeId = challengeDoc.id;
   const challengeRef = db.collection("challenges").doc(challengeId);
-
-  // Entradas são estáveis após o término — leitura fora da transação.
-  const entriesSnapshot = await db
+  const entriesQuery = db
       .collection("entries")
       .where("challengeId", "==", challengeId)
       .where("isActive", "==", true)
-      .orderBy("voteCount", "desc")
-      .get();
-  const entries = entriesSnapshot.docs.map((d) => ({id: d.id, ...d.data()}));
-
-  // Elegibilidade ao prêmio: participação de conta excluída ('deleted'),
-  // demo, ou cujo dono não tem doc em /users NÃO concorre — é tratada como
-  // retirada (senão o tx.update no /users inexistente aborta a transação e o
-  // desafio nunca encerra). maxVotes/empate saem SÓ das elegíveis.
-  const shaped = entries.filter((e) => e.userId &&
-      e.userId !== "deleted" && e.isDemo !== true &&
-      !String(e.userId).startsWith("demo_"));
-  const ownerIds = [...new Set(shaped.map((e) => e.userId))];
-  const existingOwners = new Set();
-  for (let i = 0; i < ownerIds.length; i += 300) {
-    const docs = await db.getAll(...ownerIds.slice(i, i + 300)
-        .map((id) => db.collection("users").doc(id)));
-    docs.filter((d) => d.exists).forEach((d) => existingOwners.add(d.id));
-  }
-  const eligible = shaped.filter((e) => existingOwners.has(e.userId));
+      .orderBy("voteCount", "desc");
 
   let winnersToNotify = [];
   let prizePerWinner = 0;
@@ -697,6 +739,9 @@ async function finalizeChallenge(db, challengeDoc) {
 
   // Transação idempotente: só finaliza se ainda estiver ativo (evita pagar
   // o prêmio em dobro se o cron sobrepuser ou o admin encerrar junto).
+  // TUDO que decide o vencedor é lido aqui dentro, antes das escritas: se a
+  // transação reexecutar (ex.: um voto concorrente mexeu numa entry), ela
+  // recalcula com os dados novos em vez de pagar um retrato antigo.
   await db.runTransaction(async (tx) => {
     winnersToNotify = []; // a transação pode reexecutar
     const cDoc = await tx.get(challengeRef);
@@ -706,21 +751,30 @@ async function finalizeChallenge(db, challengeDoc) {
     const prizeAmount = challenge.amount || 0;
     const creatorContribution = challenge.creatorContribution || 0;
 
+    const entriesSnap = await tx.get(entriesQuery);
+    const entries = entriesSnap.docs.map((d) => ({id: d.id, ...d.data()}));
+
+    // Elegibilidade ao prêmio: participação de conta excluída ('deleted'),
+    // demo, ou cujo dono não tem doc em /users NÃO concorre — é tratada como
+    // retirada (senão o tx.update no /users inexistente aborta a transação e
+    // o desafio nunca encerra). maxVotes/empate saem SÓ das elegíveis.
+    const shaped = entries.filter(_entryCanWin);
+    const creatorRef = creatorContribution > 0 && challenge.createdBy ?
+      db.collection("users").doc(challenge.createdBy) : null;
+    const readUids = new Set(shaped.map((e) => e.userId));
+    if (creatorRef) readUids.add(creatorRef.id);
+    const readRefs = [...readUids].map((id) => db.collection("users").doc(id));
+    const aliveUids = new Set();
+    for (let i = 0; i < readRefs.length; i += 300) {
+      const docs = await tx.getAll(...readRefs.slice(i, i + 300));
+      docs.filter((d) => d.exists).forEach((d) => aliveUids.add(d.id));
+    }
+    const eligible = shaped.filter((e) => aliveUids.has(e.userId));
+
     // entries já vem ordenado por voteCount desc.
     const maxVotes = eligible.length > 0 ? (eligible[0].voteCount || 0) : 0;
     const winners = maxVotes > 0 ?
       eligible.filter((e) => (e.voteCount || 0) === maxVotes) : [];
-
-    // Todas as leituras ANTES das escritas: relê os vencedores (e o criador)
-    // — se algum /users sumiu no meio (corrida rara), não é pago.
-    const creatorRef = creatorContribution > 0 && challenge.createdBy ?
-      db.collection("users").doc(challenge.createdBy) : null;
-    const readUids = new Set(winners.map((w) => w.userId));
-    if (creatorRef) readUids.add(creatorRef.id);
-    const readRefs = [...readUids].map((id) => db.collection("users").doc(id));
-    const readDocs = readRefs.length > 0 ? await tx.getAll(...readRefs) : [];
-    const aliveUids = new Set(
-        readDocs.filter((d) => d.exists).map((d) => d.id));
 
     if (creatorRef && aliveUids.has(creatorRef.id)) {
       tx.update(creatorRef, {
@@ -740,9 +794,10 @@ async function finalizeChallenge(db, challengeDoc) {
       return;
     }
 
-    // Denominador = todos os empatados elegíveis; se algum sumiu no meio da
-    // transação, a cota dele fica na plataforma (como o centavo indivisível).
-    const payable = winners.filter((w) => aliveUids.has(w.userId));
+    // Os donos de todos os vencedores foram lidos nesta mesma transação
+    // (aliveUids), então todos são pagáveis; a divisão segue a regra do
+    // centavo indivisível (o resto fica na plataforma).
+    const payable = winners;
     const winnerIds = payable.map((e) => e.userId);
     const prizeCents = Math.round(prizeAmount * 100);
     const {perWinnerCents} = splitPrizeCents(prizeCents, winners.length);
@@ -907,9 +962,31 @@ exports.mercadoPagoWebhook = functions.https.onRequest(async (req, res) => {
   }
 
   const paymentData = paymentDoc.data();
+  // Status finais: 'approved' (creditado) e 'approved_orphan' (pago, mas a
+  // conta foi excluída antes do crédito — registrado em audit_logs).
+  const isFinal = (s) => s === "approved" || s === "approved_orphan";
+  const userRef = db.collection("users").doc(String(paymentData.userId || "-"));
+  // Pago por quem excluiu a conta antes do webhook chegar: não dá para
+  // creditar (o /users não existe — o update derrubaria a transação e o MP
+  // reenviaria em loop). Marca como órfão, registra e responde 200.
+  const markOrphan = (tx) => {
+    tx.update(paymentRef, {
+      status: "approved_orphan",
+      approvedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    tx.set(db.collection("audit_logs").doc(), {
+      type: "deposit_orphan_deleted_user",
+      action: "deposit_orphan_deleted_user",
+      userId: paymentData.userId || null,
+      paymentId,
+      purpose: paymentData.purpose || "deposit",
+      amount: paymentData.amount || 0,
+      createdAt: new Date().toISOString(),
+    });
+  };
 
   // Idempotency guard
-  if (paymentData.status === "approved") {
+  if (isFinal(paymentData.status)) {
     res.sendStatus(200);
     return;
   }
@@ -928,7 +1005,10 @@ exports.mercadoPagoWebhook = functions.https.onRequest(async (req, res) => {
     let processed = false;
     await db.runTransaction(async (tx) => {
       const pd = await tx.get(paymentRef);
-      if (pd.data().status === "approved") return; // idempotente
+      const ud = await tx.get(userRef);
+      if (isFinal(pd.data().status)) return; // idempotente
+      // Conta excluída: não recria o pedido de verificação (tinha CPF).
+      if (!ud.exists) return markOrphan(tx);
       tx.update(paymentRef, {
         status: "approved",
         approvedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -958,13 +1038,16 @@ exports.mercadoPagoWebhook = functions.https.onRequest(async (req, res) => {
   // o Mercado Pago reenvie a mesma notificação).
   let credited = false;
   await db.runTransaction(async (tx) => {
+    // Leituras antes das escritas.
     const pd = await tx.get(paymentRef);
-    if (pd.data().status === "approved") return; // idempotente
+    const ud = await tx.get(userRef);
+    if (isFinal(pd.data().status)) return; // idempotente
+    if (!ud.exists) return markOrphan(tx);
     tx.update(paymentRef, {
       status: "approved",
       approvedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
-    tx.update(db.collection("users").doc(paymentData.userId), {
+    tx.update(userRef, {
       balance: admin.firestore.FieldValue.increment(paymentData.amount),
     });
     tx.set(db.collection("transactions").doc(), {
@@ -1486,11 +1569,15 @@ exports.acceptTerms = functions.https.onCall(async (data, context) => {
   const existing = await userRef.get();
   const now = new Date().toISOString();
 
+  // De onde é o telefone: o export de público (Customer Match/Meta) usa isso
+  // em vez de adivinhar pelo número de dígitos.
+  const phoneRegion = intl ? "INTL" : "BR";
   if (existing.exists) {
     await userRef.update({
       termsAccepted: true,
       termsAcceptedAt: now,
       phone: phoneDigits,
+      phoneRegion,
     });
   } else {
     // Fallback: document was never created (saveUser failed or race condition)
@@ -1502,6 +1589,7 @@ exports.acceptTerms = functions.https.onCall(async (data, context) => {
       termsAccepted: true,
       termsAcceptedAt: now,
       phone: phoneDigits,
+      phoneRegion,
       createdAt: now,
       balance: 0,
       pendingBalance: 0,
@@ -2231,40 +2319,73 @@ exports.deleteAccount = functions.https.onCall(async (data, context) => {
 
   const userId = context.auth.uid;
   const db = admin.firestore();
-  const userDoc = await db.collection("users").doc(userId).get();
+  const userRef = db.collection("users").doc(userId);
+  const userDoc = await userRef.get();
   const userData = userDoc.data() || {};
-  // Contrato (app novo): {forfeitBalance: true, lang} só depois que o usuário
-  // confirmou que perde o saldo. App antigo não manda nada → pede confirmação.
+  // Contrato (app novo): {forfeitBalance: true, confirmedBalance, lang} só
+  // depois que o usuário VIU e confirmou o saldo que perde. confirmedBalance
+  // amarra o valor: se o saldo subiu depois do aviso (prêmio, Pix), recusa e
+  // o app pergunta de novo. App antigo (sem lang) não manda nada → recusa com
+  // uma mensagem que ele consegue seguir (recarregar a página).
+  const legacy = data?.lang === undefined;
   const en = data?.lang === "en";
   const forfeitBalance = data?.forfeitBalance === true;
+  const confirmed = Number(data?.confirmedBalance);
 
-  if ((userData.pendingBalance || 0) > 0) {
-    throw new functions.https.HttpsError(
-        "failed-precondition",
-        en ?
-          "You have credits in active challenges. Wait until they end before deleting your account." :
-          "Você tem créditos em desafios ativos. Aguarde o encerramento antes de excluir a conta.",
-    );
-  }
-  if ((userData.lockedBalance || 0) > 0) {
-    throw new functions.https.HttpsError(
-        "failed-precondition",
-        en ?
-          "You have a pending withdrawal. Wait until it completes before deleting your account." :
-          "Você tem um saque pendente. Aguarde a conclusão antes de excluir a conta.",
-    );
-  }
+  const busyError = (u) => {
+    if ((u.pendingBalance || 0) > 0) {
+      return new functions.https.HttpsError(
+          "failed-precondition",
+          en ?
+            "You have credits in active challenges. Wait until they end before deleting your account." :
+            "Você tem créditos em desafios ativos. Aguarde o encerramento antes de excluir a conta.",
+      );
+    }
+    if ((u.lockedBalance || 0) > 0) {
+      return new functions.https.HttpsError(
+          "failed-precondition",
+          en ?
+            "You have a pending withdrawal. Wait until it completes before deleting your account." :
+            "Você tem um saque pendente. Aguarde a conclusão antes de excluir a conta.",
+      );
+    }
+    return null;
+  };
   // Saldo NÃO bloqueia a exclusão (LGPD: direito de excluir; abaixo de R$100
-  // nem dá pra sacar) — só exige confirmação explícita de que ele é perdido.
-  const balance = Number(userData.balance || 0);
-  if (balance > 0 && !forfeitBalance) {
+  // nem dá pra sacar) — só exige confirmação explícita do valor perdido.
+  const balanceError = (u) => {
+    const bal = Number(u.balance || 0);
+    if (!(bal > 0)) return null;
+    if (forfeitBalance && Number.isFinite(confirmed) &&
+        bal <= confirmed + 0.005) return null;
+    const msg = legacy ?
+      `Você tem R$${bal.toFixed(2)} em créditos. Atualize a página ` +
+      "(recarregue o site) para confirmar a exclusão com a perda desse saldo." :
+      en ?
+        `You have ${bal.toFixed(2)} BRL in credits. Deleting your account ` +
+        "forfeits them — please confirm the amount to continue." :
+        `Você tem R$${bal.toFixed(2)} em créditos. Ao excluir a conta, ` +
+        "esse saldo será perdido — confirme o valor para continuar.";
+    return new functions.https.HttpsError(
+        "failed-precondition", msg, {reason: "balance", balance: bal});
+  };
+
+  const early = busyError(userData) || balanceError(userData);
+  if (early) throw early;
+
+  // Pix gerado e ainda dentro da validade: pode ser pago a qualquer momento.
+  // Excluir agora deixaria o depósito sem dono — espera expirar ou cair.
+  const pendingPix = await db.collection("payments")
+      .where("userId", "==", userId)
+      .where("status", "==", "pending")
+      .get();
+  const nowIso = new Date().toISOString();
+  if (pendingPix.docs.some((d) => String(d.data().expiresAt || "") > nowIso)) {
     throw new functions.https.HttpsError(
         "failed-precondition",
         en ?
-          "You still have credits in your balance. Deleting your account forfeits them — confirm to continue." :
-          `Você ainda tem R$${balance.toFixed(2)} em créditos. Ao excluir a conta, ` +
-          "esse saldo será perdido — confirme para continuar.",
-        {reason: "balance", balance},
+          "You have a Pix payment being processed. Please try again in a few minutes." :
+          "Você tem um Pix em processamento. Tente de novo em alguns minutos.",
     );
   }
 
@@ -2313,35 +2434,42 @@ exports.deleteAccount = functions.https.onCall(async (data, context) => {
     if (page.size < 400) break;
   }
 
-  // Último lote: PII da verificação (CPF/telefone), @username liberado (se
-  // ainda for deste uid), log do saldo perdido e o doc do usuário.
-  const last = [];
-  last.push((b) => b.delete(db.collection("verificationRequests").doc(userId)));
+  // Passo final numa TRANSAÇÃO: relê o usuário e revalida saldo/pendências
+  // (um prêmio ou Pix pode ter caído desde o começo da função). Se mudou, a
+  // exclusão é recusada e o app pergunta de novo com o valor novo. Remove a
+  // PII da verificação (CPF/telefone), libera o @username (se ainda for deste
+  // uid), registra o saldo perdido com o valor RELIDO e apaga o usuário.
   const uname = String(userData.username || "").trim();
-  for (const handle of new Set([uname, uname.toLowerCase()].filter(Boolean))) {
-    const uRef = db.collection("usernames").doc(handle);
-    const uDoc = await uRef.get();
-    if (uDoc.exists && uDoc.data().uid === userId) {
-      last.push((b) => b.delete(uRef));
+  const handleRefs = [...new Set([uname, uname.toLowerCase()].filter(Boolean))]
+      .map((h) => db.collection("usernames").doc(h));
+  await db.runTransaction(async (tx) => {
+    const fresh = await tx.get(userRef);
+    const handles = handleRefs.length > 0 ? await tx.getAll(...handleRefs) : [];
+    const u = fresh.data() || {};
+    const err = busyError(u) || balanceError(u);
+    if (err) throw err;
+
+    tx.delete(db.collection("verificationRequests").doc(userId));
+    handles.forEach((h) => {
+      if (h.exists && h.data().uid === userId) tx.delete(h.ref);
+    });
+    const lost = Number(u.balance || 0);
+    if (lost > 0) {
+      const at = new Date().toISOString();
+      tx.set(db.collection("audit_logs").doc(), {
+        type: "account_deleted_forfeit",
+        action: "account_deleted_forfeit",
+        userId,
+        amount: lost,
+        confirmedBalance: Number.isFinite(confirmed) ? confirmed : null,
+        at,
+        createdAt: at,
+      });
     }
-  }
-  if (balance > 0) {
-    const at = new Date().toISOString();
-    last.push((b) => b.set(db.collection("audit_logs").doc(), {
-      type: "account_deleted_forfeit",
-      action: "account_deleted_forfeit",
-      userId,
-      amount: balance,
-      at,
-      createdAt: at,
-    }));
-  }
+    tx.delete(userRef);
+  });
 
-  // Deleta documento do usuário
-  last.push((b) => b.delete(db.collection("users").doc(userId)));
-  await commitOps(last);
-
-  // Deleta conta no Firebase Auth
+  // Conta no Firebase Auth só depois que o Firestore confirmou.
   await admin.auth().deleteUser(userId);
 
   return {success: true};
@@ -3191,6 +3319,10 @@ exports.exportAudience = functions.runWith({timeoutSeconds: 300})
         const u = doc.data();
         if (u.isVirtual === true) return;
         if (u.isBanned === true) return;
+        // O público é para campanhas no Brasil (coluna Country = BR): quem
+        // fez o cadastro pelo site internacional fica de fora (o telefone
+        // dele não é brasileiro e sairia como +55 errado).
+        if (u.phoneRegion === "INTL") return;
         if (segment === "installs" && u.appInstalled !== true) return;
         const email = String(u.email || "").trim().toLowerCase();
         if (!email) return;

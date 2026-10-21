@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert");
 const {
   splitPrizeCents, withdrawalFee, withdrawalNet, xrpFromBrl,
-  isSaneBrlPerUsd, normalizeRates, brlFromUsd, usdFromBrl,
+  isSaneBrlPerUsd, normalizeRates, brlFromUsd, usdFromBrl, minUsdForBrl,
 } = require("../money");
 
 test("split exato entre 2 vencedores", () => {
@@ -127,4 +127,22 @@ test("normalizeRates: fallback é consistente e sem fallback inválido lança", 
 test("mensagem de mínimo: R$100 a 5,4 ≈ US$ 18,52 (não US$ 540)", () => {
   const usd = usdFromBrl(100, normalizeRates(FALLBACK, null).usdBrl);
   assert.strictEqual(usd.toFixed(2), "18.52");
+});
+
+test("minUsdForBrl: arredonda PARA CIMA com 1% de folga", () => {
+  // 100 / 5,37 = 18,622 → "mais próximo" daria 18.62 (= R$99,99, recusado).
+  assert.strictEqual(minUsdForBrl(100, 5.37), 18.81);
+  assert.strictEqual(minUsdForBrl(100, 5.4), 18.71);
+});
+
+test("minUsdForBrl: o valor anunciado sempre cobre o mínimo em R$", () => {
+  for (let r = 4; r <= 7; r += 0.01) {
+    const usd = minUsdForBrl(100, r);
+    assert.ok(Math.round(usd * r * 100) / 100 >= 100, `cotação ${r}: $${usd}`);
+  }
+});
+
+test("minUsdForBrl: cotação implausível → 0", () => {
+  assert.strictEqual(minUsdForBrl(100, 0.185), 0);
+  assert.strictEqual(minUsdForBrl(100, NaN), 0);
 });

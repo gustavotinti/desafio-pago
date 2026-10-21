@@ -15,9 +15,8 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const {getSecret} = require("./secrets");
-const {
-  xrpFromBrl, normalizeRates, brlFromUsd, usdFromBrl, isSaneBrlPerUsd,
-} = require("./money");
+const {xrpFromBrl, brlFromUsd, minUsdForBrl} = require("./money");
+const {getRates} = require("./rates");
 
 // ─── Mensagens localizadas (pt no BR, en no internacional) ───────────────────
 const langOf = (data) => (data && data.lang === "en" ? "en" : "pt");
@@ -39,9 +38,11 @@ const MSG = {
   banned: {pt: "Sua conta está suspensa", en: "Your account is suspended."},
 };
 const t = (lang, key) => (MSG[key] && MSG[key][lang]) || MSG[key].pt;
-// brlPerUsd = BRL por 1 USD (~5,4): R$ → US$ é DIVISÃO (R$100 ≈ US$ 18,52).
+// brlPerUsd = BRL por 1 USD (~5,4): R$ → US$ é DIVISÃO. Arredonda PARA
+// CIMA com folga (minUsdForBrl): quem digitar exatamente o valor anunciado
+// não pode cair abaixo de R$100 na conversão de volta.
 const minWithdrawMsg = (lang, minBrl, brlPerUsd) => {
-  const usd = usdFromBrl(minBrl, brlPerUsd).toFixed(2);
+  const usd = minUsdForBrl(minBrl, brlPerUsd).toFixed(2);
   return lang === "en" ?
     `Minimum withdrawal is about $${usd}.` :
     `Valor mínimo de saque: R$${minBrl} (≈ US$ ${usd}).`;
@@ -90,47 +91,9 @@ const _paypalToken = async (lang) => {
   return _tokCache;
 };
 
-// Fallback conservador (só usado se CoinGecko E o último valor salvo falharem).
-// usdBrl = BRL por 1 USD (mesma convenção do caminho feliz: xrpBrl / xrpUsd).
-const _FALLBACK_RATES = {xrpUsd: 2.5, xrpBrl: 13.5, usdBrl: 13.5 / 2.5};
-
-// Cotações de mercado (CoinGecko) com timeout + cache do último bom valor em
-// config/rates. NUNCA lança: crédito de pagamento não pode travar por causa
-// de uma API de cotação fora do ar (o dinheiro já foi cobrado no PayPal).
-const _rawRates = async () => {
-  try {
-    const r = await fetch(
-        "https://api.coingecko.com/api/v3/simple/price" +
-        "?ids=ripple&vs_currencies=usd,brl",
-        {signal: AbortSignal.timeout(8000)});
-    const j = await r.json();
-    const xrpUsd = Number(j.ripple && j.ripple.usd);
-    const xrpBrl = Number(j.ripple && j.ripple.brl);
-    // Só aceita (e só salva) cotação plausível — senão tenta o último salvo.
-    if (xrpUsd > 0 && xrpBrl > 0 && isSaneBrlPerUsd(xrpBrl / xrpUsd)) {
-      const rates = {xrpUsd, xrpBrl, usdBrl: xrpBrl / xrpUsd,
-        at: new Date().toISOString()};
-      admin.firestore().collection("config").doc("rates")
-          .set(rates).catch(() => {});
-      return rates;
-    }
-  } catch (e) {
-    console.warn("_rates: CoinGecko falhou —", e.message);
-  }
-  // Último valor salvo (bom o suficiente para converter).
-  try {
-    const doc = await admin.firestore().collection("config").doc("rates").get();
-    const d = doc.exists ? doc.data() : null;
-    if (d && d.xrpUsd > 0 && d.xrpBrl > 0) return d;
-  } catch (e) {
-    // segue pro fallback
-  }
-  return _FALLBACK_RATES;
-};
-
-// Sempre passa por normalizeRates: usdBrl (BRL por 1 USD) fora de 1..20 é
-// recalculado como xrpBrl / xrpUsd (ou cai no fallback).
-const _rates = async () => normalizeRates(await _rawRates(), _FALLBACK_RATES);
+// Cotações: fonte única em rates.js (a mesma que o SSR do TrialsPaid usa
+// para mostrar os prêmios em US$). Nunca lança — ver rates.js.
+const _rates = getRates;
 
 // ─── DEPÓSITO: criar ordem PayPal ────────────────────────────────────────────
 

@@ -80,13 +80,21 @@ Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
 - **Dinheiro:** `vote` valida entry∈desafio e ativa (inclusive admin);
   `finalizeChallenge` ignora participação de conta excluída/demo/sem `/users`
   (vence a próxima elegível; lê antes de escrever na transação);
-  `deleteAccount` exige `{forfeitBalance:true}` quando há saldo (erro
-  `failed-precondition` com `details.reason='balance'`), loga em `audit_logs`,
+  `deleteAccount` exige `{forfeitBalance:true, confirmedBalance}` quando há
+  saldo e recusa se o saldo real > confirmado (erro `failed-precondition` com
+  `details.reason='balance'`); revalida numa transação final, loga em
+  `audit_logs`, bloqueia com Pix pendente ainda válido,
   apaga `verificationRequests`, `usernames` e as notificações, e tira da disputa
   as entries de desafios ativos; `_assertNotBanned` em createChallenge,
   addAmount, requestWithdraw, createPixPayment, requestCryptoWithdraw e
   paypalCreateOrder; saques do admin conferem `status=='pending'` na transação.
-- **Câmbio:** `usdBrl` = **BRL por 1 USD** em todo lugar (fallback 5.4); as
+- **Prazo:** depois de `expiresAt` ninguém vota (nem o cron de auto-votos),
+  mesmo antes do encerramento marcar 'finished'; `finalizeChallenge` lê as
+  participações DENTRO da transação. Webhook do Pix de conta excluída →
+  `approved_orphan` + `audit_logs` (responde 200).
+- **Câmbio:** cotação numa fonte só (`functions/rates.js`, usada pelo PayPal e
+  pelo SSR do TrialsPaid, que mostra prêmios em US$); saque mínimo anunciado
+  arredonda para cima (`minUsdForBrl`); `usdBrl` = **BRL por 1 USD** em todo lugar (fallback 5.4); as
   conversões puras ficam em `money.js` (`brlFromUsd`/`usdFromBrl`/`normalizeRates`).
   No app, `Fmt.typedToBrl()` converte o valor digitado no criar desafio e no aporte.
 - **Erros:** `lib/core/utils/friendly_error.dart`. Os repositórios lançam
@@ -108,7 +116,11 @@ Firebase: projeto `desafio-app-b8665` · Functions região `us-central1`
   permissão Storage→Firestore).
 - **Build:** `node build_sites.js` gera BR (`build/web`) e intl (`build/web_intl`,
   rebrand + asserções). Substitui o sed manual.
-- Testes: 39 JS + 13 Dart.
+- Testes: 59 JS + 16 Dart. `functions/test/money_flows.test.js` roda o
+  `index.js` REAL sobre um Firestore em memória (`functions/test_support/
+  fakefire.js`: update em doc inexistente falha, leitura depois de escrita
+  na transação falha) — cobre voto, encerramento, exclusão de conta,
+  webhook e centavos.
 
 ### 🌍 Internacional (TrialsPaid — v3.0.0)
 - **Mesmo codebase, 2 builds**: BR (padrão, idêntico) e intl via

@@ -102,7 +102,10 @@ service cloud.firestore {
       // get do doc `uid_challengeId` para saber "já votei?": quando o voto
       // ainda não existe, resource == null e a leitura precisa passar (senão
       // hasVoted estoura permission-denied para quem ainda não votou).
+      // O id precisa começar pelo PRÓPRIO uid: sem isso, "doc inexistente
+      // passa / voto alheio nega" viraria um oráculo de quem votou onde.
       allow get: if signedIn()
+        && voteId.matches('^' + uid() + '_.+$')
         && (resource == null || resource.data.userId == uid());
       // Listagem continua restrita aos próprios votos.
       allow list: if signedIn() && resource.data.userId == uid();

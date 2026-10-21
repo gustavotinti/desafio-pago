@@ -122,7 +122,25 @@ function usdFromBrl(brl, brlPerUsd) {
   return Math.round((Number(brl) / Number(brlPerUsd)) * 100) / 100;
 }
 
+/**
+ * Valor MÍNIMO em US$ para anunciar ao usuário um mínimo em R$ (ex.: saque).
+ * Arredonda PARA CIMA e soma 1% de folga: com "mais próximo", R$100 a 5,37
+ * viraria $18.62 → o app converte de volta para R$99,99 e o servidor recusa
+ * de novo. A folga cobre a diferença entre a cotação do app e a do servidor.
+ * Cotação implausível → 0 (quem chama decide não mostrar).
+ * @param {number} minBrl
+ * @param {number} brlPerUsd BRL por 1 USD.
+ * @return {number}
+ */
+function minUsdForBrl(minBrl, brlPerUsd) {
+  if (!isSaneBrlPerUsd(brlPerUsd)) return 0;
+  // toFixed(6) antes do ceil: evita 18.6200000001 virar 18.63 por ruído.
+  const cents = Number(((Number(minBrl) / Number(brlPerUsd)) * 1.01 * 100)
+      .toFixed(6));
+  return Math.ceil(cents) / 100;
+}
+
 module.exports = {
   splitPrizeCents, withdrawalFee, withdrawalNet, xrpFromBrl,
-  isSaneBrlPerUsd, normalizeRates, brlFromUsd, usdFromBrl,
+  isSaneBrlPerUsd, normalizeRates, brlFromUsd, usdFromBrl, minUsdForBrl,
 };

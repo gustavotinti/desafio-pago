@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -58,12 +60,42 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
   final _reportRepo = ReportRepository();
   final _functions = FirebaseFunctions.instanceFor(region: 'us-central1');
 
+  // Rebuild agendado para o fim do prazo: o botão de votar some na hora,
+  // mesmo que o stream não reemita (o encerramento só roda a cada 5 min).
+  Timer? _deadlineTimer;
+
   @override
   void initState() {
     super.initState();
     _entriesStream = GetEntries().watch(widget.challenge.id);
     _loadHasVoted();
     _loadAdmin();
+    _scheduleDeadline();
+  }
+
+  @override
+  void dispose() {
+    _deadlineTimer?.cancel();
+    super.dispose();
+  }
+
+  /// Prazo vencido = votação fechada, mesmo antes do cron marcar
+  /// 'finished' (vence quem tem mais votos AO FINAL DO PRAZO; o backend é
+  /// quem garante — aqui é só UX).
+  bool get _expired => !widget.challenge.expiresAt.isAfter(DateTime.now());
+
+  void _scheduleDeadline() {
+    final left = widget.challenge.expiresAt.difference(DateTime.now());
+    if (left.isNegative) return;
+    // Timer no web estoura acima de ~24,8 dias (setTimeout 32 bits):
+    // agenda no máximo 1 dia e reagenda.
+    const maxWait = Duration(days: 1);
+    _deadlineTimer = Timer(
+        left > maxWait ? maxWait : left + const Duration(seconds: 1), () {
+      if (!mounted) return;
+      setState(() {});
+      _scheduleDeadline();
+    });
   }
 
   Future<void> _ensureProfiles(List<Entry> entries) async {
@@ -146,6 +178,11 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
 
   Future<void> _vote(String entryId) async {
     if (!await ensureLoggedIn(context, message: I18n.tr('vote_login'))) {
+      return;
+    }
+    // Prazo venceu com a tela aberta (toque na virada): não chama o backend.
+    if (_expired) {
+      if (mounted) setState(() {});
       return;
     }
     try {
@@ -354,6 +391,9 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
   @override
   Widget build(BuildContext context) {
     final isFinished = widget.challenge.status == ChallengeStatus.finished;
+    // Votação fechada: encerrado OU prazo vencido (antes do cron finalizar).
+    // O banner de vencedores continua só com 'finished' (winnerIds).
+    final votingClosed = isFinished || _expired;
 
     return Scaffold(
       appBar: AppBar(
@@ -364,7 +404,7 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
         children: [
           _PrizeHeader(challenge: widget.challenge),
           if (widget.highlightEntryId != null)
-            _SharedEntryBanner(canVote: !isFinished),
+            _SharedEntryBanner(canVote: !votingClosed),
           if (isFinished) _FinishedBanner(challenge: widget.challenge),
           Expanded(
             child: StreamBuilder<List<Entry>>(
@@ -405,12 +445,12 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
                 }
                 // Admins bypass the creator restriction for demo voting
                 final canVote =
-                    !_hasVoted && (!_isCreator || _isAdmin) && !isFinished;
+                    !_hasVoted && (!_isCreator || _isAdmin) && !votingClosed;
 
                 final uid = FirebaseAuth.instance.currentUser?.uid;
 
                 // entries + comentários no fim + (cabeçalho "sua posição")
-                final hasHeader = myPos != null && !isFinished;
+                final hasHeader = myPos != null && !votingClosed;
                 final itemCount = entries.isEmpty
                     ? 1
                     : entries.length + 1 + (hasHeader ? 1 : 0);
@@ -455,7 +495,8 @@ class _ChallengeEntriesPageState extends State<ChallengeEntriesPage> {
                       author: _profiles[entry.userId],
                       canVote: canVote,
                       hasVoted: _hasVoted,
-                      isFinished: isFinished,
+                      // Esconde o botão de votar também no prazo vencido.
+                      isFinished: votingClosed,
                       isWinner: isWinner,
                       isHighlighted: entry.id == widget.highlightEntryId,
                       isAdmin: _isAdmin,

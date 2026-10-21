@@ -73,12 +73,21 @@ class Fmt {
 
   /// Valor digitado → BRL do ledger. No BR o usuário digita R$; no intl
   /// digita US$ e convertemos aqui — ponto único usado por criar desafio e
-  /// aporte. A conversão é arredondada ao centavo (o ledger não guarda
-  /// frações de centavo). [intl] só existe para os testes (padrão:
-  /// AppConfig.intl).
+  /// aporte. Sempre arredondado ao centavo, nos dois sites (o ledger não
+  /// guarda frações de centavo: "10,555" vira 10,56). [intl] só existe para
+  /// os testes (padrão: AppConfig.intl).
   static double typedToBrl(String text, {bool? intl}) {
     final typed = parseTyped(text);
-    if (!(intl ?? AppConfig.intl)) return typed;
-    return (usdToBrl(typed) * 100).roundToDouble() / 100;
+    if (!(intl ?? AppConfig.intl)) return roundCents(typed);
+    return roundCents(usdToBrl(typed));
   }
+
+  /// Arredonda ao centavo mais próximo.
+  static double roundCents(num v) => (v * 100).roundToDouble() / 100;
+
+  /// Arredonda PARA CIMA ao centavo — para valores que não podem cair abaixo
+  /// de um mínimo na conversão (ex.: saque em US$ que precisa dar ≥ R$100).
+  /// O desconto de 1e-6 evita que ruído de ponto flutuante (100.0000000001)
+  /// suba um centavo à toa.
+  static double ceilCents(num v) => ((v * 100) - 1e-6).ceilToDouble() / 100;
 }

@@ -29,6 +29,9 @@ class _AutoVideoState extends State<AutoVideo> {
   bool _loading = false;
   bool _error = false;
   bool _hovering = false;
+  // Muda a cada troca de url: um initialize() que termina depois da troca
+  // pertence ao vídeo antigo e é descartado.
+  int _gen = 0;
 
   @override
   void initState() {
@@ -36,8 +39,26 @@ class _AutoVideoState extends State<AutoVideo> {
     if (widget.autoInit) _ensure();
   }
 
+  // O feed atualiza no lugar (sem recriar a lista): o mesmo State pode passar
+  // a representar OUTRO vídeo (outro desafio na posição, ou o top 3 mudou de
+  // ordem). Sem isso o player continuava tocando a url antiga.
+  @override
+  void didUpdateWidget(covariant AutoVideo oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.url == widget.url) return;
+    _gen++;
+    _c?.removeListener(_tick);
+    _c?.dispose();
+    _c = null;
+    _ready = false;
+    _loading = false;
+    _error = false;
+    if (widget.autoInit) _ensure();
+  }
+
   Future<void> _ensure() async {
     if (_c != null || _error) return;
+    final gen = _gen;
     if (mounted) setState(() => _loading = true);
     final c = VideoPlayerController.networkUrl(Uri.parse(widget.url));
     _c = c;
@@ -47,6 +68,7 @@ class _AutoVideoState extends State<AutoVideo> {
       await c.setVolume(0);
     } catch (_) {
       c.dispose();
+      if (gen != _gen) return; // url trocou no meio: o novo _ensure cuida
       _c = null;
       if (mounted) {
         setState(() {
@@ -54,6 +76,12 @@ class _AutoVideoState extends State<AutoVideo> {
           _loading = false;
         });
       }
+      return;
+    }
+    if (gen != _gen) {
+      // url trocou durante o initialize: este controller é do vídeo antigo
+      // (o didUpdateWidget já o descartou do estado).
+      c.dispose();
       return;
     }
     if (!mounted) {
