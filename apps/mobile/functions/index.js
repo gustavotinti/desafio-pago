@@ -5080,6 +5080,60 @@ exports.adminGetSecretStatus = _secrets.adminGetSecretStatus;
 // ─── MÉTRICAS REAIS (transparência — ver functions/metrics.js) ──────────────
 exports.adminRealMetrics = require("./metrics").adminRealMetrics;
 
+// ─── ZERAR SALDOS DE TESTE (one-shot, auditável) ─────────────────────────────
+// Contas de teste do fundador ganharam prêmios de desafios criados pelo admin
+// (sem dinheiro depositado). Esse saldo não existe de verdade: se fosse
+// sacado, a plataforma pagaria dinheiro que nunca entrou. Zera balance e
+// totalEarned SÓ dos uids informados, registra o "antes" em audit_logs e
+// recusa conta com saldo travado/pendente. POST + secret; dryRun por padrão.
+// Body: {secret, uids: [...], dryRun: false}
+exports.resetTestAccounts = functions.https.onRequest(async (req, res) => {
+  if (req.method !== "POST") return res.status(405).json({error: "POST"});
+  const body = req.body || {};
+  if (body.secret !== "SEED_2026_DP") {
+    return res.status(403).json({error: "Forbidden"});
+  }
+  const uids = Array.isArray(body.uids) ?
+    body.uids.map(String).filter(Boolean).slice(0, 20) : [];
+  if (uids.length === 0) return res.status(400).json({error: "uids"});
+  const dryRun = body.dryRun !== false;
+  const db = admin.firestore();
+  const report = [];
+  for (const uid of uids) {
+    const ref = db.collection("users").doc(uid);
+    const r = await db.runTransaction(async (tx) => {
+      const doc = await tx.get(ref);
+      if (!doc.exists) return {uid, result: "not_found"};
+      const u = doc.data();
+      const before = {
+        balance: Number(u.balance || 0),
+        totalEarned: Number(u.totalEarned || 0),
+        pendingBalance: Number(u.pendingBalance || 0),
+        lockedBalance: Number(u.lockedBalance || 0),
+      };
+      if (u.isVirtual === true) return {uid, result: "virtual_skipped", before};
+      if (before.pendingBalance > 0 || before.lockedBalance > 0) {
+        return {uid, result: "blocked_pending_or_locked", before};
+      }
+      if (dryRun) return {uid, result: "would_reset", before};
+      tx.update(ref, {balance: 0, totalEarned: 0, testBalanceResetAt:
+        new Date().toISOString()});
+      tx.set(db.collection("audit_logs").doc(), {
+        type: "test_balance_reset",
+        action: "test_balance_reset",
+        userId: uid,
+        before,
+        reason: "Saldo de teste do fundador (desafios criados pelo admin, " +
+          "sem dinheiro depositado)",
+        createdAt: new Date().toISOString(),
+      });
+      return {uid, result: "reset", before};
+    });
+    report.push(r);
+  }
+  return res.json({dryRun, report});
+});
+
 // ─── PROVA DE PRÊMIO NO XRP LEDGER (ver functions/xrpl_proof.js) ─────────────
 const _xrplProof = require("./xrpl_proof");
 exports.xrplOnChallengeCreate = _xrplProof.xrplOnChallengeCreate;

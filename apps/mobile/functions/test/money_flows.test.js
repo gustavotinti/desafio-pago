@@ -439,3 +439,36 @@ test("métricas reais: ignoram demonstração e votos de admin", async () => {
     withdrawalsPaid: 1, withdrawalsBrl: 100});
   assert.deepStrictEqual(m.onchain, {prizesRecorded: 0, resultsRecorded: 0});
 });
+
+// ── ZERAR SALDOS DE TESTE ─────────────────────────────────────────────────
+test("resetTestAccounts: simula por padrão, zera só os uids pedidos e audita", async () => {
+  user("g1", {balance: 48415, totalEarned: 48415});
+  user("g2", {balance: 10, totalEarned: 10, lockedBalance: 5});
+  user("bar", {balance: 3, totalEarned: 3});
+  const call = async (body) => {
+    const r = {code: 200, body: null};
+    r.status = (c) => {
+      r.code = c; return r;
+    };
+    r.json = (b) => {
+      r.body = b; return r;
+    };
+    await fx.resetTestAccounts({method: "POST", body}, r);
+    return r;
+  };
+  assert.strictEqual((await call({secret: "x", uids: ["g1"]})).code, 403);
+  const dry = await call({secret: "SEED_2026_DP", uids: ["g1"]});
+  assert.strictEqual(dry.body.report[0].result, "would_reset");
+  assert.strictEqual(F.read("users/g1").balance, 48415, "dry run não mexe");
+  const real = await call({secret: "SEED_2026_DP", uids: ["g1", "g2"], dryRun: false});
+  assert.deepStrictEqual(real.body.report.map((x) => x.result),
+      ["reset", "blocked_pending_or_locked"]);
+  assert.strictEqual(F.read("users/g1").balance, 0);
+  assert.strictEqual(F.read("users/g1").totalEarned, 0);
+  assert.strictEqual(F.read("users/g2").balance, 10);
+  assert.strictEqual(F.read("users/bar").balance, 3, "conta não pedida intacta");
+  const logs = [...F.store].filter(([p, d]) => p.startsWith("audit_logs/") &&
+      d.type === "test_balance_reset");
+  assert.strictEqual(logs.length, 1);
+  assert.strictEqual(logs[0][1].before.balance, 48415);
+});
