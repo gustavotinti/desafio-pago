@@ -7,6 +7,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../core/utils/open_url_stub.dart'
+    if (dart.library.js_interop) '../../../core/utils/open_url_web.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/i18n/i18n.dart';
 import '../../../core/utils/format.dart';
@@ -671,9 +673,68 @@ class _PrizeHeader extends StatelessWidget {
                     ),
                   ],
                 ),
+                // Prova pública no XRP Ledger: qualquer um confere.
+                if (challenge.xrplEscrowTx != null) ...[
+                  const SizedBox(height: 6),
+                  _ProofLink(
+                    label: I18n.tr(challenge.xrplNetwork == 'testnet'
+                        ? 'xrpl_prize_proof_test'
+                        : 'xrpl_prize_proof'),
+                    url: _explorer(challenge.xrplNetwork,
+                        challenge.xrplEscrowTx!),
+                  ),
+                ],
+                if (challenge.xrplReleaseTx != null) ...[
+                  const SizedBox(height: 4),
+                  _ProofLink(
+                    label: I18n.tr('xrpl_result_proof'),
+                    url: _explorer(challenge.xrplNetwork,
+                        challenge.xrplReleaseTx!),
+                  ),
+                ],
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+String _explorer(String network, String hash) => network == 'testnet'
+    ? 'https://testnet.xrpl.org/transactions/$hash'
+    : 'https://livenet.xrpl.org/transactions/$hash';
+
+/// Link para o comprovante no explorador público do XRP Ledger.
+class _ProofLink extends StatelessWidget {
+  final String label;
+  final String url;
+  const _ProofLink({required this.label, required this.url});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => openExternalUrl(url),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.verified_user_outlined,
+              color: Colors.white, size: 14),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                decoration: TextDecoration.underline,
+                decorationColor: Colors.white70,
+              ),
+            ),
+          ),
+          const SizedBox(width: 3),
+          const Icon(Icons.open_in_new, color: Colors.white70, size: 12),
         ],
       ),
     );

@@ -60,7 +60,10 @@ class _AdminMetricsPageState extends State<AdminMetricsPage> {
         '- Votos de usuários: ${v['byUsers']}\n'
         '- Depósitos aprovados: ${$['depositsApproved']} '
         '(${_brl($['depositsBrl'])})\n'
-        '- Saques pagos: ${$['withdrawalsPaid']} (${_brl($['withdrawalsBrl'])})';
+        '- Saques pagos: ${$['withdrawalsPaid']} (${_brl($['withdrawalsBrl'])})\n'
+        '- XRP Ledger (testnet): ${(m['onchain'] as Map)['prizesRecorded']} '
+        'prêmios registrados em escrow, ${(m['onchain'] as Map)['resultsRecorded']} '
+        'resultados liberados';
   }
 
   @override
@@ -105,6 +108,9 @@ class _AdminMetricsPageState extends State<AdminMetricsPage> {
                             '${m['money']['depositsApproved']} aprovados'),
                         _Tile('Saques pagos', _brl(m['money']['withdrawalsBrl']),
                             '${m['money']['withdrawalsPaid']} pagos'),
+                        _Tile('Prêmios na rede XRP',
+                            '${m['onchain']['prizesRecorded']}',
+                            'resultados: ${m['onchain']['resultsRecorded']}'),
                       ]),
                       const SizedBox(height: 18),
                       FilledButton.icon(

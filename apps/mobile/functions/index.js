@@ -5080,6 +5080,12 @@ exports.adminGetSecretStatus = _secrets.adminGetSecretStatus;
 // ─── MÉTRICAS REAIS (transparência — ver functions/metrics.js) ──────────────
 exports.adminRealMetrics = require("./metrics").adminRealMetrics;
 
+// ─── PROVA DE PRÊMIO NO XRP LEDGER (ver functions/xrpl_proof.js) ─────────────
+const _xrplProof = require("./xrpl_proof");
+exports.xrplOnChallengeCreate = _xrplProof.xrplOnChallengeCreate;
+exports.xrplOnChallengeFinish = _xrplProof.xrplOnChallengeFinish;
+exports.xrplRetry = _xrplProof.xrplRetry;
+
 // ─── SEED / BACKFILL INTERNACIONAL (one-shot, re-executável) ─────────────────
 // 1) Marca todos os desafios sem `region` como 'BR'. 2) Se não houver desafios
 // internacionais, cria alguns (em inglês) com participações de perfis virtuais

@@ -1034,6 +1034,23 @@ class I18n {
       'Auf Instagram öffnen'],
     'close': ['Fechar', 'Close', 'Cerrar', 'Fermer', 'Chiudi', 'Schließen'],
 
+    // Prova de prêmio no XRP Ledger
+    'xrpl_prize_proof': ['Prêmio registrado na rede XRP',
+      'Prize recorded on the XRP Ledger', 'Premio registrado en XRP Ledger',
+      'Prix enregistré sur le XRP Ledger', 'Premio registrato su XRP Ledger',
+      'Preis im XRP Ledger hinterlegt'],
+    'xrpl_prize_proof_test': ['Prêmio registrado na rede XRP (teste)',
+      'Prize recorded on the XRP Ledger (testnet)',
+      'Premio registrado en XRP Ledger (testnet)',
+      'Prix enregistré sur le XRP Ledger (testnet)',
+      'Premio registrato su XRP Ledger (testnet)',
+      'Preis im XRP Ledger hinterlegt (Testnet)'],
+    'xrpl_result_proof': ['Resultado registrado na rede XRP',
+      'Result recorded on the XRP Ledger', 'Resultado registrado en XRP Ledger',
+      'Résultat enregistré sur le XRP Ledger',
+      'Risultato registrato su XRP Ledger',
+      'Ergebnis im XRP Ledger hinterlegt'],
+
     // Transparência: conteúdo de demonstração
     'demo_badge': ['Demonstração', 'Demo', 'Demostración', 'Démo', 'Demo',
       'Demo'],

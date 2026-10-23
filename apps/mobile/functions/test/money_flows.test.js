@@ -436,4 +436,5 @@ test("métricas reais: ignoram demonstração e votos de admin", async () => {
   assert.deepStrictEqual(m.votes, {byUsers: 1, byAdmins: 1});
   assert.deepStrictEqual(m.money, {depositsApproved: 1, depositsBrl: 25,
     withdrawalsPaid: 1, withdrawalsBrl: 100});
+  assert.deepStrictEqual(m.onchain, {prizesRecorded: 0, resultsRecorded: 0});
 });

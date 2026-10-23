@@ -14,12 +14,20 @@ const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)
 const INC = "__inc";
 const TS = "__ts";
 
-function applyPatch(base, patch) {
+// `dotted`: update() do Firestore trata "a.b" como campo aninhado (set não).
+function applyPatch(base, patch, dotted = false) {
   const out = clone(base) || {};
-  for (const [k, v] of Object.entries(patch)) {
-    if (v && typeof v === "object" && INC in v) out[k] = (Number(out[k]) || 0) + v[INC];
-    else if (v && typeof v === "object" && TS in v) out[k] = new Date().toISOString();
-    else out[k] = clone(v);
+  for (const [key, v] of Object.entries(patch)) {
+    const path = dotted ? key.split(".") : [key];
+    let obj = out;
+    for (const p of path.slice(0, -1)) {
+      if (!obj[p] || typeof obj[p] !== "object") obj[p] = {};
+      obj = obj[p];
+    }
+    const k = path[path.length - 1];
+    if (v && typeof v === "object" && INC in v) obj[k] = (Number(obj[k]) || 0) + v[INC];
+    else if (v && typeof v === "object" && TS in v) obj[k] = new Date().toISOString();
+    else obj[k] = clone(v);
   }
   return out;
 }
@@ -57,7 +65,7 @@ class DocRef {
   }
   async update(d) {
     if (!store.has(this.path)) throw notFound(this.path);
-    store.set(this.path, applyPatch(store.get(this.path), d));
+    store.set(this.path, applyPatch(store.get(this.path), d, true));
   }
   async delete() {
     store.delete(this.path);
@@ -168,7 +176,7 @@ function makeWriter(strictTx) {
         if (k === "set") {
           const base = opts && opts.merge ? sim.get(ref.path) : undefined;
           sim.set(ref.path, base ? applyPatch(base, d) : materialize(d));
-        } else if (k === "update") sim.set(ref.path, applyPatch(sim.get(ref.path), d));
+        } else if (k === "update") sim.set(ref.path, applyPatch(sim.get(ref.path), d, true));
         else sim.delete(ref.path);
       }
       store.clear(); for (const [k, v] of sim) store.set(k, v);

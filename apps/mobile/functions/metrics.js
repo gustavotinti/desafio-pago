@@ -39,6 +39,7 @@ async function computeRealMetrics(db) {
     enTotal, enDemo,
     votesTotal, votesAdmin,
     depCount, depSum, wdCount, wdSum,
+    xrplPrizes, xrplResults,
   ] = await Promise.all([
     countOf(db.collection("publicProfiles").where("isVirtual", "==", false)),
     countOf(db.collection("publicProfiles").where("isVirtual", "==", true)),
@@ -49,6 +50,9 @@ async function computeRealMetrics(db) {
     countOf(votes), countOf(votes.where("isAdminVote", "==", true)),
     countOf(deposits), sumOf(deposits, "amount"),
     countOf(paidOut), sumOf(paidOut, "amount"),
+    // Prova on-chain (xrpl_proof.js): cofres criados e resultados liberados.
+    countOf(challenges.where("xrpl.escrowXrp", "==", "1")),
+    countOf(challenges.where("xrpl.releasePending", "==", false)),
   ]);
 
   const round2 = (x) => Math.round(x * 100) / 100;
@@ -68,6 +72,7 @@ async function computeRealMetrics(db) {
       withdrawalsPaid: wdCount,
       withdrawalsBrl: round2(wdSum),
     },
+    onchain: {prizesRecorded: xrplPrizes, resultsRecorded: xrplResults},
     generatedAt: new Date().toISOString(),
   };
 }

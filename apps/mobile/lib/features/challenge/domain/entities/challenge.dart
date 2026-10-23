@@ -22,6 +22,11 @@ class Challenge {
   final String region;
   // Desafio de demonstração (seed): mostrado com selo, não conta nos números.
   final bool isVirtual;
+  // Prova pública no XRP Ledger (hash das transações): prêmio registrado na
+  // criação e resultado na liberação. Null enquanto não houver.
+  final String? xrplEscrowTx;
+  final String? xrplReleaseTx;
+  final String xrplNetwork;
 
   Challenge({
     required this.id,
@@ -40,5 +45,8 @@ class Challenge {
     this.pinnedAt,
     this.region = 'BR',
     this.isVirtual = false,
+    this.xrplEscrowTx,
+    this.xrplReleaseTx,
+    this.xrplNetwork = 'testnet',
   });
 }

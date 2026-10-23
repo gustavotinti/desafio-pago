@@ -122,6 +122,9 @@ class GetChallenges {
       // Sem region no doc (legado) = 'BR'.
       region: (data['region'] as String?) ?? 'BR',
       isVirtual: data['isVirtual'] == true,
+      xrplEscrowTx: (data['xrpl'] as Map?)?['escrowTx'] as String?,
+      xrplReleaseTx: (data['xrpl'] as Map?)?['releaseTx'] as String?,
+      xrplNetwork: (data['xrpl'] as Map?)?['network'] as String? ?? 'testnet',
     );
   }
 }
