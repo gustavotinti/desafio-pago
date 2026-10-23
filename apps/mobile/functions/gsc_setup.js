@@ -13,7 +13,13 @@
 // propriedades aparecem no Search Console do dono.
 
 const functions = require("firebase-functions");
-const {google} = require("googleapis");
+// googleapis é pesado (~2 s para carregar): só na hora do uso, senão o deploy
+// estoura o tempo de análise do código (10 s).
+let _google = null;
+const gapi = () => {
+  if (!_google) _google = require("googleapis").google;
+  return _google;
+};
 
 const PROJECT = "desafio-app-b8665";
 const OWNER_EMAIL = "gustavo.a.tinti3@gmail.com";
@@ -30,10 +36,13 @@ const SCOPES = [
   "https://www.googleapis.com/auth/cloud-platform",
 ];
 
-const authClient = () => new google.auth.GoogleAuth({scopes: SCOPES});
+const authClient = () => {
+  const {GoogleAuth} = gapi().auth;
+  return new GoogleAuth({scopes: SCOPES});
+};
 
 const stepEnable = async (auth) => {
-  const su = google.serviceusage({version: "v1", auth});
+  const su = gapi().serviceusage({version: "v1", auth});
   const out = [];
   for (const api of ["siteverification.googleapis.com",
     "searchconsole.googleapis.com"]) {
@@ -48,7 +57,7 @@ const stepEnable = async (auth) => {
 };
 
 const stepToken = async (auth) => {
-  const sv = google.siteVerification({version: "v1", auth});
+  const sv = gapi().siteVerification({version: "v1", auth});
   const out = [];
   for (const s of SITES) {
     const r = await sv.webResource.getToken({
@@ -63,8 +72,8 @@ const stepToken = async (auth) => {
 };
 
 const stepVerify = async (auth) => {
-  const sv = google.siteVerification({version: "v1", auth});
-  const wm = google.webmasters({version: "v3", auth});
+  const sv = gapi().siteVerification({version: "v1", auth});
+  const wm = gapi().webmasters({version: "v3", auth});
   const out = [];
   for (const s of SITES) {
     const item = {site: s.url};
@@ -114,7 +123,7 @@ const stepVerify = async (auth) => {
 };
 
 const stepStatus = async (auth) => {
-  const wm = google.webmasters({version: "v3", auth});
+  const wm = gapi().webmasters({version: "v3", auth});
   const sites = await wm.sites.list();
   const out = {sites: (sites.data.siteEntry || []), sitemaps: []};
   for (const s of SITES) {
