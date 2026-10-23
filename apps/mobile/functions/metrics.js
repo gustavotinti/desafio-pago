@@ -35,7 +35,7 @@ async function computeRealMetrics(db) {
   const [
     usersReal, usersDemo,
     chTotal, chDemo, chActive, chActiveDemo,
-    prizeTotal, prizeDemo,
+    prizeTotal, prizeDemo, fundedTotal, fundedDemo,
     enTotal, enDemo,
     votesTotal, votesAdmin,
     depCount, depSum, wdCount, wdSum,
@@ -46,6 +46,11 @@ async function computeRealMetrics(db) {
     countOf(challenges), countOf(demoCh),
     countOf(activeCh), countOf(activeDemo),
     sumOf(challenges, "amount"), sumOf(demoCh, "amount"),
+    // Prêmio BANCADO por usuários (debitado do saldo de quem criou). Desafio
+    // criado pelo admin não debita ninguém: o "amount" dele não é dinheiro
+    // depositado e não pode ser apresentado como prêmio pago.
+    sumOf(challenges, "creatorContribution"),
+    sumOf(demoCh, "creatorContribution"),
     countOf(entries), countOf(entries.where("isVirtual", "==", true)),
     countOf(votes), countOf(votes.where("isAdminVote", "==", true)),
     countOf(deposits), sumOf(deposits, "amount"),
@@ -63,6 +68,7 @@ async function computeRealMetrics(db) {
       realActive: chActive - chActiveDemo,
       demo: chDemo,
       realPrizeTotalBrl: round2(prizeTotal - prizeDemo),
+      userFundedPrizeBrl: round2(fundedTotal - fundedDemo),
     },
     entries: {real: enTotal - enDemo, demo: enDemo},
     votes: {byUsers: votesTotal - votesAdmin, byAdmins: votesAdmin},

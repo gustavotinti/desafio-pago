@@ -432,6 +432,7 @@ test("métricas reais: ignoram demonstração e votos de admin", async () => {
   assert.strictEqual(m.challenges.real, 1);
   assert.strictEqual(m.challenges.realActive, 1);
   assert.strictEqual(m.challenges.realPrizeTotalBrl, 50);
+  assert.strictEqual(m.challenges.userFundedPrizeBrl, 10.01); // contribuição do criador
   assert.deepStrictEqual(m.entries, {real: 1, demo: 1});
   assert.deepStrictEqual(m.votes, {byUsers: 1, byAdmins: 1});
   assert.deepStrictEqual(m.money, {depositsApproved: 1, depositsBrl: 25,

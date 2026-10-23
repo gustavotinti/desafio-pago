@@ -55,7 +55,8 @@ class _AdminMetricsPageState extends State<AdminMetricsPage> {
         '${(m['generatedAt'] as String).substring(0, 10)}:\n'
         '- Usuários reais: ${u['real']}\n'
         '- Desafios reais criados: ${c['real']} (ativos agora: '
-        '${c['realActive']}), prêmios oferecidos: ${_brl(c['realPrizeTotalBrl'])}\n'
+        '${c['realActive']}), prêmio bancado por usuários: '
+        '${_brl(c['userFundedPrizeBrl'])}\n'
         '- Participações reais: ${e['real']}\n'
         '- Votos de usuários: ${v['byUsers']}\n'
         '- Depósitos aprovados: ${$['depositsApproved']} '
@@ -96,9 +97,9 @@ class _AdminMetricsPageState extends State<AdminMetricsPage> {
                             'demonstração: ${m['users']['demo']}'),
                         _Tile('Desafios reais', '${m['challenges']['real']}',
                             'ativos: ${m['challenges']['realActive']}'),
-                        _Tile('Prêmios oferecidos',
-                            _brl(m['challenges']['realPrizeTotalBrl']),
-                            'desafios reais'),
+                        _Tile('Prêmio bancado por usuários',
+                            _brl(m['challenges']['userFundedPrizeBrl']),
+                            'anunciado: ${_brl(m['challenges']['realPrizeTotalBrl'])}'),
                         _Tile('Participações reais',
                             '${m['entries']['real']}',
                             'demonstração: ${m['entries']['demo']}'),
