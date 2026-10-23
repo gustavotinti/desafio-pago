@@ -78,6 +78,9 @@ class _ActivityTickerState extends State<ActivityTicker> {
         // TRANSPARÊNCIA: só vitórias REAIS — desafio de demonstração não
         // entra como "fulano ganhou".
         if (data['isVirtual'] == true) return false;
+        // Só prêmio de VERDADE: bancado por quem criou (debitado do saldo).
+        // Desafio criado pelo admin não debita ninguém (ex.: testes).
+        if (((data['creatorContribution'] as num?) ?? 0) <= 0) return false;
         // Só a região deste site (legado sem region = BR).
         final r = (data['region'] as String?) ?? 'BR';
         return w is List && w.isNotEmpty && r == region;
