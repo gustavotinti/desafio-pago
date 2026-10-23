@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../../core/widgets/demo_badge.dart';
 import '../../../core/i18n/i18n.dart';
 import '../../../core/utils/friendly_error.dart';
 import '../../../core/widgets/safe_avatar.dart';
@@ -34,6 +35,8 @@ class _CommentSectionState extends State<CommentSection> {
   String? _replyToId;
   String? _replyToName;
 
+  // Autores de demonstração (perfis virtuais) — recebem o selo.
+  final Set<String> _demoAuthors = {};
   // Fotos de perfil dos autores (publicProfiles) — cache por userId.
   final Map<String, String?> _photos = {};
   // Falhas de leitura por userId — permite rebuscar (até _maxPhotoTries)
@@ -81,6 +84,7 @@ class _CommentSectionState extends State<CommentSection> {
     final results = await Future.wait(missing.map((id) async {
       try {
         final d = await db.collection('publicProfiles').doc(id).get();
+        if (d.data()?['isVirtual'] == true) _demoAuthors.add(id);
         return (id, true, d.data()?['photoUrl'] as String?);
       } catch (_) {
         return (id, false, null);
@@ -372,6 +376,7 @@ class _CommentSectionState extends State<CommentSection> {
               widgets.add(_CommentTile(
                 comment: top,
                 photoUrl: _photos[top.userId],
+                isDemo: _demoAuthors.contains(top.userId),
                 isLiked: _liked.contains(top.id),
                 onLike: () => _toggleLike(top),
                 onReply: () => _startReply(top),
@@ -385,6 +390,7 @@ class _CommentSectionState extends State<CommentSection> {
                   child: _CommentTile(
                     comment: reply,
                     photoUrl: _photos[reply.userId],
+                    isDemo: _demoAuthors.contains(reply.userId),
                     isLiked: _liked.contains(reply.id),
                     onLike: () => _toggleLike(reply),
                     isAdmin: widget.isAdmin,
@@ -477,6 +483,7 @@ class _CommentSectionState extends State<CommentSection> {
 class _CommentTile extends StatelessWidget {
   final Comment comment;
   final String? photoUrl;
+  final bool isDemo;
   final bool isLiked;
   final VoidCallback onLike;
   final VoidCallback? onReply;
@@ -493,6 +500,7 @@ class _CommentTile extends StatelessWidget {
     this.isAdmin = false,
     this.onAdminEdit,
     this.onAdminDelete,
+    this.isDemo = false,
   });
 
   String _formatDate(DateTime dt) {
@@ -531,6 +539,10 @@ class _CommentTile extends StatelessWidget {
                         ),
                       ),
                     ),
+                    if (isDemo) ...[
+                      const SizedBox(width: 4),
+                      const DemoBadge(compact: true),
+                    ],
                     const SizedBox(width: 6),
                     Text(
                       _formatDate(comment.createdAt),

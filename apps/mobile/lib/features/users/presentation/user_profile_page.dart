@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../../core/widgets/demo_badge.dart';
 import '../../../core/utils/format.dart';
 import '../../../core/widgets/safe_avatar.dart';
 import '../../../core/widgets/web_frame.dart';
@@ -169,6 +170,10 @@ class _UserProfilePageState extends State<UserProfilePage> {
                             const SizedBox(width: 4),
                             const Icon(Icons.verified,
                                 color: Colors.blue, size: 20),
+                          ],
+                          if (_userData['isVirtual'] == true) ...[
+                            const SizedBox(width: 6),
+                            const DemoBadge(),
                           ],
                         ],
                       ),

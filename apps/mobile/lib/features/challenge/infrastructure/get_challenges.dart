@@ -121,6 +121,7 @@ class GetChallenges {
           : null,
       // Sem region no doc (legado) = 'BR'.
       region: (data['region'] as String?) ?? 'BR',
+      isVirtual: data['isVirtual'] == true,
     );
   }
 }

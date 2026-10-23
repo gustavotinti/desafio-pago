@@ -1033,5 +1033,16 @@ class I18n {
       'Abrir en Instagram', 'Ouvrir sur Instagram', 'Apri su Instagram',
       'Auf Instagram öffnen'],
     'close': ['Fechar', 'Close', 'Cerrar', 'Fermer', 'Chiudi', 'Schließen'],
+
+    // Transparência: conteúdo de demonstração
+    'demo_badge': ['Demonstração', 'Demo', 'Demostración', 'Démo', 'Demo',
+      'Demo'],
+    'demo_explain': [
+      'Conteúdo de demonstração: não é de um usuário real e não vale prêmio.',
+      'Demo content: not from a real user and not eligible for prizes.',
+      'Contenido de demostración: no es de un usuario real y no opta a premio.',
+      "Contenu de démonstration : pas d'un vrai utilisateur, sans prix.",
+      'Contenuto dimostrativo: non è di un utente reale e non vale premi.',
+      'Demo-Inhalt: kein echter Nutzer, nicht preisberechtigt.'],
   };
 }

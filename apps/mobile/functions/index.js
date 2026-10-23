@@ -743,14 +743,17 @@ exports.finalizeChallenges = functions.pubsub
 // consistentes: entry, challenge e users.totalVotesReceived (o mirror espelha
 // pro ranking) — o trigger syncChallengeTopEntries atualiza as prévias do
 // feed sozinho.
-// Kill-switch: config/engagement.autoVotes == false desliga.
+// Desligado por padrão: só roda com config/engagement.autoVotes == true.
 exports.autoVoteRealEntries = functions.pubsub
     .schedule("every 3 minutes")
     .onRun(async () => {
       const db = admin.firestore();
 
+      // TRANSPARÊNCIA (v3.10): DESLIGADO por padrão — voto automático muda
+      // quem ganha dinheiro de verdade. Só roda com config/engagement.autoVotes
+      // == true, gravado de propósito pelo admin.
       const cfg = await db.collection("config").doc("engagement").get();
-      if (cfg.exists && cfg.data().autoVotes === false) return null;
+      if (!cfg.exists || cfg.data().autoVotes !== true) return null;
 
       const challSnap = await db.collection("challenges")
           .where("status", "==", "active").get();
@@ -5073,6 +5076,9 @@ Object.assign(exports, require("./payments_intl"));
 const _secrets = require("./secrets");
 exports.adminSetSecret = _secrets.adminSetSecret;
 exports.adminGetSecretStatus = _secrets.adminGetSecretStatus;
+
+// ─── MÉTRICAS REAIS (transparência — ver functions/metrics.js) ──────────────
+exports.adminRealMetrics = require("./metrics").adminRealMetrics;
 
 // ─── SEED / BACKFILL INTERNACIONAL (one-shot, re-executável) ─────────────────
 // 1) Marca todos os desafios sem `region` como 'BR'. 2) Se não houver desafios

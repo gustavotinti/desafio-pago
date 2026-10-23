@@ -19,6 +19,7 @@ import '../../entry/presentation/submit_entry_page.dart';
 import '../../admin/presentation/admin_challenges_page.dart';
 import '../../admin/presentation/admin_page.dart';
 import '../../admin/infrastructure/admin_repository.dart';
+import '../../../core/widgets/demo_badge.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/i18n/i18n.dart';
 import '../../../core/i18n/language_selector.dart';
@@ -255,7 +256,7 @@ class _FeedTabState extends State<_FeedTab> {
   bool _loadingMore = false;
   bool _hasMore = true;
   // Rodapé "alta demanda" — ligado por padrão; admin controla em config/feed.
-  bool _footerEnabled = true;
+  bool _footerEnabled = false;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _feedCfgSub;
   Object? _error;
 
@@ -269,7 +270,9 @@ class _FeedTabState extends State<_FeedTab> {
         .doc('feed')
         .snapshots()
         .listen((doc) {
-      final v = doc.data()?['highDemandFooter'] != false;
+      // TRANSPARÊNCIA: desligado por padrão (a mensagem de "muitos usuários"
+      // só aparece se o admin ligar de propósito).
+      final v = doc.data()?['highDemandFooter'] == true;
       if (mounted && v != _footerEnabled) {
         setState(() => _footerEnabled = v);
       }
@@ -572,6 +575,10 @@ class _ChallengeCard extends StatelessWidget {
               children: [
                 if (challenge.pinned) ...[
                   const _NewBadge(),
+                  const SizedBox(height: 8),
+                ],
+                if (challenge.isVirtual) ...[
+                  const DemoBadge(),
                   const SizedBox(height: 8),
                 ],
                 // ── Title + prize badge ────────────────────────────

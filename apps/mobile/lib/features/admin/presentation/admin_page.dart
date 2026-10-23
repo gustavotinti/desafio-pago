@@ -16,6 +16,7 @@ import 'admin_keys_page.dart';
 import 'admin_reports_page.dart';
 import 'admin_instagram_page.dart';
 import 'admin_videos_page.dart';
+import 'admin_metrics_page.dart';
 
 const _superAdminEmail = 'gustavo.a.tinti3@gmail.com';
 
@@ -173,6 +174,13 @@ class _AdminPageState extends State<AdminPage> {
                         gradient: const [Color(0xFFC62828), Color(0xFFEF5350)],
                         badge: _pendingBadge(_pendingReports),
                         page: const AdminReportsPage(),
+                      ),
+                      card(
+                        icon: Icons.insights_rounded,
+                        title: 'Métricas reais',
+                        subtitle: 'Só uso real, sem demonstração — para a inscrição',
+                        gradient: const [Color(0xFF0B4AA8), Color(0xFF3D7BE0)],
+                        page: const AdminMetricsPage(),
                       ),
                       card(
                         icon: Icons.smart_display_rounded,

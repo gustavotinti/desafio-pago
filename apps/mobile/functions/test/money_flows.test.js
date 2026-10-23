@@ -241,7 +241,16 @@ test("centavos: criar desafio e aportar arredondam ao centavo", async () => {
 });
 
 // ── AUTO-VOTOS ────────────────────────────────────────────────────────────
+test("auto-votos: desligado por padrão (transparência)", async () => {
+  user("ana");
+  challenge("vivo");
+  entry("e1", "vivo", "ana", 0);
+  await fx.autoVoteRealEntries();
+  assert.strictEqual(F.read("entries/e1").voteCount, 0);
+});
+
 test("auto-votos: desafio com prazo vencido não recebe +1", async () => {
+  F.put("config/engagement", {autoVotes: true});
   user("ana"); user("bob");
   challenge("vivo"); challenge("vencido", {expiresAt: iso(-60 * 1000)});
   entry("e1", "vivo", "ana", 0);
@@ -400,4 +409,31 @@ test("vídeo pendente pode receber voto (só não ganha sem verificação)", asy
   challenge("c1");
   entry("eIg", "c1", "ana", 0, {contentType: "videoLink", videoCheck: "pending"});
   assert.strictEqual(await code(fx.vote({challengeId: "c1", entryId: "eIg"}, ctx("bob"))), "ok");
+});
+
+// ── MÉTRICAS REAIS ────────────────────────────────────────────────────────
+test("métricas reais: ignoram demonstração e votos de admin", async () => {
+  F.put("admins/adm", {});
+  F.put("publicProfiles/ana", {isVirtual: false});
+  F.put("publicProfiles/v1", {isVirtual: true});
+  F.put("publicProfiles/v2", {isVirtual: true});
+  challenge("real", {amount: 50});
+  challenge("demo", {amount: 300, isVirtual: true});
+  entry("e1", "real", "ana", 0);
+  entry("e2", "demo", "v1", 0, {isVirtual: true});
+  F.put("votes/bob_real", {userId: "bob"});
+  F.put("votes/admin_x", {isAdminVote: true});
+  F.put("payments/p1", {status: "approved", amount: 25});
+  F.put("payments/p2", {status: "pending", amount: 99});
+  F.put("withdrawals/w1", {status: "paid", amount: 100});
+  assert.strictEqual(await code(fx.adminRealMetrics({}, ctx("ana"))), "permission-denied");
+  const m = await fx.adminRealMetrics({}, ctx("adm"));
+  assert.deepStrictEqual(m.users, {real: 1, demo: 2});
+  assert.strictEqual(m.challenges.real, 1);
+  assert.strictEqual(m.challenges.realActive, 1);
+  assert.strictEqual(m.challenges.realPrizeTotalBrl, 50);
+  assert.deepStrictEqual(m.entries, {real: 1, demo: 1});
+  assert.deepStrictEqual(m.votes, {byUsers: 1, byAdmins: 1});
+  assert.deepStrictEqual(m.money, {depositsApproved: 1, depositsBrl: 25,
+    withdrawalsPaid: 1, withdrawalsBrl: 100});
 });

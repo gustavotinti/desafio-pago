@@ -126,6 +126,19 @@ class Query {
   async get() {
     return this._run();
   }
+  count() {
+    return {get: async () => ({data: () => ({count: this._run().size})})};
+  }
+  aggregate(spec) {
+    return {get: async () => {
+      const docs = this._run().docs;
+      const out = {};
+      for (const [k, v] of Object.entries(spec)) {
+        out[k] = docs.reduce((t, d) => t + (Number(d._d[v.__sum]) || 0), 0);
+      }
+      return {data: () => out};
+    }};
+  }
 }
 
 function makeWriter(strictTx) {
@@ -229,7 +242,11 @@ const functionsMock = new Proxy({}, {
 
 const adminMock = {
   initializeApp: () => {},
-  firestore: Object.assign(() => db, {FieldValue, Timestamp: {now: () => ({toMillis: () => Date.now()})}}),
+  firestore: Object.assign(() => db, {
+    FieldValue,
+    AggregateField: {sum: (f) => ({__sum: f})},
+    Timestamp: {now: () => ({toMillis: () => Date.now()})},
+  }),
   auth: () => ({
     deleteUser: async (uid) => audit.authDeleted.push(uid),
     listUsers: async () => ({users: []}),

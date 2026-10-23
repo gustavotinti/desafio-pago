@@ -10,9 +10,8 @@ import '../../../core/utils/format.dart';
 import '../../../core/widgets/web_frame.dart';
 
 /// Ticker de vitórias no topo do feed: mostra, em rotação aleatória, quem
-/// GANHOU quais desafios ("🏆 @fulano ganhou R$X · '...'"), usando desafios
-/// reais já encerrados + seus vencedores. Reforça a sensação de que dá pra
-/// ganhar dinheiro de verdade (prova social).
+/// GANHOU quais desafios ("🏆 @fulano ganhou R$X · '...'"). Só desafios e
+/// vencedores REAIS (sem demonstração) — prova social verdadeira.
 class ActivityTicker extends StatefulWidget {
   const ActivityTicker({super.key});
 
@@ -76,6 +75,9 @@ class _ActivityTickerState extends State<ActivityTicker> {
       final candidates = snap.docs.where((d) {
         final data = d.data();
         final w = data['winnerIds'];
+        // TRANSPARÊNCIA: só vitórias REAIS — desafio de demonstração não
+        // entra como "fulano ganhou".
+        if (data['isVirtual'] == true) return false;
         // Só a região deste site (legado sem region = BR).
         final r = (data['region'] as String?) ?? 'BR';
         return w is List && w.isNotEmpty && r == region;
@@ -102,8 +104,10 @@ class _ActivityTickerState extends State<ActivityTicker> {
           uids.map((id) => db.collection('publicProfiles').doc(id).get()));
       for (final p in profiles) {
         final data = p.data();
-        final username = data?['username'] as String?;
-        final name = data?['name'] as String?;
+        // Vencedor de demonstração também não entra.
+        if (data == null || data['isVirtual'] == true) continue;
+        final username = data['username'] as String?;
+        final name = data['name'] as String?;
         winners[p.id] = (username != null && username.isNotEmpty)
             ? '@$username'
             : (name ?? '');

@@ -12,6 +12,7 @@ import '../../../core/i18n/i18n.dart';
 import '../../../core/utils/format.dart';
 import '../../../core/utils/friendly_error.dart';
 import '../../../core/widgets/safe_avatar.dart';
+import '../../../core/widgets/demo_badge.dart';
 import '../../../core/widgets/safe_image.dart';
 import '../../../core/widgets/video_link_view.dart';
 import '../../../core/widgets/web_frame.dart';
@@ -763,6 +764,7 @@ class _EntryCard extends StatelessWidget {
     final username = author?['username'] as String? ?? '';
     final photoUrl = author?['photoUrl'] as String?;
     final verified = author?['isVerified'] == true;
+    final isDemo = author?['isVirtual'] == true;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -814,6 +816,10 @@ class _EntryCard extends StatelessWidget {
                                     const SizedBox(width: 3),
                                     const Icon(Icons.verified,
                                         size: 14, color: Color(0xFF0cc0df)),
+                                  ],
+                                  if (isDemo) ...[
+                                    const SizedBox(width: 5),
+                                    const DemoBadge(compact: true),
                                   ],
                                 ],
                               ),

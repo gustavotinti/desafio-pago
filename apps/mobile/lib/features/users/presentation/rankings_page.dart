@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../../../core/widgets/demo_badge.dart';
 import '../../../core/config/app_config.dart';
 import '../../../core/i18n/i18n.dart';
 import '../../../core/utils/format.dart';
@@ -110,6 +111,7 @@ class _RankingTab extends StatelessWidget {
             final username = data['username'] as String? ?? '';
             final photoUrl = data['photoUrl'] as String? ?? '';
             final isVerified = data['isVerified'] == true;
+            final isDemo = data['isVirtual'] == true;
             final rawValue = (data[orderBy] as num? ?? 0);
             final displayValue = isEarnings
                 ? Fmt.brl(rawValue)
@@ -123,6 +125,7 @@ class _RankingTab extends StatelessWidget {
                 username: username,
                 photoUrl: photoUrl,
                 isVerified: isVerified,
+                isDemo: isDemo,
                 displayValue: displayValue,
               );
             }
@@ -134,6 +137,7 @@ class _RankingTab extends StatelessWidget {
               username: username,
               photoUrl: photoUrl,
               isVerified: isVerified,
+              isDemo: isDemo,
               displayValue: displayValue,
             );
           },
@@ -152,6 +156,7 @@ class _PodiumTile extends StatelessWidget {
   final String username;
   final String photoUrl;
   final bool isVerified;
+  final bool isDemo;
   final String displayValue;
 
   const _PodiumTile({
@@ -161,6 +166,7 @@ class _PodiumTile extends StatelessWidget {
     required this.username,
     required this.photoUrl,
     required this.isVerified,
+    this.isDemo = false,
     required this.displayValue,
   });
 
@@ -257,6 +263,10 @@ class _PodiumTile extends StatelessWidget {
                           const Icon(Icons.verified,
                               color: Colors.blue, size: 15),
                         ],
+                        if (isDemo) ...[
+                          const SizedBox(width: 4),
+                          const DemoBadge(compact: true),
+                        ],
                       ],
                     ),
                     if (username.isNotEmpty)
@@ -308,6 +318,7 @@ class _RegularTile extends StatelessWidget {
   final String username;
   final String photoUrl;
   final bool isVerified;
+  final bool isDemo;
   final String displayValue;
 
   const _RegularTile({
@@ -317,6 +328,7 @@ class _RegularTile extends StatelessWidget {
     required this.username,
     required this.photoUrl,
     required this.isVerified,
+    this.isDemo = false,
     required this.displayValue,
   });
 
@@ -369,6 +381,10 @@ class _RegularTile extends StatelessWidget {
           if (isVerified) ...[
             const SizedBox(width: 4),
             const Icon(Icons.verified, color: Colors.blue, size: 14),
+          ],
+          if (isDemo) ...[
+            const SizedBox(width: 4),
+            const DemoBadge(compact: true),
           ],
         ],
       ),

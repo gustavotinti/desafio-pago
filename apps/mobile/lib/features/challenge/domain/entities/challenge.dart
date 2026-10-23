@@ -20,6 +20,8 @@ class Challenge {
   final DateTime? pinnedAt;
   // Região do desafio: 'BR' (padrão) ou 'INTL' (site trialspaid).
   final String region;
+  // Desafio de demonstração (seed): mostrado com selo, não conta nos números.
+  final bool isVirtual;
 
   Challenge({
     required this.id,
@@ -37,5 +39,6 @@ class Challenge {
     this.pinned = false,
     this.pinnedAt,
     this.region = 'BR',
+    this.isVirtual = false,
   });
 }
