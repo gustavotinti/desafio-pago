@@ -1,4 +1,4 @@
-# XRPL integration — technical overview
+# XRPL integration: technical overview
 
 For XRPL Grants reviewers. Desafio Pago (Brazil, <https://desafiopago.com.br>)
 and TrialsPaid (international, <https://trialspaid.web.app>) are one codebase:
@@ -70,7 +70,7 @@ deadline has passed.
 - `winners`: number of winners (ties split the prize)
 - `prizePerWinnerBrl`: prize divided by winners, rounded **down** to the cent
   (the indivisible cent stays with the platform, a business rule)
-- `winnerIds`: first 16 hex chars of `sha256(uid)` — **no personal data on-chain**
+- `winnerIds`: first 16 hex chars of `sha256(uid)`, so **no personal data goes on-chain**
 
 If a challenge is closed before its `FinishAfter` (manual early close), the
 ledger would reject the finish, so it is marked `releasePending` and the retry
